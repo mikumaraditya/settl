@@ -12,6 +12,20 @@ export default function Register() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (!form.upiId.trim()) {
+      setError('UPI ID is required')
+      return
+    }
+    const upiRegex = /^[a-zA-Z0-9.\-_]{3,50}@(oksbi|paytm|ybl|barodampay|okaxis|okhdfcbank|okicici|okbizaxis|ibl|axl|upi|apl|rapl|yapl|sbi|hdfcbank|icici|axisbank|yesbank|pnb|cnrb|indianbank|iob|unionbank|uboi|idfcbank|federal|kotak|kmbl|boi|uco|cbin|centralbank|dbs|hsbc|sc|citi|postbank|ippb|airtel|airtelmail|jio|cred|slice|sliceaxis|fi|jupiter|waaxis|wasbi|waicici|wahdfc|bob)$/i
+    if (!upiRegex.test(form.upiId.trim())) {
+      setError('Please enter a valid UPI ID with a valid bank handle (e.g. name@oksbi, name@paytm, name@ybl)')
+      return
+    }
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/
+    if (!passwordRegex.test(form.password)) {
+      setError('Password must be at least 8 characters long, and contain at least one uppercase letter, one lowercase letter, one number, and one special character.')
+      return
+    }
     setLoading(true)
     setError('')
     try {
@@ -33,13 +47,15 @@ export default function Register() {
 
       <div className="w-full max-w-[460px] z-10 animate-in fade-in slide-in-from-bottom-4 duration-300">
         {/* Brand Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-tr from-secondary to-blue-600 rounded-2xl mb-4 shadow-lg shadow-secondary/25">
-            <span className="material-symbols-outlined text-white text-[28px] font-bold">account_balance_wallet</span>
+        <div className="flex flex-col items-center mb-8">
+          <div className="flex items-center gap-3">
+            <div className="inline-flex items-center justify-center w-10 h-10 bg-gradient-to-tr from-secondary to-blue-600 rounded-xl shadow-md shadow-secondary/20">
+              <span className="material-symbols-outlined text-white text-[20px] font-bold">account_balance_wallet</span>
+            </div>
+            <h1 className="text-3xl font-extrabold text-primary tracking-tight flex items-center gap-1 leading-none">
+              <span>Settl</span><span className="w-2.5 h-2.5 rounded-full bg-secondary"></span>
+            </h1>
           </div>
-          <h1 className="text-3xl font-extrabold text-primary tracking-tight flex items-center justify-center gap-1.5 leading-none">
-            <span>Settl</span><span className="w-2.5 h-2.5 rounded-full bg-secondary"></span>
-          </h1>
           <p className="text-xs text-on-surface-variant font-semibold uppercase tracking-wider mt-2.5">Split now · Settl later</p>
         </div>
 
@@ -130,7 +146,7 @@ export default function Register() {
             <div className="space-y-1.5">
               <div className="flex justify-between items-center ml-1">
                 <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest block" htmlFor="upiId">
-                  UPI ID <span className="text-[9px] text-on-surface-variant/50 font-normal lowercase tracking-normal">(optional)</span>
+                  UPI ID <span className="text-[#f87171]">*</span>
                 </label>
               </div>
               <div className="relative">
@@ -144,6 +160,7 @@ export default function Register() {
                   value={form.upiId}
                   onChange={e => setForm({ ...form, upiId: e.target.value })}
                   className="w-full pl-10 pr-4 py-3 bg-surface-container-low border border-outline-variant/30 rounded-xl text-sm text-primary outline-none transition-all placeholder:text-outline-variant/60"
+                  required
                   onFocus={e => { e.target.style.borderColor = '#2563eb'; e.target.style.boxShadow = '0 0 0 3px rgba(37,99,235,0.15)' }}
                   onBlur={e => { e.target.style.borderColor = ''; e.target.style.boxShadow = 'none' }}
                 />

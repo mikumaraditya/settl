@@ -437,13 +437,19 @@ router.post(
         evidenceData.screenshotUrl = `/uploads/${req.file.filename}`;
         evidenceData.screenshotOriginalName = req.file.originalname;
 
-        // Run AI verification
-        const receiverUpiId = settlement.to.upiId || settlement.to.name;
-        aiResult = await verifyScreenshotWithAI(
-          req.file.path,
-          settlement.amount,
-          receiverUpiId
-        );
+        // Run AI verification only if recipient UPI ID is valid
+        const receiverUpiId = (settlement.to.upiId || '').trim();
+        const upiRegex = /^[a-zA-Z0-9.\-_]{3,50}@(oksbi|paytm|ybl|barodampay|okaxis|okhdfcbank|okicici|okbizaxis|ibl|axl|upi|apl|rapl|yapl|sbi|hdfcbank|icici|axisbank|yesbank|pnb|cnrb|indianbank|iob|unionbank|uboi|idfcbank|federal|kotak|kmbl|boi|uco|cbin|centralbank|dbs|hsbc|sc|citi|postbank|ippb|airtel|airtelmail|jio|cred|slice|sliceaxis|fi|jupiter|waaxis|wasbi|waicici|wahdfc|bob)$/i;
+
+        if (upiRegex.test(receiverUpiId)) {
+          aiResult = await verifyScreenshotWithAI(
+            req.file.path,
+            settlement.amount,
+            receiverUpiId
+          );
+        } else {
+          aiResult = { verified: false, reason: "AI verification skipped: recipient UPI ID is missing or invalid." };
+        }
 
         evidenceData.aiVerified = aiResult.verified;
         evidenceData.aiReason   = aiResult.reason;

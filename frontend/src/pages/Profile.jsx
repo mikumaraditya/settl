@@ -29,6 +29,12 @@ export default function Profile() {
   const handleProfileSave = async (e) => {
     e.preventDefault()
     if (!name.trim()) return setProfileError('Name cannot be empty')
+    if (!upiId.trim()) return setProfileError('UPI ID is required')
+    
+    const upiRegex = /^[a-zA-Z0-9.\-_]{3,50}@(oksbi|paytm|ybl|barodampay|okaxis|okhdfcbank|okicici|okbizaxis|ibl|axl|upi|apl|rapl|yapl|sbi|hdfcbank|icici|axisbank|yesbank|pnb|cnrb|indianbank|iob|unionbank|uboi|idfcbank|federal|kotak|kmbl|boi|uco|cbin|centralbank|dbs|hsbc|sc|citi|postbank|ippb|airtel|airtelmail|jio|cred|slice|sliceaxis|fi|jupiter|waaxis|wasbi|waicici|wahdfc|bob)$/i
+    if (!upiRegex.test(upiId.trim())) {
+      return setProfileError('Please enter a valid UPI ID with a valid bank handle (e.g. name@oksbi, name@paytm, name@ybl)')
+    }
     setSavingProfile(true)
     setProfileSuccess('')
     setProfileError('')
@@ -49,7 +55,10 @@ export default function Profile() {
     setPwdSuccess('')
     setPwdError('')
     if (newPassword !== confirmPassword) return setPwdError('New passwords do not match')
-    if (newPassword.length < 6) return setPwdError('New password must be at least 6 characters')
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/
+    if (!passwordRegex.test(newPassword)) {
+      return setPwdError('New password must be at least 8 characters long, and contain at least one uppercase letter, one lowercase letter, one number, and one special character.')
+    }
     setSavingPwd(true)
     try {
       await axios.put('/auth/change-password', { currentPassword, newPassword })
@@ -149,7 +158,7 @@ export default function Profile() {
 
             {/* UPI ID */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest ml-1">UPI ID</label>
+              <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest ml-1">UPI ID <span className="text-[#f87171]">*</span></label>
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[18px] text-on-surface-variant pointer-events-none">account_balance</span>
                 <input
@@ -157,6 +166,7 @@ export default function Profile() {
                   value={upiId}
                   onChange={e => setUpiId(e.target.value)}
                   placeholder="yourname@upi"
+                  required
                   className="w-full pl-11 pr-4 py-3 rounded-2xl text-xs text-white bg-white/[0.02] border border-white/10 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all placeholder:text-white/20"
                 />
               </div>

@@ -33,13 +33,15 @@ export default function Login() {
 
       <div className="w-full max-w-[460px] z-10 animate-in fade-in slide-in-from-bottom-4 duration-300">
         {/* Brand Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-tr from-secondary to-blue-600 rounded-2xl mb-4 shadow-lg shadow-secondary/25">
-            <span className="material-symbols-outlined text-white text-[28px] font-bold">account_balance_wallet</span>
+        <div className="flex flex-col items-center mb-8">
+          <div className="flex items-center gap-3">
+            <div className="inline-flex items-center justify-center w-10 h-10 bg-gradient-to-tr from-secondary to-blue-600 rounded-xl shadow-md shadow-secondary/20">
+              <span className="material-symbols-outlined text-white text-[20px] font-bold">account_balance_wallet</span>
+            </div>
+            <h1 className="text-3xl font-extrabold text-primary tracking-tight flex items-center gap-1 leading-none">
+              <span>Settl</span><span className="w-2.5 h-2.5 rounded-full bg-secondary"></span>
+            </h1>
           </div>
-          <h1 className="text-3xl font-extrabold text-primary tracking-tight flex items-center justify-center gap-1.5 leading-none">
-            <span>Settl</span><span className="w-2.5 h-2.5 rounded-full bg-secondary"></span>
-          </h1>
           <p className="text-xs text-on-surface-variant font-semibold uppercase tracking-wider mt-2.5">Split now · Settl later</p>
         </div>
 
