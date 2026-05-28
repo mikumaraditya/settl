@@ -557,7 +557,7 @@ router.post("/dispute/resolve", protect, async (req, res) => {
     await ActivityLog.create({
       group: settlement.group,
       actor: req.user.id,
-      type: 'dispute_resolved',
+      type: accept ? 'dispute_resolved' : 'dispute_rejected',
       meta: {
         amount: settlement.amount,
         fromName: populated.from?.name,

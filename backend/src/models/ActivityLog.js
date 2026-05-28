@@ -24,6 +24,7 @@ const activityLogSchema = new mongoose.Schema(
         'settlement_disputed',
         'evidence_submitted',
         'dispute_resolved',
+        'dispute_rejected',
         'member_added',
         'member_removed',
         'member_left',

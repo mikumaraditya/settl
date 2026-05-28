@@ -766,6 +766,7 @@ export default function GroupDetail() {
                           settlement_disputed:  { icon: 'gavel',          color: '#f87171', label: (l) => `disputed ₹${Number(l.meta?.amount).toLocaleString('en-IN')} payment from ${l.meta?.fromName}` },
                           evidence_submitted:   { icon: 'upload_file',    color: '#fbbf24', label: (l) => `submitted payment proof to ${l.meta?.toName}` },
                           dispute_resolved:     { icon: 'verified',       color: '#4ade80', label: (l) => `resolved dispute of ₹${Number(l.meta?.amount).toLocaleString('en-IN')}` },
+                          dispute_rejected:     { icon: 'cancel',         color: '#f87171', label: (l) => `rejected proof for dispute of ₹${Number(l.meta?.amount).toLocaleString('en-IN')}` },
                           member_added:         { icon: 'person_add',     color: '#60a5fa', label: (l) => `added ${l.meta?.memberName} to the group` },
                           member_removed:       { icon: 'person_remove',  color: '#f87171', label: () => `removed a member from the group` },
                           member_left:          { icon: 'exit_to_app',    color: '#94a3b8', label: () => `left the group` },
