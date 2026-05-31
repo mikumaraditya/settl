@@ -1,6 +1,6 @@
 # Settl 💸
 
-Settl is a premium, modern, and responsive MERN-stack bill-sharing and expense-splitting application. It is designed to help friends, roommates, and travel groups manage shared costs, simplify complex debts, resolve disputes, and confirm payments securely using built-in **Gemini AI-powered payment screenshot verification**.
+Settl is a premium, modern, and responsive MERN-stack bill-sharing and expense-splitting application. It is designed to help friends, roommates, and travel groups manage shared costs, simplify complex debts, and confirm payments peer-to-peer securely.
 
 ---
 
@@ -16,7 +16,7 @@ No middleman. No payment gateway fees. Just clean, honest expense tracking.
 
 ### 💰 Smart Expense Splitting
 * **Flexible Grouping:** Create dedicated groups for any occasion—trips, flatmates, dinners, and more.
-* **Granular Splitting:** Split expenses equally, by exact amounts, or by custom percentages.
+* **Precise Paise Calculations:** Splits are calculated server-side down to the exact integer Paise, using modulus distribution to prevent rounding errors or lost fractions.
 * **Category Tagging:** Organize spending effortlessly with tags for *Food*, *Travel*, *Shopping*, and *Entertainment*.
 * **Lazy-Loaded History:** Navigate your financial history smoothly with month-wise expense pagination.
 
@@ -29,10 +29,18 @@ No middleman. No payment gateway fees. Just clean, honest expense tracking.
 
 ---
 
+### 👥 Dynamic Group Selector & Shortcut Navigation
+* **Smart Redirects:** Tapping the Group nav item automatically queries your active groups:
+  - If you only have **1 group**, you are routed directly to its details page.
+  - If you have **multiple groups**, a responsive **bottom drawer** (mobile) or **sidebar dropdown popover** (desktop) is toggled to let you select which group to open.
+* **Active Group Memory:** Automatically remembers and locks onto your last visited group ID via URL path matching so you can return to it instantly.
+
+---
+
 ### ⚡ Real-Time Synchronization
 * **WebSocket Powered:** Built on top of `Socket.io` to deliver instantaneous data synchronization across all clients.
 * **Live Updates:** The moment an expense is added, everyone in the group sees it update on their screens instantly.
-* **Instant Notifications:** Receive real-time alerts the second a payment is confirmed or disputed.
+* **Instant Notifications:** Receive real-time alerts the second a payment is confirmed or requested.
 * **Zero Refreshes:** Enjoy a seamless single-page application experience with zero page refreshes required.
 
 ---
@@ -46,17 +54,9 @@ No middleman. No payment gateway fees. Just clean, honest expense tracking.
 ---
 
 ### 🤝 Two-Party Payment Confirmation
-* **Dual Verification:** When a payer marks a debt as settled, the receiver is instantly notified to verify the claim.
-* **Dispute Mechanism:** Receivers can accept the settlement or log a formal dispute. Both parties must agree before a debt is cleared.
-* **Transparent Logs:** Dispute reasons are explicitly recorded and visible to the payer to prevent communication breakdowns and false settlement claims.
-
----
-
-### 🤖 Gemini AI Dispute Resolution
-* **Automated Verification:** Stuck in a dispute? Upload a payment screenshot and the transaction UTR number.
-* **Advanced OCR:** **Google Gemini 2.5 Flash** automatically parses the screenshot to validate the amount, UPI ID, transaction status, and timestamp.
-* **Fraud Detection:** Built-in safeguards detect physical photos of screens and digital image tampering.
-* **Smart Escalation:** Automatically marks legitimate payments as confirmed, or routes edge cases to manual group review if the data is unclear.
+* **Dual Verification:** When a payer marks a debt as settled, the receiver is instantly notified to verify and confirm the payment.
+* **Secure State Transition:** Pending payments are kept in a separate queue until the receiver confirms receipt, updating group balances only after both parties agree.
+* **Rejection Pipeline:** Receivers can reject incorrect payment requests, immediately restoring the original outstanding balances.
 
 ---
 
@@ -77,7 +77,8 @@ No middleman. No payment gateway fees. Just clean, honest expense tracking.
 ---
 
 ### 🌓 Adaptive Light and Dark Mode
-* **Universal Support:** Full, native theme switching across all components, charts, and dashboards.
+* **Universal Support:** Full, native theme switching across all components, charts, sidebars, and dashboards.
+* **Responsive Visual Polish:** Fixed layout sidebars, headers, dropdowns, and modals to look visually premium and clean in both light and dark modes.
 * **Persistent Settings:** System or manual user preferences are cached securely across sessions to prevent theme flickering on reload.
 
 ---
@@ -101,13 +102,12 @@ This is the core technical feature that makes Settl intelligent.
 ### Frontend
 - **Framework**: Vite + React 19
 - **Styling**: TailwindCSS + Custom CSS Variables
-- **API Client**: Axios (configured with intercepts for token injection)
+- **API Client**: Axios (configured with intercepts for token injection and session expiry eviction)
 - **Real-Time Client**: Socket.io Client
 
 ### Backend
 - **Server**: Node.js + Express
 - **Database**: MongoDB (configured with Mongoose schemas)
-- **File Uploads**: Multer (handles payment screenshot validation)
 - **AI Processing**: Gemini API (via direct Google Generative AI endpoints)
 - **Mail Service**: Nodemailer (SMTP verification mailer)
 - **Authentication**: JWT (JSON Web Tokens) + BcryptJS password hashing
@@ -120,7 +120,7 @@ This is the core technical feature that makes Settl intelligent.
 Settl/
 ├── backend/                  # Node.js + Express Server
 │   ├── src/
-│   │   ├── config/           # Database, Mail, Multer configurations
+│   │   ├── config/           # Database, Mail configurations
 │   │   ├── models/           # Mongoose schemas (User, Group, Expense, Settlement)
 │   │   ├── routes/           # REST APIs (auth, groups, expenses, settlements)
 │   │   └── socket.js         # WebSocket connections
@@ -135,7 +135,6 @@ Settl/
 │   │   ├── pages/            # Core views (Dashboard, GroupDetails, Profile, Login)
 │   │   └── main.jsx          # Frontend entrypoint
 │   └── vite.config.js        # Vite config
-└── uploads/                  # Temporary file upload outputs (git-ignored)
 ```
 
 ---
@@ -216,7 +215,6 @@ To run the application locally in development mode:
 - Passwords hashed with bcryptjs before storing in database
 - JWT tokens expire after 30 days
 - Email verification tokens expire after 48 hours
-- Multer validates file type and size before accepting uploads
 - CORS restricted to frontend URL in production
 - Gemini API key rate monitored via Google AI Studio console
 
