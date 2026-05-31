@@ -126,13 +126,6 @@ export default function Login() {
             </button>
           </form>
 
-          {/* Divider */}
-          <div className="flex items-center my-6">
-            <div className="flex-grow border-t border-white/5" />
-            <span className="mx-3 text-[10px] font-bold text-on-surface-variant/45 uppercase tracking-widest">Or login with</span>
-            <div className="flex-grow border-t border-white/5" />
-          </div>
-
           {/* Google login button */}
           <GoogleLoginButton
             onLoginSuccess={(data) => {
