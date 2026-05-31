@@ -71,7 +71,7 @@ export default function UPIPaymentModal({ transaction, onClose, onPaymentInitiat
       className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center p-4 animate-in fade-in duration-200"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="glass-card relative w-full max-w-sm rounded-t-3xl md:rounded-3xl border border-white/10 flex flex-col gap-5 p-6 animate-in slide-in-from-bottom md:zoom-in-95 duration-200 overflow-hidden !bg-white dark:!bg-[#0a0f1d]">
+      <div className="glass-card relative w-full max-w-sm rounded-t-3xl md:rounded-3xl border border-white/10 flex flex-col gap-5 p-6 animate-in slide-in-from-bottom md:zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto !bg-white dark:!bg-[#0a0f1d]">
         {/* Background gradient orb */}
         <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-blue-500/5 blur-xl pointer-events-none" />
 
@@ -98,12 +98,32 @@ export default function UPIPaymentModal({ transaction, onClose, onPaymentInitiat
 
         {isMobile ? (
           /* ─────────────────────────────────────────────────────────────
-             MOBILE LAYOUT: Hide QR Code. Massive CTA deep link + Easy Copy
+             MOBILE LAYOUT: Show QR Code + Deep Link + Easy Copy
              ───────────────────────────────────────────────────────────── */
           <div className="flex flex-col gap-4">
-            <p className="text-[10px] text-center text-slate-400 font-bold uppercase tracking-wider leading-relaxed">
-              Open your banking app to transfer money
-            </p>
+            {/* QR Code */}
+            <div className="flex flex-col items-center gap-2.5">
+              <div className="rounded-2xl p-3 bg-white shadow-md shadow-white/5 flex items-center justify-center">
+                <QRCodeSVG
+                  value={upiUri}
+                  size={140}
+                  bgColor="#ffffff"
+                  fgColor="#0a0f1d"
+                  level="M"
+                  includeMargin={false}
+                />
+              </div>
+              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                Scan with another device
+              </p>
+            </div>
+
+            {/* OR divider */}
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-white/5" />
+              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">OR</span>
+              <div className="flex-1 h-px bg-white/5" />
+            </div>
 
             {/* Massive Deep Link Action Button */}
             <button
