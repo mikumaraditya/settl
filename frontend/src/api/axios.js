@@ -1,7 +1,14 @@
 import axios from "axios";
 
+const defaultBackendUrl = typeof window !== "undefined"
+  ? `${window.location.protocol}//${window.location.hostname}:5000`
+  : "http://localhost:5000";
+
+export const API_BASE_URL = import.meta.env.VITE_API_URL || defaultBackendUrl;
+export const SOCKET_URL = import.meta.env.VITE_API_URL || defaultBackendUrl;
+
 const instance = axios.create({
-  baseURL: "http://localhost:5000/api",
+  baseURL: import.meta.env.VITE_API_URL ? `${API_BASE_URL}/api` : "/api",
 });
 
 // automatically attach token to every request

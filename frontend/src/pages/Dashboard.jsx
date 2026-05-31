@@ -168,7 +168,7 @@ export default function Dashboard() {
 
       const expensePromises = loadedGroups.map(async (g) => {
         try {
-          const { data } = await axios.get(`/expenses/group/${g._id}?months=999&page=1`)
+          const { data } = await axios.get(`/expenses/group/${g._id}?months=1&page=1`)
           return (data.expenses || []).map(exp => ({ ...exp, groupName: g.name }))
         } catch (e) {
           console.error(e)
@@ -431,9 +431,11 @@ export default function Dashboard() {
                         <h4 className="font-extrabold text-sm text-white group-hover:text-secondary transition-colors truncate">
                           {group.name}
                         </h4>
-                        <p className="text-xs text-on-surface-variant truncate mt-1">
-                          {group.description || 'No description'}
-                        </p>
+                        {group.description && (
+                          <p className="text-xs text-on-surface-variant truncate mt-1">
+                            {group.description}
+                          </p>
+                        )}
                       </div>
 
                       <div className="flex justify-between items-center py-2.5 border-t border-white/5 mt-auto">

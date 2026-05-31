@@ -1,14 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import axios from '../api/axios'
+import axios, { SOCKET_URL } from '../api/axios'
 import Navbar from '../components/Navbar'
 import { useAuth } from '../context/AuthContext'
 import { io } from 'socket.io-client'
-import DisputeEvidenceModal from '../components/DisputeEvidenceModal'
+import { useNotifications } from '../context/NotificationContext'
 
 export default function GroupDetail() {
   const { id } = useParams()
   const { user } = useAuth()
+  const { joinGroup } = useNotifications()
   const navigate = useNavigate()
 
   // ── Core state ──────────────────────────────────────────────────────────────
@@ -19,21 +20,11 @@ export default function GroupDetail() {
   // ── Pagination state ─────────────────────────────────────────────────────────
   const [currentPage, setCurrentPage]       = useState(1)
   const [hasMore, setHasMore]               = useState(false)
+  const [totalMonths, setTotalMonths]       = useState(1)
   const [loadingMore, setLoadingMore]       = useState(false)
-  const [totalMonths, setTotalMonths]       = useState(0)
-  // loadedMonths state removed
 
-  // ── Tab state ─────────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState('expenses') // 'expenses' | 'disputes' | 'activity'
-
-  // ── Disputes state ────────────────────────────────────────────────────────────
-  const [disputes, setDisputes]           = useState({ pending: [], disputed: [], unresolved: [] })
-  const [loadingDisputes, setLoadingDisputes] = useState(false)
-  const [disputesFetched, setDisputesFetched] = useState(false)
-  const [disputingId, setDisputingId]         = useState(null)
-  const [disputeReason, setDisputeReason]     = useState('')
-  const [disputeActionLoading, setDisputeActionLoading] = useState({})
-  const [activeDisputeEvidence, setActiveDisputeEvidence] = useState(null)
+  // ── Tab state ────────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState('expenses') // 'expenses' | 'activity'
 
   // ── Activity log state ────────────────────────────────────────────────────────
   const [activityLogs, setActivityLogs]       = useState([])
@@ -66,6 +57,7 @@ export default function GroupDetail() {
 
   // ── Smart Settlement state ────────────────────────────────────────────────────
   const [transactions, setTransactions]             = useState([])
+  const [confirmedSettlements, setConfirmedSettlements] = useState([])
   const [now]                                       = useState(() => Date.now())
   const [loadingSettlements, setLoadingSettlements] = useState(true)
 
@@ -123,6 +115,7 @@ export default function GroupDetail() {
       setLoadingSettlements(true)
       const { data } = await axios.get(`/settlements/simplify/${id}`)
       setTransactions(data.transactions || [])
+      setConfirmedSettlements(data.confirmedSettlements || [])
     } catch (err) {
       console.error(err)
     } finally {
@@ -130,23 +123,8 @@ export default function GroupDetail() {
     }
   }
 
-  const fetchDisputes = async () => {
-    try {
-      setLoadingDisputes(true)
-      const { data } = await axios.get(`/settlements/group/${id}/disputes`)
-      setDisputes(data)
-      setDisputesFetched(true)
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoadingDisputes(false)
-    }
-  }
-
-  // Switch to disputes tab — lazy load on first visit
   const handleTabChange = (tab) => {
     setActiveTab(tab)
-    if (tab === 'disputes' && !disputesFetched) fetchDisputes()
     if (tab === 'activity' && !activityFetched) fetchActivity()
   }
 
@@ -163,55 +141,6 @@ export default function GroupDetail() {
       console.error(err)
     } finally {
       setActivityLoading(false)
-    }
-  }
-
-  // ── Dispute actions ───────────────────────────────────────────────────────────
-  const setDisputeLoading = (key, val) =>
-    setDisputeActionLoading(prev => ({ ...prev, [key]: val }))
-
-  const handleConfirmSettlement = async (settlementId) => {
-    setDisputeLoading(`confirm-${settlementId}`, true)
-    try {
-      await axios.post('/settlements/confirm', { groupId: id, fromUserId: disputes.pending.find(p => p._id === settlementId)?.from?._id })
-      fetchDisputes()
-      fetchSettlements()
-    } catch (err) {
-      alert(err.response?.data?.message || 'Error confirming')
-    } finally {
-      setDisputeLoading(`confirm-${settlementId}`, false)
-    }
-  }
-
-  const handleDisputeSettlement = async (settlementId) => {
-    if (!disputeReason.trim()) return
-    setDisputeLoading(`dispute-${settlementId}`, true)
-    try {
-      await axios.post('/settlements/dispute', {
-        settlementId,
-        disputeReason: disputeReason.trim(),
-      })
-      setDisputingId(null)
-      setDisputeReason('')
-      fetchDisputes()
-      fetchSettlements()
-    } catch (err) {
-      alert(err.response?.data?.message || 'Error disputing')
-    } finally {
-      setDisputeLoading(`dispute-${settlementId}`, false)
-    }
-  }
-
-  const handleResolveDispute = async (settlementId, accept) => {
-    setDisputeLoading(`resolve-${settlementId}`, true)
-    try {
-      await axios.post('/settlements/dispute/resolve', { settlementId, accept })
-      fetchDisputes()
-      fetchSettlements()
-    } catch (err) {
-      alert(err.response?.data?.message || 'Error resolving dispute')
-    } finally {
-      setDisputeLoading(`resolve-${settlementId}`, false)
     }
   }
 
@@ -356,7 +285,7 @@ export default function GroupDetail() {
 
   useEffect(() => {
     if (!socketRef.current) {
-      socketRef.current = io('http://localhost:5000', { autoConnect: true })
+      socketRef.current = io(SOCKET_URL, { autoConnect: true })
     }
     const socket = socketRef.current
 
@@ -365,6 +294,7 @@ export default function GroupDetail() {
       fetchSettlements()
     }, 0)
     socket.emit('join_group', id)
+    joinGroup(id)
 
     // Expense events
     const onExpenseAdded = (expense) => {
@@ -381,21 +311,11 @@ export default function GroupDetail() {
     const onSettlementUndone    = () => fetchSettlements()
     const onSettlementRequested = () => fetchSettlements()
 
-    // Dispute events — refresh disputes tab if it was already loaded
-    const onDisputeEvent = () => {
-      fetchSettlements()
-      if (disputesFetched) fetchDisputes()
-    }
-
     socket.on('expense_added',                onExpenseAdded)
     socket.on('expense_deleted',              onExpenseDeleted)
     socket.on('settlement_done',              onSettlementDone)
     socket.on('settlement_undone',            onSettlementUndone)
     socket.on('settlement_requested',         onSettlementRequested)
-    socket.on('settlement_disputed',          onDisputeEvent)
-    socket.on('settlement_evidence_submitted', onDisputeEvent)
-    socket.on('settlement_resolved',          onDisputeEvent)
-    socket.on('payment_confirmed',            onDisputeEvent)
 
     return () => {
       socket.emit('leave_group', id)
@@ -404,15 +324,11 @@ export default function GroupDetail() {
       socket.off('settlement_done',              onSettlementDone)
       socket.off('settlement_undone',            onSettlementUndone)
       socket.off('settlement_requested',         onSettlementRequested)
-      socket.off('settlement_disputed',          onDisputeEvent)
-      socket.off('settlement_evidence_submitted', onDisputeEvent)
-      socket.off('settlement_resolved',          onDisputeEvent)
-      socket.off('payment_confirmed',            onDisputeEvent)
       socket.disconnect()
       socketRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, disputesFetched])
+  }, [id])
 
   // ── Loading screen ────────────────────────────────────────────────────────────
   if (loading) return (
@@ -427,7 +343,6 @@ export default function GroupDetail() {
     </div>
   )
 
-  const totalDisputeCount = disputes.pending.length + disputes.disputed.length + disputes.unresolved.length
 
   // ─────────────────────────────────────────────────────────────────────────────
   return (
@@ -460,7 +375,9 @@ export default function GroupDetail() {
                 Group Details
               </span>
               <h2 className="text-2xl font-black text-white tracking-tight">{group?.name}</h2>
-              <p className="text-xs text-on-surface-variant font-medium">{group?.description || 'No description provided'}</p>
+              {group?.description && (
+                <p className="text-xs text-on-surface-variant font-medium">{group.description}</p>
+              )}
               <div className="flex items-center gap-3 mt-3">
                 <div className="flex -space-x-2">
                   {group?.members.slice(0, 3).map((m, index) => (
@@ -525,25 +442,6 @@ export default function GroupDetail() {
                 )}
               </button>
 
-              {/* Disputes tab */}
-              <button
-                onClick={() => handleTabChange('disputes')}
-                className={`px-5 py-3.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer -mb-px ${
-                  activeTab === 'disputes'
-                    ? 'border-[#f87171] text-[#f87171] bg-[#f87171]/5 rounded-t-xl'
-                    : 'border-transparent text-on-surface-variant hover:text-white'
-                }`}
-              >
-                <span className="material-symbols-outlined text-[18px]">gavel</span>
-                Disputes
-                {disputesFetched && totalDisputeCount > 0 && (
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    activeTab === 'disputes' ? 'bg-[#f87171]/15 text-[#f87171] border border-[#f87171]/25' : 'bg-[#f87171]/10 text-[#f87171]'
-                  }`}>
-                    {totalDisputeCount}
-                  </span>
-                )}
-              </button>
               {/* Activity tab */}
               <button
                 onClick={() => handleTabChange('activity')}
@@ -555,6 +453,26 @@ export default function GroupDetail() {
               >
                 <span className="material-symbols-outlined text-[18px]">history</span>
                 Activity
+              </button>
+
+              {/* History tab */}
+              <button
+                onClick={() => handleTabChange('history')}
+                className={`px-5 py-3.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer -mb-px ${
+                  activeTab === 'history'
+                    ? 'border-[#10b981] text-[#10b981] bg-[#10b981]/5 rounded-t-xl'
+                    : 'border-transparent text-on-surface-variant hover:text-white'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[18px]">history_edu</span>
+                History
+                {confirmedSettlements.length > 0 && (
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    activeTab === 'history' ? 'bg-[#10b981]/15 text-[#10b981] border border-[#10b981]/25' : 'bg-white/5 text-on-surface-variant'
+                  }`}>
+                    {confirmedSettlements.length}
+                  </span>
+                )}
               </button>
             </div>
 
@@ -815,337 +733,109 @@ export default function GroupDetail() {
               </div>
             )}
 
-            {/* ── DISPUTES TAB ─────────────────────────────────────────────── */}
-            {activeTab === 'disputes' && (
+            {/* ── HISTORY TAB ───────────────────────────────────────────────── */}
+            {activeTab === 'history' && (
               <div className="flex flex-col gap-6 animate-in fade-in duration-200">
-
-                {loadingDisputes ? (
-                  <div className="flex flex-col gap-3.5">
-                    {[1, 2].map(i => (
-                      <div key={i} className="h-24 rounded-2xl animate-pulse bg-white/5" />
-                    ))}
-                  </div>
-                ) : totalDisputeCount === 0 ? (
-                  /* Empty state */
-                  <div className="flex flex-col items-center justify-center py-20 rounded-2xl border border-white/5" style={{ background: 'rgba(74, 222, 128, 0.02)' }}>
-                    <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 border border-green-500/20 bg-green-500/10">
-                      <span className="material-symbols-outlined text-[32px] text-green-400 font-bold" style={{ fontVariationSettings: "'FILL' 1" }}>verified</span>
+                {confirmedSettlements.length === 0 ? (
+                  <div className="text-center py-16 glass-card rounded-3xl border border-white/5 flex flex-col items-center">
+                    <div className="h-16 w-16 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center text-3xl mb-4 shadow-lg shadow-emerald-500/10">
+                      <span className="material-symbols-outlined text-[32px]" style={{ fontVariationSettings: "'FILL' 0" }}>history_edu</span>
                     </div>
-                    <p className="font-bold text-sm text-white uppercase tracking-wider">No disputes in this group</p>
-                    <p className="text-xs mt-1 text-on-surface-variant">All payments are confirmed ✅</p>
+                    <p className="text-white font-extrabold text-lg uppercase tracking-wider">No history yet</p>
+                    <p className="text-on-surface-variant text-xs mt-2 max-w-sm leading-relaxed font-semibold">
+                      When members confirm settlements via the Settle Up page, they will show up here.
+                    </p>
                   </div>
                 ) : (
-                  <>
-                    {/* ── SECTION 1: Awaiting Confirmation (pending) ────────── */}
-                    {disputes.pending.length > 0 && (
-                      <div className="flex flex-col gap-3.5">
+                  <div className="flex flex-col gap-8">
+                    {Object.entries(
+                      [...confirmedSettlements]
+                        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+                        .reduce((groups, s) => {
+                          const date = new Date(s.createdAt)
+                          const monthYear = date.toLocaleString('default', { month: 'long', year: 'numeric' })
+                          if (!groups[monthYear]) groups[monthYear] = []
+                          groups[monthYear].push(s)
+                          return groups
+                        }, {})
+                    ).map(([month, list]) => (
+                      <div key={month} className="flex flex-col gap-3.5">
+                        {/* Month Header */}
                         <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant px-1 flex items-center gap-2">
-                          <span className="material-symbols-outlined text-[16px] text-[#fbbf24]">hourglass_empty</span>
-                          Awaiting Confirmation
-                          <span className="px-2 py-0.5 rounded-full text-[9px] bg-[#fbbf24]/10 text-[#fbbf24] border border-[#fbbf24]/20 font-bold">
-                            {disputes.pending.length}
+                          <span className="material-symbols-outlined text-[16px] text-emerald-400">calendar_month</span>
+                          {month}
+                          <span className="px-2 py-0.5 rounded-full text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 font-bold">
+                            {list.length}
                           </span>
                         </p>
-                        {disputes.pending.map(s => {
-                          const iAmPayer    = s.from?._id === user._id
-                          const iAmReceiver = s.to?._id   === user._id
-                          const isDisputingThis = disputingId === s._id
-                          return (
-                            <div key={s._id} className="rounded-2xl p-5 flex flex-col gap-4 border border-[#fbbf24]/20 shadow-md" style={{ background: 'rgba(251, 191, 36, 0.02)' }}>
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 font-bold border border-[#fbbf24]/25 bg-[#fbbf24]/10 text-[#fbbf24]">
-                                  {s.from?.name?.charAt(0).toUpperCase()}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="font-extrabold text-sm text-white truncate">
-                                    {iAmReceiver
-                                      ? `💰 ${s.from?.name} claims they paid`
-                                      : '⏳ Awaiting Confirmation'}
-                                  </p>
-                                  <p className="text-xs text-on-surface-variant mt-1">
-                                    {iAmReceiver
-                                      ? `Amount: ₹${s.amount?.toLocaleString('en-IN')}`
-                                      : `Waiting for ${s.to?.name} to confirm ₹${s.amount?.toLocaleString('en-IN')}`}
-                                  </p>
-                                </div>
-                                <span className="text-base font-black flex-shrink-0 text-[#fbbf24]">
-                                  ₹{s.amount?.toLocaleString('en-IN')}
-                                </span>
-                              </div>
 
-                              {s.transactionId && (
-                                <div className="flex items-center gap-2 rounded-xl px-3.5 py-2.5 bg-white/5 border border-white/5">
-                                  <span className="material-symbols-outlined text-[16px] text-on-surface-variant">receipt_long</span>
-                                  <span className="text-xs font-mono text-on-surface-variant select-all">UTR: {s.transactionId}</span>
-                                </div>
-                              )}
+                        {/* List of payments */}
+                        <div className="flex flex-col gap-3">
+                          {list.map((s, index) => {
+                            const isSent = s.from?._id === user._id
+                            const isReceived = s.to?._id === user._id
+                            
+                            let themeClass = 'text-slate-400'
+                            let badgeClass = 'text-slate-400/80 bg-slate-500/10 border-slate-500/20'
+                            let badgeText = 'Settled'
+                            let avatarClass = 'from-slate-600 to-slate-500'
+                            let sign = ''
 
-                              {iAmPayer && (
-                                <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
-                                  <span className="material-symbols-outlined text-[14px] animate-pulse text-[#fbbf24]">schedule</span>
-                                  Submitted {new Date(s.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                                </div>
-                              )}
+                            if (isReceived) {
+                              themeClass = 'text-emerald-400'
+                              badgeClass = 'text-emerald-400/80 bg-emerald-500/10 border-emerald-500/20'
+                              badgeText = 'Received'
+                              avatarClass = 'from-emerald-600 to-teal-600'
+                              sign = '+'
+                            } else if (isSent) {
+                              themeClass = 'text-rose-400'
+                              badgeClass = 'text-rose-400/80 bg-rose-500/10 border-rose-500/20'
+                              badgeText = 'Sent'
+                              avatarClass = 'from-rose-600 to-red-500'
+                              sign = '-'
+                            }
 
-                              {iAmReceiver && (
-                                isDisputingThis ? (
-                                  <div className="flex flex-col gap-3">
-                                    <textarea
-                                      value={disputeReason}
-                                      onChange={e => setDisputeReason(e.target.value)}
-                                      placeholder="Explain what went wrong... e.g. amount is wrong, or did not receive"
-                                      rows={2}
-                                      className="w-full rounded-xl px-4 py-3 text-sm bg-surface-container-low border border-outline-variant/30 outline-none resize-none text-white transition-all placeholder:text-outline-variant/60"
-                                      onFocus={e => e.target.style.borderColor = '#f87171'}
-                                      onBlur={e => e.target.style.borderColor = ''}
-                                    />
-                                    <div className="flex gap-2">
-                                      <button
-                                        onClick={() => { setDisputingId(null); setDisputeReason('') }}
-                                        className="flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider border border-white/10 text-on-surface-variant hover:bg-white/5 transition-all cursor-pointer"
-                                      >
-                                        Cancel
-                                      </button>
-                                      <button
-                                        onClick={() => handleDisputeSettlement(s._id)}
-                                        disabled={!disputeReason.trim() || disputeActionLoading[`dispute-${s._id}`]}
-                                        className="flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer disabled:opacity-50 bg-[#f87171]/15 text-[#f87171] border border-[#f87171]/25 hover:bg-[#f87171]/25"
-                                      >
-                                        {disputeActionLoading[`dispute-${s._id}`]
-                                          ? <span className="material-symbols-outlined text-[14px] animate-spin">sync</span>
-                                          : <span className="material-symbols-outlined text-[14px]">flag</span>}
-                                        Confirm Dispute
-                                      </button>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="flex flex-col sm:flex-row gap-2.5 border-t border-white/5 pt-3">
-                                    <button
-                                      onClick={() => handleConfirmSettlement(s._id)}
-                                      disabled={disputeActionLoading[`confirm-${s._id}`]}
-                                      className="flex-1 py-3 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer disabled:opacity-50 bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20"
-                                    >
-                                      {disputeActionLoading[`confirm-${s._id}`]
-                                        ? <span className="material-symbols-outlined text-[16px] animate-spin">sync</span>
-                                        : <span className="material-symbols-outlined text-[16px]">verified</span>}
-                                      Accept Payment
-                                    </button>
-                                    <button
-                                      onClick={() => { setDisputingId(s._id); setDisputeReason('') }}
-                                      className="flex-1 py-3 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer bg-[#f87171]/10 text-[#f87171] border border-[#f87171]/20 hover:bg-[#f87171]/20"
-                                    >
-                                      <span className="material-symbols-outlined text-[16px]">close</span>
-                                      Dispute Payment
-                                    </button>
-                                  </div>
-                                )
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-
-                    {/* ── SECTION 2: Disputed ───────────────────────────────── */}
-                    {disputes.disputed.length > 0 && (
-                      <div className="flex flex-col gap-3.5">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant px-1 flex items-center gap-2">
-                          <span className="material-symbols-outlined text-[16px] text-[#f87171]">gavel</span>
-                          Disputed Settlements
-                          <span className="px-2 py-0.5 rounded-full text-[9px] bg-[#f87171]/10 text-[#f87171] border border-[#f87171]/20 font-bold">
-                            {disputes.disputed.length}
-                          </span>
-                        </p>
-                        {disputes.disputed.map(s => {
-                          const iAmPayer    = s.from?._id === user._id
-                          const iAmReceiver = s.to?._id   === user._id
-                          const hasEvidence = s.evidence?.utrNumber || s.evidence?.screenshotUrl
-                          return (
-                            <div key={s._id} className="rounded-2xl flex overflow-hidden border border-[#f87171]/20 shadow-md" style={{ background: 'rgba(248, 113, 113, 0.02)' }}>
-                              <div className="w-1.5 flex-shrink-0 bg-[#f87171]" />
-                              <div className="flex-1 p-5 flex flex-col gap-4">
-
+                            return (
+                              <div key={s._id || index} className="glass-card border border-white/5 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm hover:border-white/10 transition-all">
                                 <div className="flex items-center gap-3">
-                                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-[#f87171]/10 border border-[#f87171]/25">
-                                    <span className="material-symbols-outlined text-[20px] text-[#f87171]">gavel</span>
+                                  <div className={`w-8 h-8 rounded-xl bg-gradient-to-tr ${avatarClass} text-white border border-white/10 flex items-center justify-center font-bold text-xs`}>
+                                    {s.from?.name?.charAt(0).toUpperCase()}
                                   </div>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="font-extrabold text-sm text-white truncate">
-                                      ⚠️ DISPUTED — ₹{s.amount?.toLocaleString('en-IN')}
+                                  <div>
+                                    <p className="text-xs font-bold text-white">
+                                      <span>{isSent ? 'You' : s.from?.name}</span>
+                                      <span className="text-on-surface-variant font-medium mx-2">settled with</span>
+                                      <span>{isReceived ? 'You' : s.to?.name}</span>
                                     </p>
-                                    <p className="text-xs text-[#f87171] mt-1 font-semibold">
-                                      {iAmPayer
-                                        ? `${s.to?.name} rejected your payment claim`
-                                        : `${s.from?.name} claims they paid you`}
+                                    <p className="text-[10px] text-on-surface-variant mt-0.5 font-semibold">
+                                      {new Date(s.createdAt).toLocaleDateString('en-IN', {
+                                        day: 'numeric',
+                                        month: 'short',
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                      })}
                                     </p>
                                   </div>
                                 </div>
-
-                                {/* Dispute reason */}
-                                <div className="rounded-xl px-4 py-3 flex items-start gap-2.5 bg-[#f87171]/5 border border-[#f87171]/15">
-                                  <span className="material-symbols-outlined text-[15px] mt-0.5 text-[#f87171]" style={{ fontVariationSettings: "'FILL' 1" }}>info</span>
-                                  <div>
-                                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#f87171] mb-0.5">
-                                      {iAmPayer ? `${s.to?.name} says:` : 'You said:'}
-                                    </p>
-                                    <p className="text-xs text-white leading-normal">"{s.disputeReason || 'No reason provided'}"</p>
-                                  </div>
-                                </div>
-
-                                {/* Payer view */}
-                                {iAmPayer && (
-                                  hasEvidence ? (
-                                    <div className="rounded-xl px-4 py-3 flex items-center gap-2 bg-secondary/5 border border-secondary/15">
-                                      <span className="material-symbols-outlined text-[16px] animate-pulse text-secondary">schedule</span>
-                                      <p className="text-xs font-semibold text-on-surface-variant">
-                                        Evidence submitted. Waiting for {s.to?.name} to review...
-                                      </p>
-                                    </div>
-                                  ) : (
-                                    <button
-                                      onClick={() => setActiveDisputeEvidence(s)}
-                                      className="w-full py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer bg-secondary text-white shadow-md shadow-secondary/10 hover:brightness-110"
-                                    >
-                                      <span className="material-symbols-outlined text-[16px]">upload</span>
-                                      Submit UTR / Screenshot Proof
-                                    </button>
-                                  )
-                                )}
-
-                                {/* Receiver view */}
-                                {iAmReceiver && (
-                                  <>
-                                    {hasEvidence && (
-                                      <div className="rounded-xl p-4 flex flex-col gap-3 bg-white/5 border border-white/5">
-                                        <p className="text-[9px] font-bold uppercase tracking-widest text-on-surface-variant">
-                                          Proof submitted by {s.from?.name}
-                                        </p>
-                                        <div className="flex flex-col gap-2 pt-1">
-                                          {s.evidence?.utrNumber && (
-                                            <div className="flex items-center gap-2">
-                                              <span className="material-symbols-outlined text-[14px] text-green-400">receipt_long</span>
-                                              <span className="text-xs font-mono text-white select-all">UTR: {s.evidence.utrNumber}</span>
-                                            </div>
-                                          )}
-                                          {s.evidence?.screenshotUrl && (
-                                            <a
-                                              href={`http://localhost:5000${s.evidence.screenshotUrl}`}
-                                              target="_blank" rel="noopener noreferrer"
-                                              className="flex items-center gap-1.5 text-xs font-bold text-secondary uppercase tracking-wider hover:underline"
-                                            >
-                                              <span className="material-symbols-outlined text-[16px]">image</span>
-                                              View Screenshot
-                                              <span className="material-symbols-outlined text-[13px]">open_in_new</span>
-                                            </a>
-                                          )}
-                                        </div>
-                                        {s.evidence?.aiReason && (
-                                          <div className="rounded-xl px-3.5 py-3 flex items-start gap-2.5 mt-1"
-                                            style={{
-                                              backgroundColor: s.evidence.aiVerified ? 'rgba(74, 222, 128, 0.05)' : 'rgba(251, 191, 36, 0.05)',
-                                              border: `1px solid ${s.evidence.aiVerified ? 'rgba(74, 222, 128, 0.15)' : 'rgba(251, 191, 36, 0.15)'}`
-                                            }}>
-                                            <span className="material-symbols-outlined text-[15px] mt-0.5 flex-shrink-0"
-                                              style={{ color: s.evidence.aiVerified ? '#4ade80' : '#fbbf24' }}>smart_toy</span>
-                                            <div>
-                                              <p className="text-[9px] font-bold uppercase tracking-widest mb-0.5"
-                                                style={{ color: s.evidence.aiVerified ? '#4ade80' : '#fbbf24' }}>
-                                                AI: {s.evidence.aiVerified ? 'Verified ✓' : 'Alert / Manual Review'}
-                                              </p>
-                                              <p className="text-xs text-on-surface-variant leading-relaxed">{s.evidence.aiReason}</p>
-                                            </div>
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
-                                    {!hasEvidence && (
-                                      <div className="rounded-xl px-4 py-3 flex items-center gap-2 bg-[#fbbf24]/5 border border-[#fbbf24]/15">
-                                        <span className="material-symbols-outlined text-[16px] animate-pulse text-[#fbbf24]">hourglass_empty</span>
-                                        <p className="text-xs font-semibold text-on-surface-variant">
-                                          Waiting for {s.from?.name} to submit evidence...
-                                        </p>
-                                      </div>
-                                    )}
-                                    {hasEvidence && (
-                                      <div className="flex flex-col sm:flex-row gap-2.5 border-t border-white/5 pt-3">
-                                        <button
-                                          onClick={() => handleResolveDispute(s._id, true)}
-                                          disabled={disputeActionLoading[`resolve-${s._id}`]}
-                                          className="flex-1 py-3 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer disabled:opacity-50 bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20"
-                                        >
-                                          {disputeActionLoading[`resolve-${s._id}`]
-                                            ? <span className="material-symbols-outlined text-[16px] animate-spin">sync</span>
-                                            : <span className="material-symbols-outlined text-[16px]">check_circle</span>}
-                                          Accept & Confirm
-                                        </button>
-                                        <button
-                                          onClick={() => handleResolveDispute(s._id, false)}
-                                          disabled={disputeActionLoading[`resolve-${s._id}`]}
-                                          className="flex-1 py-3 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer disabled:opacity-50 bg-[#f87171]/10 text-[#f87171] border border-[#f87171]/20 hover:bg-[#f87171]/20"
-                                        >
-                                          {disputeActionLoading[`resolve-${s._id}`]
-                                            ? <span className="material-symbols-outlined text-[16px] animate-spin">sync</span>
-                                            : <span className="material-symbols-outlined text-[16px]">close</span>}
-                                          Reject Proof
-                                        </button>
-                                      </div>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-
-                    {/* ── SECTION 3: Unresolved ─────────────────────────────── */}
-                    {disputes.unresolved.length > 0 && (
-                      <div className="flex flex-col gap-3.5">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant px-1 flex items-center gap-2">
-                          <span className="material-symbols-outlined text-[16px] text-[#f59221]">report</span>
-                          Unresolved Claims
-                          <span className="px-2 py-0.5 rounded-full text-[9px] bg-[#f59221]/15 text-[#f59221] border border-[#f59221]/25 font-bold">
-                            {disputes.unresolved.length}
-                          </span>
-                        </p>
-                        {disputes.unresolved.map(s => {
-                          const isMe = s.from?._id === user._id
-                          return (
-                            <div key={s._id} className="rounded-2xl flex overflow-hidden border border-[#f59221]/20 shadow-md" style={{ background: 'rgba(245, 146, 33, 0.02)' }}>
-                              <div className="w-1.5 flex-shrink-0 bg-[#f59221]" />
-                              <div className="flex-1 p-5 flex flex-col gap-3">
-                                <div className="flex items-center justify-between gap-3">
-                                  <div>
-                                    <p className="font-extrabold text-sm text-white">
-                                      ✕ UNRESOLVED
-                                    </p>
-                                    <p className="text-xs text-on-surface-variant mt-1 font-semibold">
-                                      <span>{isMe ? 'You' : s.from?.name}</span>
-                                      <span className="mx-2 font-normal">→</span>
-                                      <span>{s.to?._id === user._id ? 'You' : s.to?.name}</span>
-                                    </p>
-                                  </div>
-                                  <span className="text-base font-black flex-shrink-0 text-[#f59221]">
-                                    ₹{s.amount?.toLocaleString('en-IN')}
+                                <div className="text-right flex items-center sm:flex-col sm:items-end justify-between sm:justify-start gap-3 sm:gap-1">
+                                  <span className={`${themeClass} font-extrabold text-sm block`}>
+                                    {sign}₹{s.amount?.toLocaleString('en-IN')}
+                                  </span>
+                                  <span className={`text-[8px] font-bold uppercase tracking-wider ${badgeClass} px-2 py-0.5 rounded-lg inline-block`}>
+                                    {badgeText}
                                   </span>
                                 </div>
-                                <div className="flex items-center gap-2 rounded-xl px-3.5 py-3 bg-[#f59221]/5 border border-[#f59221]/15">
-                                  <span className="material-symbols-outlined text-[16px] text-[#f59221]">warning</span>
-                                  <p className="text-xs text-on-surface-variant leading-relaxed">
-                                    Evidence rejected. Please resolve via cash or direct bank transfer.
-                                  </p>
-                                </div>
                               </div>
-                            </div>
-                          )
-                        })}
+                            )
+                          })}
+                        </div>
                       </div>
-                    )}
-                  </>
+                    ))}
+                  </div>
                 )}
               </div>
             )}
+
           </div>
 
           {/* ── Right column: Settlement widget + Members ──────────────────── */}
@@ -1338,14 +1028,7 @@ export default function GroupDetail() {
         </div>
       </main>
 
-      {/* ── DisputeEvidenceModal ──────────────────────────────────────────────── */}
-      {activeDisputeEvidence && (
-        <DisputeEvidenceModal
-          settlement={activeDisputeEvidence}
-          onClose={() => setActiveDisputeEvidence(null)}
-          onEvidenceSubmitted={() => { setActiveDisputeEvidence(null); fetchDisputes(); fetchSettlements() }}
-        />
-      )}
+
 
       {/* ── Delete Expense Modal ──────────────────────────────────────────────── */}
       {expenseToDelete && (() => {

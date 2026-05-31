@@ -14,6 +14,11 @@ export const sendVerificationEmail = async (
   toName,
   verificationUrl,
 ) => {
+  if (toEmail.endsWith("@example.com") || toEmail.endsWith("@test.com")) {
+    console.log(`Skipping email to test address: ${toEmail}`);
+    return;
+  }
+
   const transporter = createTransporter();
 
   await transporter.sendMail({

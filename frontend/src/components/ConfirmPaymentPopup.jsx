@@ -4,15 +4,8 @@ import axios from '../api/axios'
 export default function ConfirmPaymentPopup({ transaction, groupId, onConfirm, onCancel }) {
   const { to, amount } = transaction
 
-  const [utr, setUtr]         = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
-
-  // Only allow digits, max 22 characters (UPI UTRs are 12–22 digits)
-  const handleUtrChange = (e) => {
-    const val = e.target.value.replace(/\D/g, '').slice(0, 22)
-    setUtr(val)
-  }
 
   const handleConfirm = async () => {
     setLoading(true)
@@ -22,11 +15,11 @@ export default function ConfirmPaymentPopup({ transaction, groupId, onConfirm, o
         groupId,
         toUserId: to._id,
         amount,
-        transactionId: utr || '',
       })
       onConfirm()
     } catch (err) {
-      setError(err.response?.data?.message || 'Something went wrong. Please try again.')
+      console.error("ConfirmPaymentPopup error:", err)
+      setError(err.response?.data?.message || err.message || 'Something went wrong. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -62,33 +55,7 @@ export default function ConfirmPaymentPopup({ transaction, groupId, onConfirm, o
         {/* Divider */}
         <div className="h-px bg-white/5" />
 
-        {/* UTR input */}
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between ml-1">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-              Transaction ID (UTR)
-              <span className="ml-1 normal-case font-semibold text-on-surface-variant/70">
-                — Optional
-              </span>
-            </label>
-            <span className="text-xs font-mono font-bold text-on-surface-variant">
-              {utr.length}/22
-            </span>
-          </div>
 
-          <input
-            type="text"
-            inputMode="numeric"
-            value={utr}
-            onChange={handleUtrChange}
-            placeholder="Enter UTR number (12–22 digits)"
-            className="w-full bg-white/[0.02] border border-white/10 focus:border-blue-500 focus:ring-0 rounded-2xl px-4 py-3 text-xs font-mono text-white placeholder:text-white/20 transition-all"
-          />
-
-          <p className="text-[10px] text-on-surface-variant/80 leading-normal ml-1 font-medium">
-            Find this in your UPI app under payment history. Helps resolve disputes later.
-          </p>
-        </div>
 
         {/* Error */}
         {error && (

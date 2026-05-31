@@ -1,7 +1,8 @@
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
-dotenv.config();
+
+dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
 import express from "express";
 import http from "http";
@@ -12,32 +13,28 @@ import { initSocket } from "./src/socket.js";
 const app = express();
 const server = http.createServer(app);
 
-// Initialize Socket.io
 const io = initSocket(server);
-
-// Export io so it is available before route imports (avoiding circular dependency issues)
 export { io };
 
-// Import routes
 import authRoutes from "./src/routes/auth.js";
 import expenseRoutes from "./src/routes/expenses.js";
 import groupRoutes from "./src/routes/groups.js";
 import settlementRoutes from "./src/routes/settlements.js";
 
-// Connect to Database
 connectDB();
 
-// Resolve __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
-const __dirname  = path.dirname(__filename);
+const __dirname = path.dirname(__filename);
 
 // Middleware
-app.use(cors());
-app.use(express.json());
-
-// Serve uploaded screenshots as static files
-// Access via: http://localhost:5000/uploads/<filename>
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || true,
+    credentials: true,
+  }),
+);
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Routes
 app.use("/api/auth", authRoutes);
@@ -45,13 +42,30 @@ app.use("/api/expenses", expenseRoutes);
 app.use("/api/groups", groupRoutes);
 app.use("/api/settlements", settlementRoutes);
 
-// Health check endpoint
+// Health check
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", message: "Settl Backend is running" });
+  res.json({
+    status: "ok",
+    message: "Settl Backend is running",
+    timestamp: new Date().toISOString(),
+  });
 });
 
-// Start Server
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ message: "Route not found" });
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(err.status || 500).json({
+    message: err.message || "Internal server error",
+  });
+});
+
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+const HOST = process.env.HOST || "0.0.0.0";
+server.listen(PORT, HOST, () => {
+  console.log(`Server running on http://${HOST}:${PORT}`);
 });

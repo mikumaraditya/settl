@@ -2,7 +2,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { io } from 'socket.io-client'
 import { useAuth } from './AuthContext'
-import axios from '../api/axios'
+import axios, { SOCKET_URL } from '../api/axios'
 
 const NotificationContext = createContext()
 
@@ -47,7 +47,7 @@ export function NotificationProvider({ children }) {
     if (!user) return
 
     if (!socketRef.current) {
-      socketRef.current = io('http://localhost:5000', { autoConnect: true })
+      socketRef.current = io(SOCKET_URL, { autoConnect: true })
     }
     const socket = socketRef.current
 
@@ -182,8 +182,18 @@ export function NotificationProvider({ children }) {
     localStorage.removeItem('settl_notifications')
   }
 
+  const joinGroup = (groupId) => {
+    if (socketRef.current && groupId) {
+      const gStr = groupId.toString()
+      if (!joinedGroups.current.has(gStr)) {
+        socketRef.current.emit('join_group', gStr)
+        joinedGroups.current.add(gStr)
+      }
+    }
+  }
+
   return (
-    <NotificationContext.Provider value={{ notifications, unreadCount, markAllRead, markRead, clearAll }}>
+    <NotificationContext.Provider value={{ notifications, unreadCount, markAllRead, markRead, clearAll, joinGroup }}>
       {children}
     </NotificationContext.Provider>
   )

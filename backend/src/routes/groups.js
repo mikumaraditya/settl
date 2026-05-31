@@ -177,7 +177,8 @@ router.delete("/:id/members/:userId", protect, async (req, res) => {
       Settlement.find({ group: req.params.id }),
     ]);
 
-    const rawTxns = simplifyDebts(expenses, settlements);
+    const confirmedSettlements = settlements.filter(s => !s.status || s.status === 'confirmed');
+    const rawTxns = simplifyDebts(expenses, confirmedSettlements);
 
     const hasPendingBalance = rawTxns.some(
       (t) => t.from === targetId || t.to === targetId,
@@ -252,7 +253,8 @@ router.delete("/:id", protect, async (req, res) => {
       Settlement.find({ group: req.params.id }),
     ]);
 
-    const pendingTxns = simplifyDebts(expenses, settlements);
+    const confirmedSettlements = settlements.filter(s => !s.status || s.status === 'confirmed');
+    const pendingTxns = simplifyDebts(expenses, confirmedSettlements);
 
     if (pendingTxns.length > 0) {
       return res.status(400).json({
