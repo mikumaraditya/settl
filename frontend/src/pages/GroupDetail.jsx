@@ -273,13 +273,18 @@ export default function GroupDetail() {
   // ── Category maps ─────────────────────────────────────────────────────────────
   const categoryIcons = {
     food: 'restaurant', travel: 'flight', shopping: 'shopping_cart',
-    entertainment: 'theaters', other: 'receipt_long'
+    rent: 'home', entertainment: 'theaters', fuel: 'local_gas_station',
+    groceries: 'shopping_basket', medical: 'medical_services', other: 'receipt_long'
   }
   const categoryColors = {
     food:          { bg: 'bg-orange-500/15', text: 'text-orange-400' },
     travel:        { bg: 'bg-sky-500/15',    text: 'text-sky-400'    },
     shopping:      { bg: 'bg-violet-500/15', text: 'text-violet-400' },
+    rent:          { bg: 'bg-indigo-500/15', text: 'text-indigo-400' },
     entertainment: { bg: 'bg-pink-500/15',   text: 'text-pink-400'   },
+    fuel:          { bg: 'bg-amber-500/15',  text: 'text-amber-400'  },
+    groceries:     { bg: 'bg-emerald-500/15', text: 'text-emerald-400' },
+    medical:       { bg: 'bg-rose-500/15',   text: 'text-rose-400'   },
     other:         { bg: 'bg-slate-500/15',  text: 'text-slate-400'  }
   }
 
@@ -334,12 +339,70 @@ export default function GroupDetail() {
   if (loading) return (
     <div className="min-h-screen bg-background flex flex-col">
       <Navbar />
-      <div className="flex-1 flex justify-center items-center">
-        <div className="text-on-surface-variant text-sm font-semibold flex items-center gap-2">
-          <span className="material-symbols-outlined animate-spin">sync</span>
-          Loading group details...
+      <main className="flex-1 w-full max-w-6xl mx-auto px-6 md:px-8 py-8 flex flex-col gap-6 md:gap-8">
+        {/* Back navigation skeleton */}
+        <div className="h-4 bg-white/5 rounded w-20 animate-pulse" />
+        
+        {/* Hero Header Card skeleton */}
+        <div className="glass-card p-6 md:p-8 rounded-2xl shadow-lg relative overflow-hidden animate-pulse flex flex-col gap-4">
+          <div className="space-y-2">
+            <div className="h-3 bg-white/5 rounded w-16" />
+            <div className="h-8 bg-white/10 rounded w-1/3" />
+            <div className="h-4 bg-white/5 rounded w-1/2" />
+          </div>
+          <div className="flex items-center gap-3 mt-2">
+            <div className="flex -space-x-2">
+              <div className="w-8 h-8 rounded-full bg-white/5 border border-[#0d1326]" />
+              <div className="w-8 h-8 rounded-full bg-white/5 border border-[#0d1326]" />
+              <div className="w-8 h-8 rounded-full bg-white/5 border border-[#0d1326]" />
+            </div>
+            <div className="h-3 bg-white/5 rounded w-16" />
+          </div>
         </div>
-      </div>
+
+        {/* Smart Settlement Card skeleton */}
+        <div className="glass-card p-6 rounded-2xl animate-pulse flex flex-col gap-4">
+          <div className="h-4 bg-white/10 rounded w-32" />
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="h-24 bg-white/5 border border-white/5 rounded-2xl" />
+            <div className="h-24 bg-white/5 border border-white/5 rounded-2xl" />
+          </div>
+        </div>
+
+        {/* Tab selector skeleton */}
+        <div className="flex border-b border-white/5 gap-2 animate-pulse">
+          <div className="h-9 w-24 bg-white/10 rounded-t-xl" />
+          <div className="h-9 w-24 bg-white/5 rounded-t-xl" />
+          <div className="h-9 w-24 bg-white/5 rounded-t-xl" />
+        </div>
+
+        {/* Expenses list skeleton */}
+        <div className="flex flex-col gap-6">
+          <div className="flex items-center gap-2 animate-pulse">
+            <div className="h-4 w-4 bg-white/10 rounded-full" />
+            <div className="h-4 bg-white/10 rounded w-24" />
+          </div>
+          <div className="flex flex-col gap-3.5">
+            {[1, 2].map(n => (
+              <div key={n} className="glass-card p-5 rounded-2xl flex flex-col gap-4 animate-pulse">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                    <div className="h-11 w-11 rounded-xl bg-white/5 border border-white/5 flex-shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3.5 bg-white/10 rounded w-2/3" />
+                      <div className="h-2.5 bg-white/5 rounded w-1/2" />
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="h-4 bg-white/10 rounded w-16 ml-auto" />
+                    <div className="h-3 bg-white/5 rounded w-20 mt-2 ml-auto" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </main>
     </div>
   )
 
@@ -613,6 +676,48 @@ export default function GroupDetail() {
                         </div>
                       )
                     })}
+
+                    {loadingMore && (
+                      <div className="flex flex-col gap-3.5 animate-in fade-in duration-200 mt-4">
+                        {/* Month header skeleton */}
+                        <div className="flex items-center justify-between px-1 animate-pulse">
+                          <div className="flex items-center gap-2">
+                            <div className="h-4 w-4 bg-white/5 rounded-full" />
+                            <div className="h-4 bg-white/5 rounded w-24" />
+                            <div className="h-4 bg-white/5 rounded w-16" />
+                          </div>
+                          <div className="h-4 bg-white/5 rounded w-20" />
+                        </div>
+                        
+                        {/* 2 Skeleton Cards */}
+                        <div className="flex flex-col gap-3.5">
+                          {[1, 2].map(n => (
+                            <div key={n} className="glass-card p-5 rounded-2xl flex flex-col gap-4 animate-pulse">
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                                  <div className="h-11 w-11 rounded-xl bg-white/5 border border-white/5 flex-shrink-0" />
+                                  <div className="flex-1 space-y-2">
+                                    <div className="h-3.5 bg-white/10 rounded w-2/3" />
+                                    <div className="h-2.5 bg-white/5 rounded w-1/2" />
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="h-4 bg-white/10 rounded w-16 ml-auto" />
+                                  <div className="h-3 bg-white/5 rounded w-20 mt-2 ml-auto" />
+                                </div>
+                              </div>
+                              <div className="border-t border-white/5 pt-3.5 space-y-2">
+                                <div className="h-2 bg-white/5 rounded w-16" />
+                                <div className="flex gap-2">
+                                  <div className="h-7 bg-white/5 border border-white/5 rounded-xl w-24" />
+                                  <div className="h-7 bg-white/5 border border-white/5 rounded-xl w-28" />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Load More / All loaded */}
                     <div className="flex flex-col items-center gap-2 pt-2">
@@ -1134,10 +1239,30 @@ export default function GroupDetail() {
                   
                   <div className="pt-4">
                     <p className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest mb-3 ml-1">Select Category</p>
-                    <div className="grid grid-cols-4 gap-2">
-                      {(['food', 'travel', 'shopping', 'other']).map((cat) => {
-                        const icons  = { food: 'restaurant', travel: 'flight', shopping: 'shopping_cart', other: 'receipt_long' }
-                        const labels = { food: 'Food', travel: 'Travel', shopping: 'Shopping', other: 'Other' }
+                    <div className="grid grid-cols-3 gap-2">
+                      {(['food', 'travel', 'shopping', 'rent', 'entertainment', 'fuel', 'groceries', 'medical', 'other']).map((cat) => {
+                        const icons  = {
+                          food: 'restaurant',
+                          travel: 'flight',
+                          shopping: 'shopping_cart',
+                          rent: 'home',
+                          entertainment: 'theaters',
+                          fuel: 'local_gas_station',
+                          groceries: 'shopping_basket',
+                          medical: 'medical_services',
+                          other: 'receipt_long'
+                        }
+                        const labels = {
+                          food: 'Food',
+                          travel: 'Travel',
+                          shopping: 'Shopping',
+                          rent: 'Rent',
+                          entertainment: 'Entertainment',
+                          fuel: 'Fuel',
+                          groceries: 'Groceries',
+                          medical: 'Medical',
+                          other: 'Other'
+                        }
                         const isActive = expenseForm.category === cat
                         return (
                           <button key={cat} type="button"

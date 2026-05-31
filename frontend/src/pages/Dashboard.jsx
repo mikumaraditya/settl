@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import axios from '../api/axios'
 import Navbar from '../components/Navbar'
 import { useAuth } from '../context/AuthContext'
@@ -297,6 +297,18 @@ export default function Dashboard() {
 
       <main className="flex-1 w-full max-w-6xl mx-auto px-6 py-8 flex flex-col gap-6">
         
+        {!user?.upiId && (
+          <div className="glass-card p-4 rounded-2xl border border-amber-500/20 bg-amber-500/5 flex items-center gap-3.5 shadow-lg shadow-amber-500/5 animate-in slide-in-from-top-4 duration-300">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 flex-shrink-0">
+              <span className="material-symbols-outlined">warning</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4 className="text-xs font-black text-white uppercase tracking-wider">UPI ID missing</h4>
+              <p className="text-[11px] text-on-surface-variant font-medium mt-0.5">Please add your UPI ID in your <Link to="/profile" className="text-secondary hover:underline font-bold">Profile Settings</Link> to enable seamless peer-to-peer payments.</p>
+            </div>
+          </div>
+        )}
+
         {/* Header Section */}
         <div className="flex justify-between items-center">
           <div>

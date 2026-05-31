@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import axios from '../api/axios'
 import { useAuth } from '../context/AuthContext'
+import GoogleLoginButton from '../components/GoogleLoginButton'
 
 export default function Login() {
   const [form, setForm] = useState({ email: '', password: '' })
@@ -124,6 +125,22 @@ export default function Login() {
               )}
             </button>
           </form>
+
+          {/* Divider */}
+          <div className="flex items-center my-6">
+            <div className="flex-grow border-t border-white/5" />
+            <span className="mx-3 text-[10px] font-bold text-on-surface-variant/45 uppercase tracking-widest">Or login with</span>
+            <div className="flex-grow border-t border-white/5" />
+          </div>
+
+          {/* Google login button */}
+          <GoogleLoginButton
+            onLoginSuccess={(data) => {
+              login(data)
+              navigate('/dashboard')
+            }}
+            onError={(msg) => setError(msg)}
+          />
 
           {/* Footer Link */}
           <div className="mt-8 text-center pt-4 border-t border-white/5">

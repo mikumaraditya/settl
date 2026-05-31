@@ -2,11 +2,13 @@ import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
+import { OAuth2Client } from "google-auth-library";
 import User from "../models/User.js";
 import { sendVerificationEmail } from "../utils/emailService.js";
 import protect from "../middleware/auth.js";
 
 const router = express.Router();
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "30d" });
@@ -100,6 +102,101 @@ router.post("/login", async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
+
+// GOOGLE SIGN-IN
+router.post("/google", async (req, res) => {
+  const { token } = req.body;
+
+  if (!token) {
+    return res.status(400).json({ message: "Google ID token is required" });
+  }
+
+  // Support Mock Sign-in in development or if GOOGLE_CLIENT_ID is not configured
+  const isMockToken = token === "mock-google-token";
+  const isGoogleNotConfigured = !process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID === "1013725458908-mockclient.apps.googleusercontent.com";
+
+  if (isMockToken && (isGoogleNotConfigured || process.env.NODE_ENV !== "production")) {
+    try {
+      const email = "google-demo-user@example.com";
+      const name = "Google Demo User";
+
+      let user = await User.findOne({ email });
+
+      if (!user) {
+        const randomPassword = crypto.randomBytes(16).toString("hex");
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(randomPassword, salt);
+
+        user = await User.create({
+          name,
+          email,
+          password: hashedPassword,
+          upiId: "",
+          isEmailVerified: true,
+        });
+      }
+
+      const appToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
+
+      return res.json({
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        upiId: user.upiId,
+        isEmailVerified: user.isEmailVerified,
+        token: appToken,
+        isMock: true,
+      });
+    } catch (mockError) {
+      console.error("Mock Google login error:", mockError);
+      return res.status(500).json({ message: "Mock Google login failed" });
+    }
+  }
+
+  try {
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    const { email, name } = payload;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email not provided by Google account" });
+    }
+
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      const randomPassword = crypto.randomBytes(16).toString("hex");
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(randomPassword, salt);
+
+      user = await User.create({
+        name: name || email.split("@")[0],
+        email,
+        password: hashedPassword,
+        upiId: "",
+        isEmailVerified: true,
+      });
+    }
+
+    const appToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
+
+    res.json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      upiId: user.upiId,
+      isEmailVerified: user.isEmailVerified,
+      token: appToken,
+    });
+  } catch (error) {
+    console.error("Google authentication error:", error);
+    res.status(401).json({ message: "Google token verification failed" });
+  }
+});
+
 
 // VERIFY EMAIL — GET /api/auth/verify-email?token=...
 router.get("/verify-email", async (req, res) => {
