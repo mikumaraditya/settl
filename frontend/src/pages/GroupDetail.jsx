@@ -337,7 +337,7 @@ export default function GroupDetail() {
 
   // ── Loading screen ────────────────────────────────────────────────────────────
   if (loading) return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col md:pl-20 lg:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
       <Navbar />
       <main className="flex-1 w-full max-w-6xl mx-auto px-6 md:px-8 py-8 flex flex-col gap-6 md:gap-8">
         {/* Back navigation skeleton */}
@@ -409,7 +409,7 @@ export default function GroupDetail() {
 
   // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col md:pl-20 lg:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
       <Navbar />
 
       <main className="flex-1 w-full max-w-6xl mx-auto px-6 py-8 flex flex-col gap-6">
@@ -481,14 +481,14 @@ export default function GroupDetail() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
           {/* ── Left column: Tabs + Content ─────────────────────────────────── */}
-          <div className="lg:col-span-8 flex flex-col gap-4">
+          <div className="lg:col-span-8 flex flex-col gap-4 order-2 lg:order-1">
 
             {/* Tab bar */}
-            <div className="flex items-center gap-2 border-b border-white/5">
+            <div className="flex items-center gap-2 border-b border-white/5 overflow-x-auto hide-scrollbar flex-nowrap w-full">
               {/* Expenses tab */}
               <button
                 onClick={() => handleTabChange('expenses')}
-                className={`px-5 py-3.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer -mb-px ${
+                className={`px-5 py-3.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer -mb-px flex-shrink-0 ${
                   activeTab === 'expenses'
                     ? 'border-secondary text-secondary bg-secondary/5 rounded-t-xl'
                     : 'border-transparent text-on-surface-variant hover:text-white'
@@ -508,7 +508,7 @@ export default function GroupDetail() {
               {/* Activity tab */}
               <button
                 onClick={() => handleTabChange('activity')}
-                className={`px-5 py-3.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer -mb-px ${
+                className={`px-5 py-3.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer -mb-px flex-shrink-0 ${
                   activeTab === 'activity'
                     ? 'border-[#a78bfa] text-[#a78bfa] bg-[#a78bfa]/5 rounded-t-xl'
                     : 'border-transparent text-on-surface-variant hover:text-white'
@@ -521,7 +521,7 @@ export default function GroupDetail() {
               {/* History tab */}
               <button
                 onClick={() => handleTabChange('history')}
-                className={`px-5 py-3.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer -mb-px ${
+                className={`px-5 py-3.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer -mb-px flex-shrink-0 ${
                   activeTab === 'history'
                     ? 'border-[#10b981] text-[#10b981] bg-[#10b981]/5 rounded-t-xl'
                     : 'border-transparent text-on-surface-variant hover:text-white'
@@ -661,7 +661,7 @@ export default function GroupDetail() {
                                     return (
                                       <button
                                         onClick={() => { setDeleteExpenseError(''); setExpenseToDelete(expense) }}
-                                        className="absolute bottom-3.5 right-3.5 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-on-surface-variant hover:text-[#f87171] opacity-35 hover:opacity-100 transition-all cursor-pointer p-1 rounded-lg border border-transparent hover:bg-white/5 hover:border-white/5"
+                                        className="absolute bottom-3.5 right-3.5 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-on-surface-variant hover:text-[#f87171] opacity-75 hover:opacity-100 active:scale-95 transition-all cursor-pointer p-1 rounded-lg border border-transparent hover:bg-white/5 hover:border-white/5"
                                         title="Delete Expense"
                                       >
                                         <span className="material-symbols-outlined text-[15px]">delete</span>
@@ -944,7 +944,7 @@ export default function GroupDetail() {
           </div>
 
           {/* ── Right column: Settlement widget + Members ──────────────────── */}
-          <div className="lg:col-span-4 flex flex-col gap-6">
+          <div className="lg:col-span-4 flex flex-col gap-6 order-1 lg:order-2">
 
             {/* Smart Settlement Bento Card */}
             <div className="glass-card p-6 rounded-3xl relative overflow-hidden border border-white/10 glow-blue">
@@ -1198,7 +1198,7 @@ export default function GroupDetail() {
       {/* ── Add Expense Modal ─────────────────────────────────────────────────── */}
       {showAddExpense && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="glass-modal rounded-3xl max-w-2xl w-full border border-white/10 shadow-2xl overflow-hidden flex flex-col md:flex-row animate-in zoom-in-95 duration-200">
+          <div className="glass-modal rounded-3xl max-w-2xl w-full border border-white/10 shadow-2xl overflow-y-auto md:overflow-hidden max-h-[90vh] md:max-h-[none] flex flex-col md:flex-row animate-in zoom-in-95 duration-200 hide-scrollbar">
             {/* Left section: Category and Amount */}
             <div className="md:w-5/12 bg-white/[0.02] border-b md:border-b-0 md:border-r border-white/5 p-6 flex flex-col justify-between relative overflow-hidden">
               <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-blue-500/5 blur-xl pointer-events-none" />
@@ -1238,8 +1238,29 @@ export default function GroupDetail() {
                   </div>
                   
                   <div className="pt-4">
-                    <p className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest mb-3 ml-1">Select Category</p>
-                    <div className="grid grid-cols-3 gap-2">
+                    <p className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest mb-2.5 ml-1">Select Category</p>
+                    
+                    {/* Mobile Dropdown View */}
+                    <div className="block md:hidden ml-1">
+                      <select
+                        value={expenseForm.category}
+                        onChange={e => setExpenseForm({ ...expenseForm, category: e.target.value })}
+                        className="w-full bg-[#131b2e] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-blue-500 transition-all font-semibold cursor-pointer"
+                      >
+                        <option value="food">🍽️ Food</option>
+                        <option value="travel">✈️ Travel</option>
+                        <option value="shopping">🛍️ Shopping</option>
+                        <option value="rent">🏠 Rent</option>
+                        <option value="entertainment">🎬 Entertainment</option>
+                        <option value="fuel">⛽ Fuel</option>
+                        <option value="groceries">🛒 Groceries</option>
+                        <option value="medical">🏥 Medical</option>
+                        <option value="other">📝 Other</option>
+                      </select>
+                    </div>
+
+                    {/* Desktop Grid View */}
+                    <div className="hidden md:grid grid-cols-3 gap-2">
                       {(['food', 'travel', 'shopping', 'rent', 'entertainment', 'fuel', 'groceries', 'medical', 'other']).map((cat) => {
                         const icons  = {
                           food: 'restaurant',

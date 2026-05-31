@@ -78,7 +78,7 @@ export default function Profile() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-white flex flex-col relative overflow-hidden">
+    <div className="min-h-screen bg-background text-white flex flex-col relative overflow-hidden md:pl-20 lg:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
       {/* Background Orbs */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full bg-blue-500/10 blur-3xl pointer-events-none" />
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none" />
@@ -103,25 +103,25 @@ export default function Profile() {
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black text-2xl shadow-md flex-shrink-0">
             {user?.name?.charAt(0).toUpperCase()}
           </div>
-          <div>
-            <h1 className="text-lg font-extrabold text-white">{user?.name}</h1>
-            <p className="text-xs text-on-surface-variant font-semibold mt-0.5">{user?.email}</p>
-            <div className="flex items-center gap-2 mt-2.5">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-lg font-extrabold text-white truncate">{user?.name}</h1>
+            <p className="text-xs text-on-surface-variant font-semibold mt-0.5 truncate">{user?.email}</p>
+            <div className="flex flex-wrap items-center gap-2 mt-2.5">
               {user?.isEmailVerified ? (
-                <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-xl">
-                  <span className="material-symbols-outlined text-[13px]" style={{ fontVariationSettings: "'FILL' 1" }}>verified</span>
+                <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-xl flex-shrink-0">
+                  <span className="material-symbols-outlined text-[13px] flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>verified</span>
                   Verified
                 </span>
               ) : (
-                <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-xl">
-                  <span className="material-symbols-outlined text-[13px]">warning</span>
+                <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-xl flex-shrink-0">
+                  <span className="material-symbols-outlined text-[13px] flex-shrink-0">warning</span>
                   Unverified Email
                 </span>
               )}
               {user?.upiId && (
-                <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-on-surface-variant bg-white/5 px-2.5 py-1 rounded-xl border border-white/5">
-                  <span className="material-symbols-outlined text-[13px]">account_balance</span>
-                  {user.upiId}
+                <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-on-surface-variant bg-white/5 px-2.5 py-1 rounded-xl border border-white/5 min-w-0 max-w-full">
+                  <span className="material-symbols-outlined text-[13px] flex-shrink-0">account_balance</span>
+                  <span className="truncate">{user.upiId}</span>
                 </span>
               )}
             </div>

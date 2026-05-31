@@ -247,7 +247,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col md:pl-20 lg:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
       <Navbar />
 
       {/* ── Email Verification Warning Banner ── */}
