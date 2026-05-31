@@ -11,43 +11,75 @@ const router = express.Router();
 // ADD EXPENSE
 // ─────────────────────────────────────────────────────────────────────────────
 router.post("/", protect, async (req, res) => {
-  const { description, amount, groupId, splitType, category, splits } = req.body;
+  const { description, amount, groupId, group: groupBodyId, paidBy: paidByBody, members: membersBody, splitType, category, splits } = req.body;
 
   try {
-    const group = await Group.findById(groupId);
+    const targetGroupId = groupId || groupBodyId;
+    const group = await Group.findById(targetGroupId);
     if (!group) {
       return res.status(404).json({ message: "Group not found" });
     }
 
-    let finalSplits = [];
-    const members = group.members.map((m) => m.user.toString());
+    const paidBy = paidByBody || req.user.id;
+    const splitMembers = membersBody || group.members.map((m) => m.user.toString());
 
-    if (splitType === "equal") {
-      const shareAmount = parseFloat((amount / members.length).toFixed(2));
-      finalSplits = members.map((userId) => ({
+    if (!splitMembers || splitMembers.length === 0) {
+      return res.status(400).json({ message: "No members specified for splitting" });
+    }
+
+    let finalSplits = [];
+    const totalAmount = parseInt(amount, 10);
+
+    if (isNaN(totalAmount) || totalAmount <= 0) {
+      return res.status(400).json({ message: "Amount must be a positive integer representing Paise" });
+    }
+
+    if (splitType === "equal" || !splitType) {
+      const numMembers = splitMembers.length;
+      const baseShare = Math.floor(totalAmount / numMembers);
+      const remainder = totalAmount % numMembers;
+
+      finalSplits = splitMembers.map((userId, index) => ({
         user: userId,
-        amount: shareAmount,
-        paid: userId === req.user.id,
+        // Add the modulus remainder paise to the first person in the split array to guarantee absolute precision
+        amount: index === 0 ? baseShare + remainder : baseShare,
+        paid: userId === paidBy,
       }));
     } else if (splitType === "exact") {
+      if (!splits || splits.length === 0) {
+        return res.status(400).json({ message: "Splits details are required for exact split type" });
+      }
       finalSplits = splits.map((s) => ({
         user: s.user,
-        amount: s.amount,
-        paid: s.user === req.user.id,
+        amount: Math.round(s.amount),
+        paid: s.user === paidBy,
       }));
     } else if (splitType === "percentage") {
-      finalSplits = splits.map((s) => ({
-        user: s.user,
-        amount: parseFloat(((s.percentage / 100) * amount).toFixed(2)),
-        paid: s.user === req.user.id,
-      }));
+      if (!splits || splits.length === 0) {
+        return res.status(400).json({ message: "Splits details are required for percentage split type" });
+      }
+      let sumOfSplits = 0;
+      finalSplits = splits.map((s) => {
+        const share = Math.floor((s.percentage / 100) * totalAmount);
+        sumOfSplits += share;
+        return {
+          user: s.user,
+          amount: share,
+          paid: s.user === paidBy,
+        };
+      });
+      // Distribute any float rounding leftover to the first member
+      const remainder = totalAmount - sumOfSplits;
+      if (remainder > 0 && finalSplits.length > 0) {
+        finalSplits[0].amount += remainder;
+      }
     }
 
     const expense = await Expense.create({
       description,
-      amount,
-      paidBy: req.user.id,
-      group: groupId,
+      amount: totalAmount,
+      paidBy,
+      group: targetGroupId,
       splits: finalSplits,
       splitType: splitType || "equal",
       category: category || "other",
@@ -57,11 +89,11 @@ router.post("/", protect, async (req, res) => {
       .populate("paidBy", "name email")
       .populate("splits.user", "name email upiId");
 
-    io.to(groupId).emit('expense_added', populated);
+    io.to(targetGroupId.toString()).emit('expense_added', populated);
 
     // Log activity
     await ActivityLog.create({
-      group: groupId,
+      group: targetGroupId,
       actor: req.user.id,
       type: 'expense_added',
       meta: {
