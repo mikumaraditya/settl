@@ -6,10 +6,18 @@ import GoogleLoginButton from '../components/GoogleLoginButton'
 
 export default function Login() {
   const [form, setForm] = useState({ email: '', password: '' })
-  const [error, setError] = useState('')
+  const [error, setError] = useState(() => {
+    const expired = localStorage.getItem("settl_session_expired")
+    if (expired) {
+      localStorage.removeItem("settl_session_expired")
+      return "Session expired, please sign in again."
+    }
+    return ""
+  })
   const [loading, setLoading] = useState(false)
   const { login } = useAuth()
   const navigate = useNavigate()
+
 
   const handleSubmit = async (e) => {
     e.preventDefault()
