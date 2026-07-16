@@ -50,4 +50,7 @@ const expenseSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+// Supports querying a group's expenses in creation-date order.
+expenseSchema.index({ group: 1, createdAt: -1 });
+
 export default mongoose.model("Expense", expenseSchema);

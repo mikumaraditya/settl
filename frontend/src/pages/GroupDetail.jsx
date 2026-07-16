@@ -24,7 +24,11 @@ export default function GroupDetail() {
   const [loadingMore, setLoadingMore]       = useState(false)
 
   // ── Tab state ────────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState('expenses') // 'expenses' | 'activity'
+  const [activeTab, setActiveTab] = useState('expenses')
+  const [messages, setMessages] = useState([])
+  const [chatLoading, setChatLoading] = useState(false)
+  const [messageText, setMessageText] = useState('')
+  const [sendingMessage, setSendingMessage] = useState(false)
 
   // ── Activity log state ────────────────────────────────────────────────────────
   const [activityLogs, setActivityLogs]       = useState([])
@@ -126,6 +130,25 @@ export default function GroupDetail() {
   const handleTabChange = (tab) => {
     setActiveTab(tab)
     if (tab === 'activity' && !activityFetched) fetchActivity()
+    if (tab === 'chat' && messages.length === 0) fetchMessages()
+  }
+
+  const fetchMessages = async () => {
+    try {
+      setChatLoading(true)
+      const { data } = await axios.get(`/messages/group/${id}`)
+      setMessages(data)
+    } finally { setChatLoading(false) }
+  }
+
+  const sendMessage = async (event) => {
+    event.preventDefault()
+    if (!messageText.trim() || sendingMessage) return
+    try {
+      setSendingMessage(true)
+      await axios.post('/messages', { groupId: id, content: messageText })
+      setMessageText('')
+    } finally { setSendingMessage(false) }
   }
 
   const fetchActivity = async (append = false) => {
@@ -290,7 +313,7 @@ export default function GroupDetail() {
 
   useEffect(() => {
     if (!socketRef.current) {
-      socketRef.current = io(SOCKET_URL, { autoConnect: true })
+      socketRef.current = io(SOCKET_URL, { autoConnect: true, withCredentials: true })
     }
     const socket = socketRef.current
 
@@ -315,12 +338,14 @@ export default function GroupDetail() {
     const onSettlementDone      = () => fetchSettlements()
     const onSettlementUndone    = () => fetchSettlements()
     const onSettlementRequested = () => fetchSettlements()
+    const onMessageCreated = (message) => setMessages(prev => prev.some(m => m._id === message._id) ? prev : [...prev, message])
 
     socket.on('expense_added',                onExpenseAdded)
     socket.on('expense_deleted',              onExpenseDeleted)
     socket.on('settlement_done',              onSettlementDone)
     socket.on('settlement_undone',            onSettlementUndone)
     socket.on('settlement_requested',         onSettlementRequested)
+    socket.on('message_created',              onMessageCreated)
 
     return () => {
       socket.emit('leave_group', id)
@@ -329,6 +354,7 @@ export default function GroupDetail() {
       socket.off('settlement_done',              onSettlementDone)
       socket.off('settlement_undone',            onSettlementUndone)
       socket.off('settlement_requested',         onSettlementRequested)
+      socket.off('message_created',              onMessageCreated)
       socket.disconnect()
       socketRef.current = null
     }
@@ -412,19 +438,19 @@ export default function GroupDetail() {
     <div className="min-h-screen bg-background flex flex-col md:pl-20 lg:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
       <Navbar />
 
-      <main className="flex-1 w-full max-w-6xl mx-auto px-6 py-8 flex flex-col gap-6">
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col gap-5 sm:gap-6">
 
         {/* Back navigation */}
         <button
           onClick={() => navigate('/dashboard')}
-          className="text-on-surface-variant hover:text-primary text-sm font-semibold flex items-center gap-1.5 transition-colors cursor-pointer self-start"
+          className="text-on-surface-variant hover:text-primary text-sm font-semibold flex items-center gap-1.5 transition-colors cursor-pointer self-start rounded-lg px-1 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-secondary"
         >
           <span className="material-symbols-outlined text-[18px]">arrow_back</span>
           Back to Dashboard
         </button>
 
         {/* Hero Header Card */}
-        <section className="glass-card p-6 md:p-8 rounded-2xl shadow-lg relative overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">
+        <section className="glass-card p-5 sm:p-6 md:p-8 rounded-3xl shadow-lg relative overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300 border border-white/10">
           <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.01)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.01)_1px,transparent_1px)] bg-[size:16px_16px] pointer-events-none" />
           <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
             <span className="material-symbols-outlined text-[140px]" style={{ fontVariationSettings: "'FILL' 1" }}>
@@ -437,7 +463,7 @@ export default function GroupDetail() {
               <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest block mb-0.5">
                 Group Details
               </span>
-              <h2 className="text-2xl font-black text-white tracking-tight">{group?.name}</h2>
+              <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">{group?.name}</h2>
               {group?.description && (
                 <p className="text-xs text-on-surface-variant font-medium">{group.description}</p>
               )}
@@ -460,16 +486,16 @@ export default function GroupDetail() {
               </div>
             </div>
 
-            <div className="flex gap-3 self-stretch md:self-auto justify-end">
+            <div className="grid grid-cols-2 gap-3 self-stretch md:flex md:self-auto justify-end">
               <button
                 onClick={() => setShowAddExpense(true)}
-                className="bg-gradient-to-r from-secondary to-blue-600 text-white px-5 py-3 rounded-xl flex items-center gap-2 font-bold text-xs uppercase tracking-wider shadow-lg shadow-secondary/25 hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+                className="bg-gradient-to-r from-secondary to-blue-600 text-white px-4 sm:px-5 py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-wider shadow-lg shadow-secondary/25 hover:brightness-110 active:scale-95 transition-all cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-secondary"
               >
                 <span className="material-symbols-outlined text-[18px] font-bold">add</span> Add Expense
               </button>
               <button
                 onClick={() => navigate(`/settle/${id}`)}
-                className="bg-white/5 border border-white/10 text-white px-5 py-3 rounded-xl flex items-center gap-2 font-bold text-xs uppercase tracking-wider hover:bg-white/10 active:scale-95 transition-all cursor-pointer"
+                className="bg-white/5 border border-white/10 text-white px-4 sm:px-5 py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-wider hover:bg-white/10 active:scale-95 transition-all cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-secondary"
               >
                 <span className="material-symbols-outlined text-[18px]">payments</span> Settle Up
               </button>
@@ -484,7 +510,7 @@ export default function GroupDetail() {
           <div className="lg:col-span-8 flex flex-col gap-4 order-2 lg:order-1">
 
             {/* Tab bar */}
-            <div className="flex items-center gap-2 border-b border-white/5 overflow-x-auto hide-scrollbar flex-nowrap w-full">
+            <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-white/5 overflow-x-auto hide-scrollbar flex-nowrap w-full bg-background/90 backdrop-blur-xl rounded-t-2xl px-1">
               {/* Expenses tab */}
               <button
                 onClick={() => handleTabChange('expenses')}
@@ -503,6 +529,13 @@ export default function GroupDetail() {
                     {expenses.length}
                   </span>
                 )}
+              </button>
+
+              <button
+                onClick={() => handleTabChange('chat')}
+                className={`px-5 py-3.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer -mb-px flex-shrink-0 ${activeTab === 'chat' ? 'border-cyan-400 text-cyan-300 bg-cyan-400/5 rounded-t-xl' : 'border-transparent text-on-surface-variant hover:text-white'}`}
+              >
+                <span className="material-symbols-outlined text-[18px]">forum</span> Chat
               </button>
 
               {/* Activity tab */}
@@ -839,6 +872,25 @@ export default function GroupDetail() {
             )}
 
             {/* ── HISTORY TAB ───────────────────────────────────────────────── */}
+            {activeTab === 'chat' && (
+              <div className="glass-card rounded-3xl border border-white/5 overflow-hidden">
+                <div className="p-4 border-b border-white/5"><h3 className="font-bold text-white">Group chat</h3></div>
+                <div className="h-[380px] overflow-y-auto p-4 space-y-3">
+                  {chatLoading ? <p className="text-on-surface-variant text-sm">Loading messages...</p> : messages.length === 0 ? <p className="text-on-surface-variant text-sm text-center pt-24">No messages yet. Start the conversation.</p> : messages.map(message => {
+                    const mine = message.sender?._id === user._id
+                    return <div key={message._id} className={`flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
+                      <span className="text-[10px] text-on-surface-variant mb-1">{mine ? 'You' : message.sender?.name || 'Member'}</span>
+                      <p className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm ${mine ? 'bg-secondary text-white rounded-br-sm' : 'bg-white/10 text-white rounded-bl-sm'}`}>{message.content}</p>
+                    </div>
+                  })}
+                </div>
+                <form onSubmit={sendMessage} className="flex gap-2 p-3 border-t border-white/5">
+                  <input value={messageText} onChange={event => setMessageText(event.target.value)} maxLength={1000} placeholder="Write a message..." className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm outline-none" />
+                  <button disabled={!messageText.trim() || sendingMessage} className="px-4 rounded-xl bg-secondary text-white disabled:opacity-40"><span className="material-symbols-outlined">send</span></button>
+                </form>
+              </div>
+            )}
+
             {activeTab === 'history' && (
               <div className="flex flex-col gap-6 animate-in fade-in duration-200">
                 {confirmedSettlements.length === 0 ? (
@@ -944,7 +996,7 @@ export default function GroupDetail() {
           </div>
 
           {/* ── Right column: Settlement widget + Members ──────────────────── */}
-          <div className="lg:col-span-4 flex flex-col gap-6 order-1 lg:order-2">
+          <div className="lg:col-span-4 flex flex-col gap-5 sm:gap-6 order-1 lg:order-2 lg:sticky lg:top-6 lg:self-start">
 
             {/* Smart Settlement Bento Card */}
             <div className="glass-card p-6 rounded-3xl relative overflow-hidden border border-white/10 glow-blue">

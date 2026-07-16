@@ -9,22 +9,35 @@ const createTransporter = () =>
     },
   });
 
+const escapeHtml = (value) =>
+  String(value).replace(/[&<>'"]/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "'": "&#39;",
+    '"': "&quot;",
+  })[character]);
+
 export const sendVerificationEmail = async (
   toEmail,
   toName,
   verificationUrl,
 ) => {
+  const safeName = escapeHtml(toName);
+  const safeVerificationUrl = escapeHtml(verificationUrl);
+
   if (toEmail.endsWith("@example.com") || toEmail.endsWith("@test.com")) {
-    console.log(`Skipping email to test address: ${toEmail}`);
+    console.log(`[EmailService] Skipped sending email (mock/test domain): ${toEmail}`);
     return;
   }
 
-  const transporter = createTransporter();
+  try {
+    const transporter = createTransporter();
 
-  await transporter.sendMail({
-    from: `"Settl" <${process.env.GMAIL_USER}>`,
-    to: toEmail,
-    subject: "Verify your Settl account ✉️",
+    const info = await transporter.sendMail({
+      from: `"Settl" <${process.env.GMAIL_USER}>`,
+      to: toEmail,
+      subject: "Verify your Settl account ✉️",
     html: `
 <!DOCTYPE html>
 <html lang="en">
@@ -91,7 +104,7 @@ export const sendVerificationEmail = async (
 
               <!-- Greeting -->
               <p style="margin:0 0 6px;color:#111827;font-size:16px;font-weight:700;line-height:1.5;">
-                Hey ${toName} &#128075;
+                Hey ${safeName} &#128075;
               </p>
               <p style="margin:0 0 36px;color:#6b7280;font-size:14px;line-height:1.8;">
                 Thanks for signing up for <strong style="color:#1d4ed8;">Settl</strong> &mdash; the smartest way to split expenses with friends. Click the button below to confirm your email and unlock your account.
@@ -101,7 +114,7 @@ export const sendVerificationEmail = async (
               <table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 40px;">
                 <tr>
                   <td align="center" style="border-radius:14px;background:linear-gradient(135deg,#2563eb,#1d4ed8);">
-                    <a href="${verificationUrl}"
+                    <a href="${safeVerificationUrl}"
                        style="display:inline-block;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:17px 52px;border-radius:14px;letter-spacing:0.3px;white-space:nowrap;">
                       &#9993;&nbsp; Verify My Email &nbsp;&rarr;
                     </a>
@@ -200,7 +213,7 @@ export const sendVerificationEmail = async (
               <!-- Fallback URL -->
               <p style="margin:0 0 6px;color:#9ca3af;font-size:12px;">Button not working? Copy and paste this link into your browser:</p>
               <p style="margin:0 0 32px;font-size:11px;line-height:1.6;word-break:break-all;">
-                <a href="${verificationUrl}" style="color:#2563eb;text-decoration:none;">${verificationUrl}</a>
+                <a href="${safeVerificationUrl}" style="color:#2563eb;text-decoration:none;">${safeVerificationUrl}</a>
               </p>
 
             </td>
@@ -239,5 +252,10 @@ export const sendVerificationEmail = async (
 </body>
 </html>
     `.trim(),
-  });
+    });
+    console.log(`[EmailService] Verification email sent successfully to ${toEmail}. Message ID: ${info.messageId}`);
+  } catch (error) {
+    console.error(`[EmailService] Failed to send verification email to ${toEmail}:`, error);
+    throw error;
+  }
 };

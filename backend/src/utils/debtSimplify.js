@@ -7,6 +7,11 @@
  *   returned transactions represent ONLY what is still owed.
  */
 const simplifyDebts = (expenses, settlements = []) => {
+  // Work in paise internally. JavaScript floating point arithmetic would
+  // otherwise lose or round fractional rupee amounts while calculating debt.
+  const toPaise = (amount) => Math.round(Number(amount) * 100);
+  const toRupees = (paise) => paise / 100;
+
   // Step 1: calculate net balance for each person from expenses
   const balance = {};
 
@@ -15,14 +20,14 @@ const simplifyDebts = (expenses, settlements = []) => {
     if (!balance[payerId]) balance[payerId] = 0;
 
     // Credit the payer the full expense amount exactly once
-    const totalAmount = splits.reduce((sum, s) => sum + s.amount, 0);
+    const totalAmount = splits.reduce((sum, s) => sum + toPaise(s.amount), 0);
     balance[payerId] += totalAmount;
 
     // Debit each split member their share
     splits.forEach(({ user, amount }) => {
       const userId = user._id ? user._id.toString() : user.toString();
       if (!balance[userId]) balance[userId] = 0;
-      balance[userId] -= amount;
+      balance[userId] -= toPaise(amount);
     });
   });
 
@@ -37,8 +42,8 @@ const simplifyDebts = (expenses, settlements = []) => {
     const toId   = to._id   ? to._id.toString()   : to.toString();
     if (!balance[fromId]) balance[fromId] = 0;
     if (!balance[toId])   balance[toId]   = 0;
-    balance[fromId] += amount;  // payer's debt reduced
-    balance[toId]   -= amount;  // receiver's credit reduced
+    balance[fromId] += toPaise(amount);  // payer's debt reduced
+    balance[toId]   -= toPaise(amount);  // receiver's credit reduced
   });
 
   // Step 3: separate into creditors (net positive) and debtors (net negative)
@@ -46,9 +51,8 @@ const simplifyDebts = (expenses, settlements = []) => {
   const debtors   = [];
 
   Object.entries(balance).forEach(([userId, amount]) => {
-    const rounded = Math.round(amount);
-    if (rounded > 0) creditors.push({ userId, amount: rounded });
-    if (rounded < 0) debtors.push({ userId, amount: -rounded });
+    if (amount > 0) creditors.push({ userId, amount });
+    if (amount < 0) debtors.push({ userId, amount: -amount });
   });
 
   // Step 4: sort largest first for optimal greedy matching
@@ -65,7 +69,7 @@ const simplifyDebts = (expenses, settlements = []) => {
     transactions.push({
       from:   debtors[j].userId,
       to:     creditors[i].userId,
-      amount: settle,
+      amount: toRupees(settle),
     });
 
     creditors[i].amount -= settle;

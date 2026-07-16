@@ -295,7 +295,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      <main className="flex-1 w-full max-w-6xl mx-auto px-6 py-8 flex flex-col gap-6">
+        <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col gap-5 sm:gap-6">
         
         {!user?.upiId && (
           <div className="glass-card p-4 rounded-2xl border border-amber-500/20 bg-amber-500/5 flex items-center gap-3.5 shadow-lg shadow-amber-500/5 animate-in slide-in-from-top-4 duration-300">
@@ -310,14 +310,14 @@ export default function Dashboard() {
         )}
 
         {/* Header Section */}
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
-            <h1 className="text-2xl font-extrabold tracking-tight text-white">Overview</h1>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">Overview</h1>
             <p className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant mt-1">Manage your groups and balances</p>
           </div>
           <button
             onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 bg-gradient-to-r from-secondary to-blue-600 text-white px-5 py-3 rounded-xl font-bold uppercase tracking-wider shadow-lg shadow-secondary/25 hover:brightness-110 active:scale-95 transition-all cursor-pointer text-xs"
+            className="flex w-full sm:w-auto justify-center items-center gap-2 bg-gradient-to-r from-secondary to-blue-600 text-white px-5 py-3 rounded-xl font-bold uppercase tracking-wider shadow-lg shadow-secondary/25 hover:brightness-110 active:scale-95 transition-all cursor-pointer text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-secondary"
           >
             <span className="material-symbols-outlined text-[18px] font-bold">add</span>
             Create New Group
@@ -325,7 +325,7 @@ export default function Dashboard() {
         </div>
 
         {/* Overall Balance Hero Card */}
-        <section className={`rounded-2xl p-6 md:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden transition-all duration-300 border animate-in fade-in slide-in-from-top-4 duration-300 ${
+        <section className={`rounded-3xl p-5 sm:p-6 md:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden transition-all duration-300 border animate-in fade-in slide-in-from-top-4 duration-300 ${
           overallBalance > 0 
             ? 'bg-gradient-to-br from-green-500/10 to-green-500/5 border-green-500/20 glow-green' 
             : overallBalance < 0 
@@ -358,7 +358,7 @@ export default function Dashboard() {
               </>
             )}
           </div>
-          <div className="flex gap-3 z-10">
+          <div className="grid grid-cols-2 sm:flex gap-3 z-10">
             <button
               onClick={() => {
                 const groupsWithBalance = Object.keys(balances).filter(id => balances[id].balance !== 0)
@@ -369,13 +369,13 @@ export default function Dashboard() {
                 }
               }}
               disabled={overallBalance === 0}
-              className="px-5 py-3 bg-gradient-to-r from-secondary to-blue-600 text-white rounded-xl font-bold text-xs uppercase tracking-wider shadow-lg shadow-secondary/20 hover:brightness-110 active:scale-[0.98] transition-all cursor-pointer disabled:opacity-40 disabled:pointer-events-none disabled:shadow-none"
+              className="px-4 sm:px-5 py-3 bg-gradient-to-r from-secondary to-blue-600 text-white rounded-xl font-bold text-xs uppercase tracking-wider shadow-lg shadow-secondary/20 hover:brightness-110 active:scale-[0.98] transition-all cursor-pointer disabled:opacity-40 disabled:pointer-events-none disabled:shadow-none"
             >
               Settle Up
             </button>
             <button
               onClick={() => window.print()}
-              className="px-5 py-3 bg-white/5 border border-white/10 text-white rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-white/10 active:scale-[0.98] transition-colors cursor-pointer"
+              className="px-4 sm:px-5 py-3 bg-white/5 border border-white/10 text-white rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-white/10 active:scale-[0.98] transition-colors cursor-pointer"
             >
               Print Summary
             </button>
@@ -383,7 +383,7 @@ export default function Dashboard() {
         </section>
 
         {/* Bento Grid */}
-        <div className="bento-grid">
+        <div className="bento-grid gap-5 sm:gap-6">
           
           {/* Active Groups (8 columns) */}
           <div className="col-span-12 lg:col-span-8 flex flex-col gap-4">
@@ -416,7 +416,10 @@ export default function Dashboard() {
                     <div
                       key={group._id}
                       onClick={() => navigate(`/group/${group._id}`)}
-                      className="glass-card p-6 rounded-2xl shadow-lg hover:shadow-xl hover:scale-[1.01] hover:border-secondary/30 transition-all duration-200 group cursor-pointer relative flex flex-col justify-between h-48 animate-in fade-in zoom-in-95 duration-200"
+                      onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') navigate(`/group/${group._id}`) }}
+                      role="button"
+                      tabIndex={0}
+                      className="glass-card p-5 sm:p-6 rounded-3xl shadow-lg hover:shadow-xl hover:scale-[1.01] hover:border-secondary/30 focus-visible:border-secondary focus-visible:outline-none transition-all duration-200 group cursor-pointer relative flex flex-col justify-between h-48 animate-in fade-in zoom-in-95 duration-200"
                     >
                       <div className="flex justify-between items-start">
                         <div className={`h-11 w-11 rounded-xl flex items-center justify-center shadow-md transition-transform group-hover:scale-105 duration-200 ${
@@ -496,7 +499,7 @@ export default function Dashboard() {
           <div className="col-span-12 lg:col-span-4 flex flex-col gap-4">
             <h3 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant px-1">Recent Activity</h3>
             
-            <div className="glass-card rounded-2xl p-6 shadow-lg flex flex-col gap-5">
+              <div className="glass-card rounded-3xl p-5 sm:p-6 shadow-lg flex flex-col gap-5">
               {loadingStats ? (
                 [1, 2, 3].map(i => (
                   <div key={i} className="flex gap-3.5 items-center animate-pulse">

@@ -7,6 +7,7 @@ dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 import express from "express";
 import http from "http";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import connectDB from "./src/config/db.js";
 import { initSocket } from "./src/socket.js";
 
@@ -20,6 +21,7 @@ import authRoutes from "./src/routes/auth.js";
 import expenseRoutes from "./src/routes/expenses.js";
 import groupRoutes from "./src/routes/groups.js";
 import settlementRoutes from "./src/routes/settlements.js";
+import messageRoutes from "./src/routes/messages.js";
 
 connectDB();
 
@@ -33,6 +35,7 @@ app.use(
     credentials: true,
   }),
 );
+app.use(cookieParser());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
@@ -41,6 +44,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/expenses", expenseRoutes);
 app.use("/api/groups", groupRoutes);
 app.use("/api/settlements", settlementRoutes);
+app.use("/api/messages", messageRoutes);
 
 // Health check
 app.get("/health", (req, res) => {
@@ -58,10 +62,10 @@ app.use((req, res) => {
 
 // Global error handler
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(err.status || 500).json({
-    message: err.message || "Internal server error",
-  });
+  console.error("Global error caught:", err.stack || err);
+  const status = err.status || 500;
+  const message = status >= 500 ? "Internal server error" : (err.message || "Something went wrong");
+  res.status(status).json({ message });
 });
 
 const PORT = process.env.PORT || 5000;

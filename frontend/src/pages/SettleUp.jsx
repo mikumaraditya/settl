@@ -22,6 +22,7 @@ export default function SettleUp() {
   const [showConfirmPopup, setShowConfirmPopup]   = useState(false)
   const [activeTransaction, setActiveTransaction] = useState(null)
   const [rejectingSettlement, setRejectingSettlement] = useState(null)
+  const [settleAmounts, setSettleAmounts] = useState({})
 
   const socketRef = useRef(null)
 
@@ -381,11 +382,56 @@ export default function SettleUp() {
                           )}
                         </div>
 
+                        {isMe && (
+                          <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 flex flex-col gap-2">
+                            <label className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest block">
+                              Amount to Settle
+                            </label>
+                            <div className="relative">
+                              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">₹</span>
+                              <input 
+                                type="number"
+                                min="0.01"
+                                max={t.amount}
+                                step="any"
+                                value={settleAmounts[t.to?._id] !== undefined ? settleAmounts[t.to?._id] : t.amount}
+                                onChange={(e) => {
+                                  let val = e.target.value;
+                                  if (val !== '') {
+                                    const parsed = parseFloat(val);
+                                    if (parsed > t.amount) val = t.amount.toString();
+                                    else if (parsed < 0) val = '0';
+                                  }
+                                  setSettleAmounts(prev => ({ ...prev, [t.to?._id]: val }));
+                                }}
+                                className="w-full bg-background border border-white/10 rounded-xl py-3 pl-8 pr-4 text-sm font-bold text-white focus:outline-none focus:border-blue-500/50"
+                                placeholder={`Enter amount up to ₹${t.amount}`}
+                              />
+                            </div>
+                            {settleAmounts[t.to?._id] !== undefined && settleAmounts[t.to?._id] !== '' && parseFloat(settleAmounts[t.to?._id]) < t.amount && (
+                              <p className="text-[10px] text-amber-400 font-semibold flex items-center gap-1 mt-0.5 animate-in fade-in duration-200">
+                                <span className="material-symbols-outlined text-[14px]">info</span>
+                                Partial payment: Remaining ₹{(t.amount - parseFloat(settleAmounts[t.to?._id])).toFixed(2)} will remain outstanding.
+                              </p>
+                            )}
+                          </div>
+                        )}
+
                         {isMe ? (
                           <div className="flex flex-col sm:flex-row gap-3 pt-2">
                             {t.to?.upiId && (
                               <button
-                                onClick={() => { setActiveTransaction(t); setShowPaymentModal(true) }}
+                                onClick={() => {
+                                  const customAmt = settleAmounts[t.to?._id] !== undefined && settleAmounts[t.to?._id] !== ''
+                                    ? parseFloat(settleAmounts[t.to?._id])
+                                    : t.amount;
+                                  if (customAmt <= 0) {
+                                    alert('Please enter a positive amount to settle');
+                                    return;
+                                  }
+                                  setActiveTransaction({ ...t, amount: customAmt });
+                                  setShowPaymentModal(true);
+                                }}
                                 disabled={actionLoading[settleKey] || !!pendingReq}
                                 className="flex-1 py-3 px-4 rounded-2xl flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-wider shadow-md bg-blue-500 text-white border border-blue-500/20 hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
                               >
@@ -394,7 +440,16 @@ export default function SettleUp() {
                               </button>
                             )}
                             <button
-                              onClick={() => handleSettle(t.to, t.amount)}
+                              onClick={() => {
+                                const customAmt = settleAmounts[t.to?._id] !== undefined && settleAmounts[t.to?._id] !== ''
+                                  ? parseFloat(settleAmounts[t.to?._id])
+                                  : t.amount;
+                                if (customAmt <= 0) {
+                                  alert('Please enter a positive amount to settle');
+                                  return;
+                                }
+                                handleSettle(t.to, customAmt);
+                              }}
                               disabled={actionLoading[settleKey] || !!pendingReq}
                               className={`py-3 px-4 rounded-2xl flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-wider border active:scale-95 transition-all cursor-pointer disabled:opacity-50 ${
                                 t.to?.upiId 

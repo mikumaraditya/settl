@@ -4,10 +4,14 @@ import User from '../models/User.js';
 import Expense from '../models/Expense.js';
 import Settlement from '../models/Settlement.js';
 import ActivityLog from '../models/ActivityLog.js';
+import Message from '../models/Message.js';
 import protect from '../middleware/auth.js';
+import requireVerified from '../middleware/requireVerified.js';
 import simplifyDebts from '../utils/debtSimplify.js';
 
 const router = express.Router();
+
+router.use(protect, requireVerified);
 
 // CREATE GROUP
 router.post("/", protect, async (req, res) => {
@@ -31,7 +35,8 @@ router.post("/", protect, async (req, res) => {
       meta: { groupName: group.name },
     }).catch(() => {});
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error creating group:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
@@ -44,7 +49,8 @@ router.get("/", protect, async (req, res) => {
 
     res.json(groups);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error fetching groups:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
@@ -60,9 +66,17 @@ router.get("/:id", protect, async (req, res) => {
       return res.status(404).json({ message: "Group not found" });
     }
 
+    const isMember = group.members.some(
+      (member) => member.user?._id?.toString() === req.user.id,
+    );
+    if (!isMember) {
+      return res.status(403).json({ message: "You are not a member of this group" });
+    }
+
     res.json(group);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error fetching single group:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
@@ -116,7 +130,8 @@ router.post("/:id/members", protect, async (req, res) => {
       meta: { memberName: userToAdd.name, memberEmail: userToAdd.email },
     }).catch(() => {});
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error adding member to group:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
@@ -225,7 +240,8 @@ router.delete("/:id/members/:userId", protect, async (req, res) => {
       meta: { removedId: targetId },
     }).catch(() => {});
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error removing member from group:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
@@ -264,10 +280,19 @@ router.delete("/:id", protect, async (req, res) => {
     }
     // ────────────────────────────────────────────────────────────────────────
 
+    // Remove all data owned by this group so no orphaned records remain.
+    await Promise.all([
+      Expense.deleteMany({ group: group._id }),
+      Settlement.deleteMany({ group: group._id }),
+      ActivityLog.deleteMany({ group: group._id }),
+      Message.deleteMany({ group: group._id }),
+    ]);
+
     await group.deleteOne();
     res.json({ message: "Group deleted" });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error deleting group:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 

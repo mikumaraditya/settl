@@ -202,6 +202,20 @@ button, input, select, textarea, a {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+::selection {
+  background: rgba(59, 130, 246, 0.35);
+  color: white;
+}
+
+:focus-visible {
+  outline: 2px solid var(--secondary);
+  outline-offset: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.32); border-radius: 999px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.52); }
+
 .bento-grid {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
@@ -492,6 +506,201 @@ button, input, select, textarea, a {
   0%, 100% { opacity: 0.6; }
   50% { opacity: 1; }
 }
+:root:not(.dark) .hover\:border-white\/20:hover {
+  border-color: rgba(11, 28, 48, 0.16) !important;
+}
+:root:not(.dark) .hover\:text-white:hover {
+  color: var(--on-surface) !important;
+}
+:root:not(.dark) .hover\:text-white\/80:hover {
+  color: rgba(11, 28, 48, 0.8) !important;
+}
+
+
+/* Light mode overrides for text-white on light backgrounds */
+:root:not(.dark) .text-white {
+  color: var(--on-surface) !important;
+}
+:root:not(.dark) .text-white\/30 {
+  color: rgba(11, 28, 48, 0.3) !important;
+}
+:root:not(.dark) .text-white\/40 {
+  color: rgba(11, 28, 48, 0.4) !important;
+}
+:root:not(.dark) .text-white\/50 {
+  color: rgba(11, 28, 48, 0.5) !important;
+}
+:root:not(.dark) .text-white\/60 {
+  color: rgba(11, 28, 48, 0.6) !important;
+}
+:root:not(.dark) .text-white\/70 {
+  color: rgba(11, 28, 48, 0.7) !important;
+}
+:root:not(.dark) .text-white\/80 {
+  color: rgba(11, 28, 48, 0.8) !important;
+}
+:root:not(.dark) .text-white\/90 {
+  color: rgba(11, 28, 48, 0.9) !important;
+}
+
+/* Light mode overrides for custom/status text colors (from pastel to high-contrast dark-colored variables) */
+:root:not(.dark) .text-green-400,
+:root:not(.dark) .text-emerald-400 {
+  color: #047857 !important; /* emerald-700 */
+}
+:root:not(.dark) .text-\[\#f87171\],
+:root:not(.dark) .text-red-400,
+:root:not(.dark) .text-rose-400,
+:root:not(.dark) .text-\[\#fca5a5\] {
+  color: #b91c1c !important; /* red-700 */
+}
+:root:not(.dark) .text-\[\#fbbf24\],
+:root:not(.dark) .text-amber-400,
+:root:not(.dark) .text-\[\#f59221\],
+:root:not(.dark) .text-orange-400 {
+  color: #b45309 !important; /* amber-700 */
+}
+:root:not(.dark) .text-\[\#a78bfa\] {
+  color: #6d28d9 !important; /* violet-700 */
+}
+:root:not(.dark) .text-blue-400 {
+  color: #1d4ed8 !important; /* blue-700 */
+}
+
+/* Force dark-background elements and their children to keep white text */
+:root:not(.dark) .bg-gradient-to-r.text-white,
+:root:not(.dark) .bg-gradient-to-tr.text-white,
+:root:not(.dark) .bg-secondary.text-white,
+:root:not(.dark) .bg-primary.text-white,
+:root:not(.dark) .bg-primary-container.text-white,
+:root:not(.dark) .bg-blue-500.text-white,
+:root:not(.dark) .bg-blue-600.text-white,
+:root:not(.dark) .bg-red-500.text-white,
+:root:not(.dark) .bg-red-600.text-white,
+:root:not(.dark) .bg-green-500.text-white,
+:root:not(.dark) .bg-green-600.text-white,
+:root:not(.dark) .bg-emerald-500.text-white,
+:root:not(.dark) .bg-indigo-500.text-white,
+:root:not(.dark) .bg-rose-500.text-white,
+:root:not(.dark) .bg-amber-500.text-white,
+:root:not(.dark) .bg-yellow-500.text-white,
+:root:not(.dark) .from-zinc-700.text-white,
+:root:not(.dark) .from-blue-600.text-white,
+:root:not(.dark) .bg-zinc-800.text-white,
+:root:not(.dark) .bg-zinc-700.text-white,
+:root:not(.dark) .bg-zinc-600.text-white,
+:root:not(.dark) button.bg-gradient-to-r,
+:root:not(.dark) button.bg-secondary,
+:root:not(.dark) button.bg-blue-500,
+:root:not(.dark) button.bg-blue-600,
+:root:not(.dark) button.bg-red-500,
+:root:not(.dark) button.bg-green-500,
+:root:not(.dark) .bg-gradient-to-r *,
+:root:not(.dark) .bg-gradient-to-tr *,
+:root:not(.dark) .bg-secondary *,
+:root:not(.dark) .bg-primary *,
+:root:not(.dark) .bg-primary-container *,
+:root:not(.dark) .bg-blue-500 *,
+:root:not(.dark) .bg-blue-600 *,
+:root:not(.dark) .bg-red-500 *,
+:root:not(.dark) .bg-red-600 *,
+:root:not(.dark) .bg-green-500 *,
+:root:not(.dark) .bg-green-600 *,
+:root:not(.dark) .bg-emerald-500 *,
+:root:not(.dark) .bg-indigo-500 *,
+:root:not(.dark) .bg-rose-500 *,
+:root:not(.dark) .from-zinc-700 *,
+:root:not(.dark) .from-blue-600 *,
+:root:not(.dark) .bg-zinc-800 *,
+:root:not(.dark) .bg-zinc-700 *,
+:root:not(.dark) .bg-zinc-600 * {
+  color: #ffffff !important;
+}
+
+/* Placeholders in light mode */
+:root:not(.dark) input::placeholder,
+:root:not(.dark) textarea::placeholder {
+  color: var(--on-surface-variant) !important;
+  opacity: 0.6 !important;
+}
+
+/* Premium Shadows and Glows */
+.auth-card-shadow {
+  box-shadow: 0 10px 30px -10px rgba(19, 27, 46, 0.12), 0 1px 3px rgba(19, 27, 46, 0.05);
+}
+
+.dark .auth-card-shadow {
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.glow-green {
+  box-shadow: 0 0 25px -5px rgba(74, 222, 128, 0.15), 0 0 10px -2px rgba(74, 222, 128, 0.05);
+}
+
+.glow-red {
+  box-shadow: 0 0 25px -5px rgba(248, 113, 113, 0.15), 0 0 10px -2px rgba(248, 113, 113, 0.05);
+}
+
+.glow-blue {
+  box-shadow: 0 0 25px -5px rgba(37, 99, 235, 0.15), 0 0 10px -2px rgba(37, 99, 235, 0.05);
+}
+
+.ai-tip-card {
+  background: linear-gradient(135deg, #0e1b35 0%, #060e20 100%) !important;
+  border: 1px solid rgba(37, 99, 235, 0.25) !important;
+  box-shadow: 0 0 25px -5px rgba(37, 99, 235, 0.15) !important;
+}
+
+.dark .ai-tip-card {
+  background: linear-gradient(135deg, #0e1b35 0%, #060e20 100%) !important;
+  border: 1px solid rgba(37, 99, 235, 0.25) !important;
+}
+
+:root:not(.dark) .ai-tip-card {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%) !important;
+  border: 1px solid rgba(37, 99, 235, 0.15) !important;
+  box-shadow: 0 8px 32px 0 rgba(37, 99, 235, 0.04) !important;
+}
+
+
+.login-bg-pattern {
+  background-color: var(--background);
+  background-image: radial-gradient(var(--surface-variant) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.custom-shadow {
+  box-shadow: 0 10px 25px -5px rgba(19, 27, 46, 0.06), 0 8px 10px -6px rgba(19, 27, 46, 0.06);
+}
+
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--surface-variant);
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-fixed-dim);
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Premium Animations */
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
 
 .animate-pulse-glow {
   animation: pulseGlow 2s infinite ease-in-out;
@@ -504,4 +713,131 @@ button, input, select, textarea, a {
 
 .animate-float {
   animation: float 3s infinite ease-in-out;
+}
+
+/* Premium interactive auth animations */
+@keyframes float-slower {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-12px) rotate(1.5deg); }
+}
+
+@keyframes float-faster {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-8px) rotate(-1.5deg); }
+}
+
+@keyframes flow-gradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes simplify-path {
+  0% { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: -40; }
+}
+
+@keyframes draw-path {
+  0% { stroke-dashoffset: 1000; }
+  100% { stroke-dashoffset: 0; }
+}
+
+@keyframes success-check {
+  0% { transform: scale(0.5); opacity: 0; }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.animate-float-slow {
+  animation: float-slower 7s infinite ease-in-out;
+}
+
+.animate-float-fast {
+  animation: float-faster 5s infinite ease-in-out;
+}
+
+.animate-flow-bg {
+  background-size: 200% 200%;
+  animation: flow-gradient 12s infinite ease;
+}
+
+.animate-dash-line {
+  stroke-dasharray: 8;
+  animation: simplify-path 1.5s infinite linear;
+}
+
+.animate-draw-path {
+  stroke-dasharray: 1000;
+  animation: draw-path 3s forwards ease-in-out;
+}
+
+.animate-success-pop {
+  animation: success-check 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.auth-sidebar-glow {
+  background: radial-gradient(circle at 50% 50%, rgba(37, 99, 235, 0.25) 0%, rgba(37, 99, 235, 0) 70%);
+}
+
+.auth-split-grid {
+  background-size: 40px 40px;
+  background-image: linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+}
+
+/* Hide number input spinners/arrows globally */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Custom Scrollbar for Modal Cards */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px; /* Slightly wider custom scrollbar */
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 0.2s ease;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* Scanner Laser Line Animation */
+@keyframes laser-scan {
+  0% { top: 0%; opacity: 0; }
+  10% { opacity: 0.85; }
+  90% { opacity: 0.85; }
+  100% { top: 100%; opacity: 0; }
+}
+
+.laser-scanner::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #3b82f6, #60a5fa, #3b82f6, transparent);
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.85);
+  animation: laser-scan 3.5s infinite ease-in-out;
+  pointer-events: none;
 }

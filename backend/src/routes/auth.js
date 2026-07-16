@@ -3,19 +3,54 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { OAuth2Client } from "google-auth-library";
+import rateLimit from "express-rate-limit";
 import User from "../models/User.js";
 import { sendVerificationEmail } from "../utils/emailService.js";
 import protect from "../middleware/auth.js";
+import requireVerified from "../middleware/requireVerified.js";
 
 const router = express.Router();
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { message: "Too many login attempts. Please try again in 15 minutes." },
+});
+
+const registrationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { message: "Too many registration attempts. Please try again later." },
+});
+
+const resendVerificationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 3,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { message: "Too many verification emails requested. Please try again later." },
+});
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "30d" });
 };
 
+const sendTokenCookie = (res, token) => {
+  res.cookie("token", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+  });
+};
+
 // REGISTER
-router.post("/register", async (req, res) => {
+router.post("/register", registrationLimiter, async (req, res) => {
   const { name, email, password, upiId } = req.body;
 
   try {
@@ -62,21 +97,25 @@ router.post("/register", async (req, res) => {
       console.error("Verification email failed to send:", emailErr.message);
     }
 
+    const token = generateToken(user._id);
+    sendTokenCookie(res, token);
+
     res.status(201).json({
       _id: user._id,
       name: user.name,
       email: user.email,
       upiId: user.upiId,
       isEmailVerified: user.isEmailVerified,
-      token: generateToken(user._id),
+      token,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Registration error:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
 // LOGIN
-router.post("/login", async (req, res) => {
+router.post("/login", loginLimiter, async (req, res) => {
   const { email, password } = req.body;
 
   try {
@@ -90,16 +129,20 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ message: "Invalid email or password" });
     }
 
+    const token = generateToken(user._id);
+    sendTokenCookie(res, token);
+
     res.json({
       _id: user._id,
       name: user.name,
       email: user.email,
       upiId: user.upiId,
       isEmailVerified: user.isEmailVerified,
-      token: generateToken(user._id),
+      token,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Login error:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
@@ -137,6 +180,7 @@ router.post("/google", async (req, res) => {
       }
 
       const appToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
+      sendTokenCookie(res, appToken);
 
       return res.json({
         _id: user._id,
@@ -182,6 +226,7 @@ router.post("/google", async (req, res) => {
     }
 
     const appToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
+    sendTokenCookie(res, appToken);
 
     res.json({
       _id: user._id,
@@ -224,6 +269,9 @@ router.get("/verify-email", async (req, res) => {
     user.emailVerificationExpires = null;
     await user.save();
 
+    const appToken = generateToken(user._id);
+    sendTokenCookie(res, appToken);
+
     // Return full user + JWT so the frontend can auto-login the user
     res.json({
       message: "Email verified successfully",
@@ -232,15 +280,16 @@ router.get("/verify-email", async (req, res) => {
       email: user.email,
       upiId: user.upiId,
       isEmailVerified: true,
-      token: generateToken(user._id),
+      token: appToken,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Verify email error:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
 // UPDATE PROFILE — PUT /api/auth/profile (protected)
-router.put("/profile", protect, async (req, res) => {
+router.put("/profile", protect, requireVerified, async (req, res) => {
   try {
     const { name, upiId } = req.body;
 
@@ -264,21 +313,25 @@ router.put("/profile", protect, async (req, res) => {
 
     await user.save();
 
+    const token = generateToken(user._id);
+    sendTokenCookie(res, token);
+
     res.json({
       _id:             user._id,
       name:            user.name,
       email:           user.email,
       upiId:           user.upiId,
       isEmailVerified: user.isEmailVerified,
-      token:           generateToken(user._id),
+      token,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Update profile error:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
 // CHANGE PASSWORD — PUT /api/auth/change-password (protected)
-router.put("/change-password", protect, async (req, res) => {
+router.put("/change-password", protect, requireVerified, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
 
@@ -303,13 +356,14 @@ router.put("/change-password", protect, async (req, res) => {
 
     res.json({ message: "Password changed successfully" });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Change password error:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
 
 // RESEND VERIFICATION EMAIL — POST /api/auth/resend-verification (protected)
-router.post("/resend-verification", protect, async (req, res) => {
+router.post("/resend-verification", protect, resendVerificationLimiter, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
 
@@ -335,8 +389,19 @@ router.post("/resend-verification", protect, async (req, res) => {
 
     res.json({ message: "Verification email resent successfully" });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Resend verification error:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
+});
+
+// LOGOUT — POST /api/auth/logout
+router.post("/logout", (req, res) => {
+  res.clearCookie("token", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict"
+  });
+  res.json({ message: "Logged out successfully" });
 });
 
 export default router;

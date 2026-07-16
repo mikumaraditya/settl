@@ -47,7 +47,7 @@ export function NotificationProvider({ children }) {
     if (!user) return
 
     if (!socketRef.current) {
-      socketRef.current = io(SOCKET_URL, { autoConnect: true })
+      socketRef.current = io(SOCKET_URL, { autoConnect: true, withCredentials: true })
     }
     const socket = socketRef.current
 

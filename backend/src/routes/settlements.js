@@ -5,10 +5,13 @@ import Settlement from '../models/Settlement.js';
 import User from '../models/User.js';
 import ActivityLog from '../models/ActivityLog.js';
 import protect from '../middleware/auth.js';
+import requireVerified from '../middleware/requireVerified.js';
 import simplifyDebts from '../utils/debtSimplify.js';
 import { io } from '../../server.js';
 
 const router = express.Router();
+
+router.use(protect, requireVerified);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
@@ -19,6 +22,13 @@ router.get("/simplify/:groupId", protect, async (req, res) => {
     const group = await Group.findById(req.params.groupId);
     if (!group) {
       return res.status(404).json({ message: "Group not found" });
+    }
+
+    const isMember = group.members.some(
+      (member) => member.user?.toString() === req.user.id,
+    );
+    if (!isMember) {
+      return res.status(403).json({ message: "You are not a member of this group" });
     }
 
     const [expenses, allSettlements] = await Promise.all([
@@ -89,7 +99,8 @@ router.get("/simplify/:groupId", protect, async (req, res) => {
       pendingRequests,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error fetching settlements/transactions:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
@@ -98,19 +109,40 @@ router.get("/simplify/:groupId", protect, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.post("/settle", protect, async (req, res) => {
   try {
-    const { groupId, toUserId, amount } = req.body;
+    const { groupId, toUserId } = req.body;
+    const amount = Math.round(Number(req.body.amount) * 100) / 100;
 
-    if (!groupId || !toUserId || !amount) {
+    if (!groupId || !toUserId || req.body.amount === undefined) {
       return res.status(400).json({ message: 'groupId, toUserId and amount are required' })
     }
-    if (typeof amount !== 'number' || amount <= 0) {
-      return res.status(400).json({ message: 'Amount must be a positive number' })
+    if (!Number.isFinite(req.body.amount) || amount <= 0 || req.body.amount !== amount) {
+      return res.status(400).json({ message: 'Amount must be positive and have at most two decimal places' })
     }
 
     const group = await Group.findById(groupId);
     if (!group) return res.status(404).json({ message: 'Group not found' });
     const isMember = group.members.some(m => m.user.toString() === req.user.id);
     if (!isMember) return res.status(403).json({ message: 'Not a member of this group' });
+    if (toUserId === req.user.id) {
+      return res.status(400).json({ message: 'You cannot settle a payment with yourself' });
+    }
+    const recipientIsMember = group.members.some(m => m.user.toString() === toUserId);
+    if (!recipientIsMember) {
+      return res.status(400).json({ message: 'Settlement recipient must be a member of this group' });
+    }
+
+    // A settlement can only cover a debt currently shown by the same
+    // simplification algorithm that powers the Settle Up screen.
+    const [expenses, confirmedSettlements] = await Promise.all([
+      Expense.find({ group: groupId }),
+      Settlement.find({ group: groupId, $or: [{ status: 'confirmed' }, { status: { $exists: false } }] }),
+    ]);
+    const outstanding = simplifyDebts(expenses, confirmedSettlements).find(
+      (transaction) => transaction.from === req.user.id && transaction.to === toUserId,
+    );
+    if (!outstanding || amount > outstanding.amount) {
+      return res.status(400).json({ message: 'Settlement amount exceeds the outstanding debt to this member' });
+    }
 
     // Block only if there's already an active (pending) settlement
     const existing = await Settlement.findOne({
@@ -150,7 +182,8 @@ router.post("/settle", protect, async (req, res) => {
 
     res.status(201).json(populated);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error creating settlement request:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
@@ -172,6 +205,24 @@ router.post("/confirm", protect, async (req, res) => {
       return res.status(404).json({ message: "No pending settlement request found" });
     }
 
+    const group = await Group.findById(groupId);
+    const payerIsMember = group?.members.some((member) => member.user.toString() === fromUserId);
+    const receiverIsMember = group?.members.some((member) => member.user.toString() === req.user.id);
+    if (!payerIsMember || !receiverIsMember) {
+      return res.status(400).json({ message: "Both users must still be members of this group" });
+    }
+
+    const [expenses, confirmedSettlements] = await Promise.all([
+      Expense.find({ group: groupId }),
+      Settlement.find({ group: groupId, $or: [{ status: "confirmed" }, { status: { $exists: false } }] }),
+    ]);
+    const outstanding = simplifyDebts(expenses, confirmedSettlements).find(
+      (transaction) => transaction.from === fromUserId && transaction.to === req.user.id,
+    );
+    if (!outstanding || settlement.amount > outstanding.amount) {
+      return res.status(400).json({ message: "This payment no longer matches an outstanding debt" });
+    }
+
     settlement.status = "confirmed";
     await settlement.save();
 
@@ -191,7 +242,8 @@ router.post("/confirm", protect, async (req, res) => {
 
     res.json(populated);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error confirming settlement:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
@@ -225,7 +277,8 @@ router.delete("/settle", protect, async (req, res) => {
 
     res.json({ message: "Settlement request cancelled" });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error rejecting settlement:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
@@ -267,7 +320,8 @@ router.post("/reject", protect, async (req, res) => {
 
     res.json({ message: "Settlement request rejected" });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error rejecting settlement request:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
@@ -297,7 +351,8 @@ router.get('/group/:groupId/activity', protect, async (req, res) => {
 
     res.json({ logs, total, hasMore: skip + limit < total });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error fetching activity log:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import { useAuth } from '../context/AuthContext'
 import axios from '../api/axios'
+import UpiConfirmModal from '../components/UpiConfirmModal'
 
 export default function Profile() {
   const { user, login, logout } = useAuth()
@@ -14,6 +15,7 @@ export default function Profile() {
   const [savingProfile, setSavingProfile] = useState(false)
   const [profileSuccess, setProfileSuccess] = useState('')
   const [profileError,   setProfileError]   = useState('')
+  const [showConfirmModal, setShowConfirmModal] = useState(false)
 
   // ── Password form ─────────────────────────────────────────────────────────
   const [currentPassword, setCurrentPassword] = useState('')
@@ -26,15 +28,7 @@ export default function Profile() {
   const [pwdSuccess,  setPwdSuccess]  = useState('')
   const [pwdError,    setPwdError]    = useState('')
 
-  const handleProfileSave = async (e) => {
-    e.preventDefault()
-    if (!name.trim()) return setProfileError('Name cannot be empty')
-    if (!upiId.trim()) return setProfileError('UPI ID is required')
-    
-    const upiRegex = /^[a-zA-Z0-9.\-_]{3,50}@(oksbi|paytm|ybl|barodampay|okaxis|okhdfcbank|okicici|okbizaxis|ibl|axl|upi|apl|rapl|yapl|sbi|hdfcbank|icici|axisbank|yesbank|pnb|cnrb|indianbank|iob|unionbank|uboi|idfcbank|federal|kotak|kmbl|boi|uco|cbin|centralbank|dbs|hsbc|sc|citi|postbank|ippb|airtel|airtelmail|jio|cred|slice|sliceaxis|fi|jupiter|waaxis|wasbi|waicici|wahdfc|bob)$/i
-    if (!upiRegex.test(upiId.trim())) {
-      return setProfileError('Please enter a valid UPI ID with a valid bank handle (e.g. name@oksbi, name@paytm, name@ybl)')
-    }
+  const submitProfile = async () => {
     setSavingProfile(true)
     setProfileSuccess('')
     setProfileError('')
@@ -48,6 +42,28 @@ export default function Profile() {
     } finally {
       setSavingProfile(false)
     }
+  }
+
+  const handleProfileSave = (e) => {
+    e.preventDefault()
+    if (!name.trim()) return setProfileError('Name cannot be empty')
+    if (!upiId.trim()) return setProfileError('UPI ID is required')
+    
+    const upiRegex = /^[a-zA-Z0-9.\-_]{3,50}@(oksbi|paytm|ybl|barodampay|okaxis|okhdfcbank|okicici|okbizaxis|ibl|axl|upi|apl|rapl|yapl|sbi|hdfcbank|icici|axisbank|yesbank|pnb|cnrb|indianbank|iob|unionbank|uboi|idfcbank|federal|kotak|kmbl|boi|uco|cbin|centralbank|dbs|hsbc|sc|citi|postbank|ippb|airtel|airtelmail|jio|cred|slice|sliceaxis|fi|jupiter|waaxis|wasbi|waicici|wahdfc|bob)$/i
+    if (!upiRegex.test(upiId.trim())) {
+      return setProfileError('Please enter a valid UPI ID with a valid bank handle (e.g. name@oksbi, name@paytm, name@ybl)')
+    }
+
+    if (upiId.trim() !== user?.upiId) {
+      setShowConfirmModal(true)
+    } else {
+      submitProfile()
+    }
+  }
+
+  const handleConfirmProfileSave = () => {
+    setShowConfirmModal(false)
+    submitProfile()
   }
 
   const handlePasswordChange = async (e) => {
@@ -290,6 +306,12 @@ export default function Profile() {
         </div>
 
       </main>
+      <UpiConfirmModal
+        open={showConfirmModal}
+        upiId={upiId}
+        onConfirm={handleConfirmProfileSave}
+        onCancel={() => setShowConfirmModal(false)}
+      />
     </div>
   )
 }

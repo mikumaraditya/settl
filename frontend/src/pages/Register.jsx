@@ -2,15 +2,17 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import axios from '../api/axios'
 import { useAuth } from '../context/AuthContext'
+import UpiConfirmModal from '../components/UpiConfirmModal'
 
 export default function Register() {
   const [form, setForm] = useState({ name: '', email: '', password: '', upiId: '' })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showConfirmModal, setShowConfirmModal] = useState(false)
   const { login } = useAuth()
   const navigate = useNavigate()
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault()
     if (!form.upiId.trim()) {
       setError('UPI ID is required')
@@ -26,6 +28,11 @@ export default function Register() {
       setError('Password must be at least 8 characters long, and contain at least one uppercase letter, one lowercase letter, one number, and one special character.')
       return
     }
+    setShowConfirmModal(true)
+  }
+
+  const handleConfirmRegister = async () => {
+    setShowConfirmModal(false)
     setLoading(true)
     setError('')
     try {
@@ -196,6 +203,12 @@ export default function Register() {
           </div>
         </div>
       </div>
+      <UpiConfirmModal
+        open={showConfirmModal}
+        upiId={form.upiId}
+        onConfirm={handleConfirmRegister}
+        onCancel={() => setShowConfirmModal(false)}
+      />
     </div>
   )
 }

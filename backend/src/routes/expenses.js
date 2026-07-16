@@ -3,9 +3,12 @@ import Expense from '../models/Expense.js';
 import Group from '../models/Group.js';
 import ActivityLog from '../models/ActivityLog.js';
 import protect from '../middleware/auth.js';
+import requireVerified from '../middleware/requireVerified.js';
 import { io } from '../../server.js';
 
 const router = express.Router();
+
+router.use(protect, requireVerified);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ADD EXPENSE
@@ -20,59 +23,119 @@ router.post("/", protect, async (req, res) => {
       return res.status(404).json({ message: "Group not found" });
     }
 
+    const memberIds = new Set(group.members.map((member) => member.user.toString()));
+    if (!memberIds.has(req.user.id)) {
+      return res.status(403).json({ message: "You are not a member of this group" });
+    }
+
     const paidBy = paidByBody || req.user.id;
+    if (paidBy.toString() !== req.user.id) {
+      return res.status(403).json({ message: "You can only record expenses that you paid" });
+    }
+
     const splitMembers = membersBody || group.members.map((m) => m.user.toString());
 
-    if (!splitMembers || splitMembers.length === 0) {
+    if (!Array.isArray(splitMembers) || splitMembers.length === 0) {
       return res.status(400).json({ message: "No members specified for splitting" });
     }
 
-    let finalSplits = [];
-    const totalAmount = parseInt(amount, 10);
+    const splitMemberIds = splitMembers.map((memberId) => memberId?.toString());
+    if (
+      splitMemberIds.some((memberId) => !memberIds.has(memberId)) ||
+      new Set(splitMemberIds).size !== splitMemberIds.length
+    ) {
+      return res.status(400).json({ message: "Split members must be unique members of this group" });
+    }
 
-    if (isNaN(totalAmount) || totalAmount <= 0) {
-      return res.status(400).json({ message: "Amount must be a positive integer representing Paise" });
+    let finalSplits = [];
+    const totalAmount = Math.round(Number(amount) * 100) / 100;
+
+    if (!Number.isFinite(amount) || totalAmount <= 0 || amount !== totalAmount) {
+      return res.status(400).json({ message: "Amount must be a positive value with at most two decimal places" });
     }
 
     if (splitType === "equal" || !splitType) {
       const numMembers = splitMembers.length;
-      const baseShare = Math.floor(totalAmount / numMembers);
-      const remainder = totalAmount % numMembers;
+      const totalPaise = Math.round(totalAmount * 100);
+      const baseShare = Math.floor(totalPaise / numMembers);
+      const remainder = totalPaise % numMembers;
 
       finalSplits = splitMembers.map((userId, index) => ({
         user: userId,
-        // Add the modulus remainder paise to the first person in the split array to guarantee absolute precision
-        amount: index === 0 ? baseShare + remainder : baseShare,
+        // Add the modulus remainder paise to the first person in the split array to guarantee absolute precision.
+        amount: (index === 0 ? baseShare + remainder : baseShare) / 100,
         paid: userId === paidBy,
       }));
     } else if (splitType === "exact") {
       if (!splits || splits.length === 0) {
         return res.status(400).json({ message: "Splits details are required for exact split type" });
       }
+
+      if (!Array.isArray(splits)) {
+        return res.status(400).json({ message: "Splits must be an array" });
+      }
+      if (splits.some((split) => !split || typeof split !== "object")) {
+        return res.status(400).json({ message: "Each split must include a member and amount" });
+      }
+
       finalSplits = splits.map((s) => ({
         user: s.user,
-        amount: Math.round(s.amount),
-        paid: s.user === paidBy,
+        amount: Math.round(Number(s.amount) * 100) / 100,
+        paid: s.user?.toString() === paidBy.toString(),
       }));
+
+      const exactTotalPaise = finalSplits.reduce((sum, split) => sum + Math.round(split.amount * 100), 0);
+      if (
+        finalSplits.some((split) => !Number.isFinite(split.amount) || split.amount <= 0) ||
+        exactTotalPaise !== Math.round(totalAmount * 100)
+      ) {
+        return res.status(400).json({ message: "Exact splits must be positive amounts with at most two decimal places and add up to the expense amount" });
+      }
     } else if (splitType === "percentage") {
       if (!splits || splits.length === 0) {
         return res.status(400).json({ message: "Splits details are required for percentage split type" });
       }
+      if (!Array.isArray(splits)) {
+        return res.status(400).json({ message: "Splits must be an array" });
+      }
+      if (splits.some((split) => !split || typeof split !== "object")) {
+        return res.status(400).json({ message: "Each split must include a member and percentage" });
+      }
+
+      const totalPercentage = splits.reduce((sum, split) => sum + split.percentage, 0);
+      if (
+        splits.some((split) => !Number.isFinite(split.percentage) || split.percentage <= 0) ||
+        Math.abs(totalPercentage - 100) > 0.000001
+      ) {
+        return res.status(400).json({ message: "Split percentages must be positive and add up to 100" });
+      }
+
+      const totalPaise = Math.round(totalAmount * 100);
       let sumOfSplits = 0;
       finalSplits = splits.map((s) => {
-        const share = Math.floor((s.percentage / 100) * totalAmount);
+        const share = Math.floor((s.percentage / 100) * totalPaise);
         sumOfSplits += share;
         return {
           user: s.user,
-          amount: share,
-          paid: s.user === paidBy,
+          amount: share / 100,
+          paid: s.user?.toString() === paidBy.toString(),
         };
       });
       // Distribute any float rounding leftover to the first member
-      const remainder = totalAmount - sumOfSplits;
+      const remainder = totalPaise - sumOfSplits;
       if (remainder > 0 && finalSplits.length > 0) {
-        finalSplits[0].amount += remainder;
+        finalSplits[0].amount += remainder / 100;
       }
+    } else {
+      return res.status(400).json({ message: "Invalid split type" });
+    }
+
+    const finalSplitUserIds = finalSplits.map((split) => split.user?.toString());
+    if (
+      finalSplitUserIds.some((memberId) => !memberIds.has(memberId)) ||
+      new Set(finalSplitUserIds).size !== finalSplitUserIds.length
+    ) {
+      return res.status(400).json({ message: "Split members must be unique members of this group" });
     }
 
     const expense = await Expense.create({
@@ -106,7 +169,8 @@ router.post("/", protect, async (req, res) => {
 
     res.status(201).json(populated);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error creating expense:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
@@ -122,47 +186,70 @@ router.post("/", protect, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/group/:groupId", protect, async (req, res) => {
   try {
-    const monthsPerPage = Math.max(1, parseInt(req.query.months) || 3);
-    const page         = Math.max(1, parseInt(req.query.page)   || 1);
+    const group = await Group.findById(req.params.groupId);
+    if (!group) {
+      return res.status(404).json({ message: "Group not found" });
+    }
 
-    // Fetch ALL expenses sorted newest first (we do month grouping in JS)
-    const allExpenses = await Expense.find({ group: req.params.groupId })
+    const isMember = group.members.some(
+      (member) => member.user?.toString() === req.user.id,
+    );
+    if (!isMember) {
+      return res.status(403).json({ message: "You are not a member of this group" });
+    }
+
+    const monthsPerPage = Math.min(12, Math.max(1, parseInt(req.query.months) || 3));
+    const page         = Math.max(1, parseInt(req.query.page)   || 1);
+    const startIdx     = (page - 1) * monthsPerPage;
+
+    const [monthPage] = await Expense.aggregate([
+      { $match: { group: group._id } },
+      {
+        $project: {
+          month: { $dateToString: { format: "%Y-%m", date: "$createdAt" } },
+        },
+      },
+      { $group: { _id: "$month" } },
+      { $sort: { _id: -1 } },
+      {
+        $facet: {
+          visibleMonths: [{ $skip: startIdx }, { $limit: monthsPerPage }],
+          total: [{ $count: "count" }],
+        },
+      },
+    ]);
+
+    const totalMonths = monthPage?.total[0]?.count || 0;
+    const visibleMonths = monthPage?.visibleMonths.map((month) => month._id) || [];
+    const loadedMonths = Math.min(startIdx + visibleMonths.length, totalMonths);
+    const hasMore = loadedMonths < totalMonths;
+
+    if (visibleMonths.length === 0) {
+      return res.json({ expenses: [], totalMonths, loadedMonths, hasMore });
+    }
+
+    const oldestMonth = visibleMonths.at(-1);
+    const newestMonth = visibleMonths[0];
+    const startDate = new Date(`${oldestMonth}-01T00:00:00.000Z`);
+    const [newestYear, newestMonthNumber] = newestMonth.split("-").map(Number);
+    const endDate = new Date(Date.UTC(newestYear, newestMonthNumber, 1));
+
+    const expenses = await Expense.find({
+      group: group._id,
+      createdAt: { $gte: startDate, $lt: endDate },
+    })
       .populate("paidBy", "name email")
       .populate("splits.user", "name email upiId")
       .sort({ createdAt: -1 });
 
+    return res.json({ expenses, totalMonths, loadedMonths, hasMore });
+
     // ── Build an ordered list of unique "YYYY-MM" month keys ─────────────────
-    const monthKeyOf = (date) => {
-      const d = new Date(date);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    };
-
     // Ordered unique months (newest first)
-    const allMonthKeys = [];
-    const seen = new Set();
-    for (const exp of allExpenses) {
-      const key = monthKeyOf(exp.createdAt);
-      if (!seen.has(key)) {
-        seen.add(key);
-        allMonthKeys.push(key);
-      }
-    }
-
-    const totalMonths   = allMonthKeys.length;
-    const startIdx      = (page - 1) * monthsPerPage;   // inclusive
-    const endIdx        = startIdx + monthsPerPage;      // exclusive
-    const visibleMonths = new Set(allMonthKeys.slice(startIdx, endIdx));
-    const loadedMonths  = Math.min(endIdx, totalMonths);
-    const hasMore       = endIdx < totalMonths;
-
     // ── Filter expenses to only the visible months ────────────────────────────
-    const expenses = allExpenses.filter((exp) =>
-      visibleMonths.has(monthKeyOf(exp.createdAt))
-    );
-
-    res.json({ expenses, totalMonths, loadedMonths, hasMore });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error fetching expenses:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
@@ -213,7 +300,8 @@ router.delete("/:id", protect, async (req, res) => {
 
     res.json({ message: "Expense deleted" });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Error deleting expense:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
