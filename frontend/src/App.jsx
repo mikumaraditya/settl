@@ -7,15 +7,22 @@ import GroupDetail from './pages/GroupDetail'
 import SettleUp from './pages/SettleUp'
 import VerifyEmail from './pages/VerifyEmail'
 import Profile from './pages/Profile'
+import Landing from './pages/Landing'
 
 const ProtectedRoute = ({ children }) => {
   const { user } = useAuth()
   return user ? children : <Navigate to="/login" />
 }
 
+const RootRoute = () => {
+  const { user } = useAuth()
+  return user ? <Navigate to="/dashboard" /> : <Landing />
+}
+
 export default function App() {
   return (
     <Routes>
+      <Route path="/" element={<RootRoute />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/verify-email" element={<VerifyEmail />} />
@@ -23,7 +30,7 @@ export default function App() {
       <Route path="/group/:id" element={<ProtectedRoute><GroupDetail /></ProtectedRoute>} />
       <Route path="/settle/:id" element={<ProtectedRoute><SettleUp /></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-      <Route path="*" element={<Navigate to="/login" />} />
+      <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   )
 }
