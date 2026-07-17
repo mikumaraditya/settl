@@ -226,24 +226,6 @@ router.post("/confirm", protect, async (req, res) => {
       return res.status(400).json({ message: "Both users must still be members of this group" });
     }
 
-    const [expenses, confirmedSettlements] = await Promise.all([
-      Expense.find({ group: groupId }),
-      Settlement.find({ group: groupId, $or: [{ status: "confirmed" }, { status: { $exists: false } }] }),
-    ]);
-
-    const balances = computeBalances(expenses, confirmedSettlements);
-    const payerBalance = balances[fromUserId] || 0;
-    const receiverBalance = balances[req.user.id] || 0;
-
-    const rawPayerDebt = -payerBalance;
-    const rawReceiverCredit = receiverBalance;
-
-    const amountInPaise = Math.round(settlement.amount * 100);
-
-    if (rawPayerDebt < amountInPaise || rawReceiverCredit < amountInPaise) {
-      return res.status(400).json({ message: "This payment no longer matches an outstanding debt" });
-    }
-
     settlement.status = "confirmed";
     await settlement.save();
 
