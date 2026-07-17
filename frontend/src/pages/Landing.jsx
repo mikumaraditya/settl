@@ -122,7 +122,7 @@ export default function Landing() {
   const faqs = [
     {
       q: 'Is Settl free to use?',
-      a: 'Yes, Settl is completely free. We do not charge subscription fees, premium memberships, or transaction gateway fees since settlements occur peer-to-peer.'
+      a: 'Yes. Settl is free to use because settlements occur peer-to-peer directly between your bank accounts. There are no subscription fees or platform-level transaction fees.'
     },
     {
       q: 'How does one-tap UPI settlement work?',
@@ -130,11 +130,19 @@ export default function Landing() {
     },
     {
       q: 'Do all group members need to download the app?',
-      a: 'No. The group creator can add members by email, log expenses, and settle up on their behalf. However, members who download the app can view live balances, chat in real-time, and get AI tips.'
+      a: 'Yes. Anyone you want to add to a group must have signed up for a Settl account first. Once they are registered and added to your group, they can be included in all expenses and settlements, even if they do not check the app regularly.'
+    },
+    {
+      q: 'Can I settle a debt partially?',
+      a: 'Yes. You can settle any amount up to your total outstanding net debt to another member. The system will record the payment and update the remaining balance accordingly.'
+    },
+    {
+      q: 'Can I edit an expense after adding it?',
+      a: 'No, in-place expense editing is not supported. However, the person who paid for/logged the expense can delete it within 2 hours of creation and re-add it. After 2 hours, the expense entry is locked.'
     },
     {
       q: 'Is my payment data secure?',
-      a: 'Absolutely. Settl never asks for or stores your UPI PINs, passwords, or bank credentials. All authentication is JWT-secured, and the actual transfer takes place entirely inside your secure UPI app.'
+      a: 'We do not request or store sensitive bank account passwords, UPI PINs, or card credentials. Session access is secured using standard JSON Web Tokens (JWT). When you initiate a settlement, the actual transfer is executed entirely inside your secure, bank-native UPI application, meaning Settl never handles your money directly.'
     }
   ];
 

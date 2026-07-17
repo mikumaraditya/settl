@@ -1,30 +1,29 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import axios from '../api/axios'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import axios from '../api/axios'
 import GoogleLoginButton from '../components/GoogleLoginButton'
 import ErrorToast from '../components/ErrorToast'
 
 export default function Login() {
+  const navigate = useNavigate()
+  const { login, user } = useAuth()
   const [form, setForm] = useState({ email: '', password: '' })
-  const [error, setError] = useState(() => {
-    const expired = localStorage.getItem("settl_session_expired")
-    if (expired) {
-      localStorage.removeItem("settl_session_expired")
-      return "Session expired, please sign in again."
-    }
-    return ""
-  })
+  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
-  const { login } = useAuth()
-  const navigate = useNavigate()
 
-  const handleSubmit = async (e) => {
+  // Redirect if already logged in
+  if (user) {
+    navigate('/dashboard')
+    return null
+  }
+
+  const handleSubmit = async e => {
     e.preventDefault()
-    setLoading(true)
-    setError('')
     try {
+      setLoading(true)
+      setError('')
       const { data } = await axios.post('/auth/login', form)
       login(data)
       navigate('/dashboard')
@@ -36,12 +35,12 @@ export default function Login() {
   }
 
   return (
-    <div className="h-screen w-full flex bg-[#060e20] text-white overflow-hidden relative">
+    <div className="h-screen w-full flex bg-background text-on-surface overflow-hidden relative">
       {/* Left Panel: Presentation (hidden on mobile/tablet) */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-[#0b1528] via-[#091122] to-[#040914] relative items-center justify-center p-12 overflow-hidden border-r border-white/5">
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-slate-100 via-slate-50 to-white dark:from-[#0b1528] dark:via-[#091122] dark:to-[#040914] relative items-center justify-center p-12 overflow-hidden border-r border-slate-200 dark:border-white/5">
         {/* Decorative Glow */}
-        <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] rounded-full bg-blue-600/10 blur-[120px] pointer-events-none"></div>
-        <div className="absolute bottom-[-20%] right-[-20%] w-[80%] h-[80%] rounded-full bg-indigo-600/10 blur-[120px] pointer-events-none"></div>
+        <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] rounded-full bg-blue-600/5 dark:bg-blue-600/10 blur-[120px] pointer-events-none"></div>
+        <div className="absolute bottom-[-20%] right-[-20%] w-[80%] h-[80%] rounded-full bg-indigo-600/5 dark:bg-indigo-600/10 blur-[120px] pointer-events-none"></div>
         
         {/* Decorative Grid Overlay */}
         <div className="absolute inset-0 auth-split-grid opacity-30"></div>
@@ -52,27 +51,27 @@ export default function Login() {
             <div className="inline-flex items-center justify-center w-10 h-10 bg-gradient-to-tr from-secondary to-blue-600 rounded-xl shadow-lg shadow-secondary/20">
               <span className="material-symbols-outlined text-white text-[22px] font-bold">account_balance_wallet</span>
             </div>
-            <h2 className="text-3xl font-extrabold tracking-tight flex items-center gap-1 leading-none">
+            <h2 className="text-3xl font-extrabold tracking-tight flex items-center gap-1 leading-none text-on-surface">
               <span>Settl</span><span className="w-2.5 h-2.5 rounded-full bg-secondary"></span>
             </h2>
           </div>
 
           {/* Catchy Slogan */}
           <div className="space-y-2">
-            <h1 className="text-3xl lg:text-4xl font-black leading-tight tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+            <h1 className="text-3xl lg:text-4xl font-black leading-tight tracking-tight bg-gradient-to-r from-slate-950 via-slate-800 to-slate-700 dark:from-white dark:via-slate-200 dark:to-slate-400 bg-clip-text text-transparent">
               Split bills with ease.<br />Settl them in one click.
             </h1>
-            <p className="text-xs lg:text-sm text-slate-400 leading-relaxed">
+            <p className="text-xs lg:text-sm text-on-surface-variant leading-relaxed">
               The smartest way to track group expenses, manage shared bills, and simplify complex debts with friends, family, and flatmates.
             </p>
           </div>
 
           {/* Live CSS Demo Card */}
-          <div className="glass-card p-4 lg:p-5 rounded-2xl border border-white/10 bg-white/[0.02] shadow-[0_20px_50px_rgba(0,0,0,0.3)] space-y-3.5 animate-float-slow">
-            <div className="flex justify-between items-center border-b border-white/5 pb-2">
+          <div className="glass-card p-4 lg:p-5 rounded-2xl border border-slate-200 dark:border-white/10 bg-white/40 dark:bg-white/[0.02] shadow-[0_20px_50px_rgba(0,0,0,0.15)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.3)] space-y-3.5 animate-float-slow">
+            <div className="flex justify-between items-center border-b border-slate-200 dark:border-white/5 pb-2">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
-                <span className="text-[10px] lg:text-xs font-bold uppercase tracking-wider text-slate-400">Live Demo: Goa Trip 🌴</span>
+                <span className="text-[10px] lg:text-xs font-bold uppercase tracking-wider text-on-surface-variant">Live Demo: Goa Trip 🌴</span>
               </div>
               <span className="text-[9px] lg:text-[10px] bg-secondary/20 text-secondary border border-secondary/30 px-2 py-0.5 rounded-full font-bold uppercase">Active Group</span>
             </div>
@@ -82,10 +81,10 @@ export default function Login() {
               {/* Connection SVG Line */}
               <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 0 }}>
                 {/* Unsimplified Paths (Faint Dashed Lines showing 4 back-and-forth payments) */}
-                <path d="M 285 28 Q 225 58 165 68" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="1" strokeDasharray="3 3" />
-                <path d="M 165 68 Q 105 58 45 28" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="1" strokeDasharray="3 3" />
-                <path d="M 45 28 Q 105 58 165 68" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="1" strokeDasharray="3 3" />
-                <path d="M 285 28 Q 165 5 45 28" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="1" strokeDasharray="3 3" />
+                <path d="M 285 28 Q 225 58 165 68" fill="none" stroke="currentColor" className="text-on-surface-variant/10" strokeWidth="1" strokeDasharray="3 3" />
+                <path d="M 165 68 Q 105 58 45 28" fill="none" stroke="currentColor" className="text-on-surface-variant/10" strokeWidth="1" strokeDasharray="3 3" />
+                <path d="M 45 28 Q 105 58 165 68" fill="none" stroke="currentColor" className="text-on-surface-variant/10" strokeWidth="1" strokeDasharray="3 3" />
+                <path d="M 285 28 Q 165 5 45 28" fill="none" stroke="currentColor" className="text-on-surface-variant/10" strokeWidth="1" strokeDasharray="3 3" />
                 
                 {/* Simplified Path (Glowing Blue Animated - Kabir pays Amit 1500 directly) */}
                 <path d="M 285 28 Q 165 5 45 28" fill="none" stroke="url(#blue-gradient)" strokeWidth="2.5" strokeDasharray="4 6" className="animate-dash-line" />
@@ -105,29 +104,29 @@ export default function Login() {
                 <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600/20 to-blue-500/10 border border-blue-500/40 flex items-center justify-center font-bold text-blue-400 text-xs shadow-[0_0_15px_rgba(59,130,246,0.15)]">
                   AM
                 </div>
-                <span className="text-[10px] font-semibold mt-1 text-slate-300">Amit</span>
+                <span className="text-[10px] font-semibold mt-1 text-on-surface">Amit</span>
                 <span className="text-[9px] text-emerald-400 font-bold mt-0.5">+₹1,500</span>
               </div>
 
               <div className="absolute left-[145px] top-[48px] flex flex-col items-center z-10">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-slate-800/80 to-slate-700/40 border border-slate-600/40 flex items-center justify-center font-bold text-slate-400 text-xs">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-slate-200 to-slate-100 dark:from-slate-800/80 dark:to-slate-700/40 border border-slate-300 dark:border-slate-600/40 flex items-center justify-center font-bold text-on-surface-variant text-xs">
                   SA
                 </div>
-                <span className="text-[10px] font-semibold mt-1 text-slate-300">Sara</span>
-                <span className="text-[9px] text-slate-500 font-semibold mt-0.5">Settled</span>
+                <span className="text-[10px] font-semibold mt-1 text-on-surface">Sara</span>
+                <span className="text-[9px] text-on-surface-variant/60 font-semibold mt-0.5">Settled</span>
               </div>
 
               <div className="absolute left-[270px] top-[8px] flex flex-col items-center z-10 animate-float-slow">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-pink-600/20 to-pink-500/10 border border-pink-500/40 flex items-center justify-center font-bold text-pink-400 text-xs shadow-[0_0_15px_rgba(236,72,153,0.15)]">
                   KA
                 </div>
-                <span className="text-[10px] font-semibold mt-1 text-slate-300">Kabir</span>
+                <span className="text-[10px] font-semibold mt-1 text-on-surface">Kabir</span>
                 <span className="text-[9px] text-rose-400 font-bold mt-0.5">-₹1,500</span>
               </div>
             </div>
 
             {/* Explanation Text */}
-            <div className="bg-white/[0.02] border border-white/5 rounded-xl p-2.5 text-[11px] lg:text-xs text-slate-400 flex items-start gap-2">
+            <div className="bg-slate-50/50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 rounded-xl p-2.5 text-[11px] lg:text-xs text-on-surface-variant flex items-start gap-2">
               <span className="material-symbols-outlined text-secondary text-[16px] lg:text-[18px]">lightbulb</span>
               <p className="leading-relaxed">
                 Instead of 4 back-and-forth payments between Amit (paid ₹3,000), Sara (paid ₹1,500), and Kabir (paid ₹0), Settl simplifies it so Kabir pays Amit ₹1,500 directly and Sara pays ₹0.
@@ -139,19 +138,19 @@ export default function Login() {
           <div className="grid grid-cols-2 gap-3 pt-2">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-secondary text-[18px] lg:text-[20px]">check_circle</span>
-              <span className="text-[11px] lg:text-xs font-semibold text-slate-300">Equal & Unequal Splits</span>
+              <span className="text-[11px] lg:text-xs font-semibold text-on-surface">Equal & Unequal Splits</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-secondary text-[18px] lg:text-[20px]">check_circle</span>
-              <span className="text-[11px] lg:text-xs font-semibold text-slate-300">UPI Payments & QR</span>
+              <span className="text-[11px] lg:text-xs font-semibold text-on-surface">UPI Payments & QR</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-secondary text-[18px] lg:text-[20px]">check_circle</span>
-              <span className="text-[11px] lg:text-xs font-semibold text-slate-300">Real-time Group Chat</span>
+              <span className="text-[11px] lg:text-xs font-semibold text-on-surface">Real-time Group Chat</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-secondary text-[18px] lg:text-[20px]">check_circle</span>
-              <span className="text-[11px] lg:text-xs font-semibold text-slate-300">Detailed Activity Log</span>
+              <span className="text-[11px] lg:text-xs font-semibold text-on-surface">Detailed Activity Log</span>
             </div>
           </div>
         </div>
@@ -170,32 +169,30 @@ export default function Login() {
               <div className="inline-flex items-center justify-center w-8 h-8 bg-gradient-to-tr from-secondary to-blue-600 rounded-xl shadow-md">
                 <span className="material-symbols-outlined text-white text-[18px] font-bold">account_balance_wallet</span>
               </div>
-              <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-0.5 animate-pulse-glow">
+              <h1 className="text-2xl font-extrabold text-on-surface tracking-tight flex items-center gap-0.5 animate-pulse-glow">
                 <span>Settl</span><span className="w-2 h-2 rounded-full bg-secondary"></span>
               </h1>
             </div>
-            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mt-1.5">Split now · Settl later</p>
+            <p className="text-[10px] text-on-surface-variant font-semibold uppercase tracking-wider mt-1.5">Split now · Settl later</p>
           </div>
 
           {/* Card */}
-          <div className="glass-card rounded-3xl p-6 md:p-8 shadow-2xl relative border border-white/10 bg-white/[0.03] backdrop-blur-xl overflow-hidden auth-card-shadow">
+          <div className="glass-card rounded-3xl p-6 md:p-8 shadow-2xl relative border border-slate-200/80 dark:border-white/10 bg-white/60 dark:bg-white/[0.03] backdrop-blur-xl overflow-hidden auth-card-shadow">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-secondary to-blue-500" />
             
             <div className="mb-6 text-center">
-              <h2 className="text-2xl font-black text-white tracking-tight">Welcome Back</h2>
-              <p className="mt-1 text-xs text-slate-400 font-semibold">Sign in to manage your shared expenses</p>
+              <h2 className="text-2xl font-black text-on-surface tracking-tight">Welcome Back</h2>
+              <p className="mt-1 text-xs text-on-surface-variant font-semibold">Sign in to manage your shared expenses</p>
             </div>
-
-
 
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Email Input */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1" htmlFor="email">
+                <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest block ml-1" htmlFor="email">
                   Email Address
                 </label>
                 <div className="relative group">
-                  <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-[18px] transition-colors group-focus-within:text-secondary pointer-events-none">
+                  <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px] transition-colors group-focus-within:text-secondary pointer-events-none">
                     mail
                   </span>
                   <input
@@ -204,7 +201,7 @@ export default function Login() {
                     placeholder="name@company.com"
                     value={form.email}
                     onChange={e => setForm({ ...form, email: e.target.value })}
-                    className="w-full pl-10 pr-4 py-3 bg-white/[0.02] border border-white/10 rounded-xl text-sm text-white outline-none transition-all placeholder:text-slate-500 focus:border-secondary focus:ring-4 focus:ring-secondary/15"
+                    className="w-full pl-10 pr-4 py-3 bg-slate-50/50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/10 rounded-xl text-sm text-on-surface outline-none transition-all placeholder:text-on-surface-variant/50 focus:border-secondary focus:ring-4 focus:ring-secondary/15"
                     required
                   />
                 </div>
@@ -212,11 +209,11 @@ export default function Login() {
 
               {/* Password Input */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block ml-1" htmlFor="password">
+                <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest block ml-1" htmlFor="password">
                   Password
                 </label>
                 <div className="relative group">
-                  <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-[18px] transition-colors group-focus-within:text-secondary pointer-events-none">
+                  <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px] transition-colors group-focus-within:text-secondary pointer-events-none">
                     lock
                   </span>
                   <input
@@ -225,14 +222,14 @@ export default function Login() {
                     placeholder="••••••••"
                     value={form.password}
                     onChange={e => setForm({ ...form, password: e.target.value })}
-                    className="w-full pl-10 pr-11 py-3 bg-white/[0.02] border border-white/10 rounded-xl text-sm text-white outline-none transition-all placeholder:text-slate-500 focus:border-secondary focus:ring-4 focus:ring-secondary/15"
+                    className="w-full pl-10 pr-11 py-3 bg-slate-50/50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/10 rounded-xl text-sm text-on-surface outline-none transition-all placeholder:text-on-surface-variant/50 focus:border-secondary focus:ring-4 focus:ring-secondary/15"
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(value => !value)}
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
                   >
                     <span className="material-symbols-outlined text-[18px]">{showPassword ? 'visibility_off' : 'visibility'}</span>
                   </button>
@@ -259,7 +256,7 @@ export default function Login() {
               </button>
 
               {/* Google login button */}
-              <div className="pt-2 border-t border-white/5">
+              <div className="pt-2 border-t border-slate-200 dark:border-white/5">
                 <GoogleLoginButton
                   onLoginSuccess={(data) => {
                     login(data)
@@ -271,8 +268,8 @@ export default function Login() {
             </form>
 
             {/* Footer Link */}
-            <div className="mt-6 text-center pt-4 border-t border-white/5">
-              <p className="text-xs text-slate-400">
+            <div className="mt-6 text-center pt-4 border-t border-slate-200 dark:border-white/5">
+              <p className="text-xs text-on-surface-variant">
                 New to Settl?{' '}
                 <Link to="/register" className="font-bold text-secondary hover:underline transition-all">
                   Create an account
@@ -282,7 +279,7 @@ export default function Login() {
           </div>
 
           {/* Security badges */}
-          <div className="flex justify-center gap-6 opacity-35">
+          <div className="flex justify-center gap-6 text-on-surface-variant/60">
             <div className="flex items-center gap-1">
               <span className="material-symbols-outlined text-[14px]">verified_user</span>
               <span className="text-[9px] font-bold uppercase tracking-wider">Secure Encryption</span>
