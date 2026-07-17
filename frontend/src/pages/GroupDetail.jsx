@@ -36,6 +36,57 @@ export default function GroupDetail() {
   const [activityFetched, setActivityFetched] = useState(false)
   const [activityHasMore, setActivityHasMore] = useState(false)
   const [activityTotal, setActivityTotal]     = useState(0)
+  const [activityFilter, setActivityFilter]   = useState('all')
+
+  const groupLogsByDay = (logs) => {
+    const groupsMap = new Map();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    logs.forEach(log => {
+      const logDate = new Date(log.createdAt);
+      const compareDate = new Date(logDate);
+      compareDate.setHours(0, 0, 0, 0);
+
+      let label = '';
+      if (compareDate.getTime() === today.getTime()) {
+        label = 'Today';
+      } else if (compareDate.getTime() === yesterday.getTime()) {
+        label = 'Yesterday';
+      } else {
+        label = logDate.toLocaleDateString('en-IN', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric'
+        });
+      }
+
+      if (!groupsMap.has(label)) {
+        groupsMap.set(label, []);
+      }
+      groupsMap.get(label).push(log);
+    });
+
+    return Array.from(groupsMap.entries()).map(([dateLabel, items]) => ({
+      dateLabel,
+      items
+    }));
+  };
+
+  const categoryIconMap = {
+    food: 'restaurant',
+    travel: 'directions_car',
+    shopping: 'shopping_bag',
+    rent: 'home',
+    entertainment: 'sports_esports',
+    fuel: 'local_gas_station',
+    groceries: 'local_grocery_store',
+    medical: 'medical_services',
+    utilities: 'bolt',
+  };
 
   // ── Modals / forms ────────────────────────────────────────────────────────────
   const [showAddExpense, setShowAddExpense]   = useState(false)
@@ -785,91 +836,223 @@ export default function GroupDetail() {
             )}
 
             {/* ── ACTIVITY TAB ─────────────────────────────────────────────── */}
-            {activeTab === 'activity' && (
-              <div className="flex flex-col gap-2 animate-in fade-in duration-200">
+            {activeTab === 'activity' && (() => {
+              const filteredLogs = activityLogs.filter(log => {
+                if (activityFilter === 'all') return true;
+                if (activityFilter === 'expenses') {
+                  return log.type === 'expense_added' || log.type === 'expense_deleted';
+                }
+                if (activityFilter === 'settlements') {
+                  return log.type === 'settlement_requested' || 
+                         log.type === 'settlement_confirmed' || 
+                         log.type === 'settlement_rejected';
+                }
+                if (activityFilter === 'members') {
+                  return log.type === 'member_added' || 
+                         log.type === 'member_removed' || 
+                         log.type === 'member_left' || 
+                         log.type === 'group_created';
+                }
+                return true;
+              });
 
-                {activityLoading && activityLogs.length === 0 ? (
-                  <div className="flex flex-col gap-3 pt-2">
-                    {[...Array(5)].map((_, i) => (
-                      <div key={i} className="flex items-start gap-3 px-1">
-                        <div className="w-8 h-8 rounded-xl bg-white/5 animate-pulse flex-shrink-0" />
-                        <div className="flex-1 flex flex-col gap-1.5 pt-1">
-                          <div className="h-3 w-2/3 bg-white/5 rounded animate-pulse" />
-                          <div className="h-2.5 w-1/3 bg-white/5 rounded animate-pulse" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : activityLogs.length === 0 ? (
-                  <div className="text-center py-16 border-2 border-dashed border-outline-variant/20 rounded-2xl bg-white/5 flex flex-col items-center">
-                    <span className="material-symbols-outlined text-4xl text-outline-variant/40 mb-3">history</span>
-                    <p className="text-on-surface-variant text-sm font-semibold">No activity yet</p>
-                    <p className="text-xs text-on-surface-variant/60 mt-1">Events will appear here as the group is used</p>
-                  </div>
-                ) : (
-                  <div className="relative">
-                    {/* Vertical line */}
-                    <div className="absolute left-[15px] top-4 bottom-4 w-px bg-white/5" />
+              const groupedLogs = groupLogsByDay(filteredLogs);
 
-                    <div className="flex flex-col">
-                      {activityLogs.map((log, idx) => {
-                        const cfg = {
-                          group_created:        { icon: 'group_add',      color: '#a78bfa', label: () => `created this group` },
-                          expense_added:        { icon: 'receipt_long',   color: '#2563eb', label: (l) => `added "${l.meta?.description}" — ₹${Number(l.meta?.amount).toLocaleString('en-IN')}` },
-                          expense_deleted:      { icon: 'delete',         color: '#f87171', label: (l) => `deleted expense "${l.meta?.description}" — ₹${Number(l.meta?.amount).toLocaleString('en-IN')}` },
-                          settlement_requested: { icon: 'payments',       color: '#4ade80', label: (l) => `sent ₹${Number(l.meta?.amount).toLocaleString('en-IN')} to ${l.meta?.toName}` },
-                          settlement_confirmed: { icon: 'check_circle',   color: '#4ade80', label: (l) => `confirmed ₹${Number(l.meta?.amount).toLocaleString('en-IN')} from ${l.meta?.fromName}` },
-                          settlement_disputed:  { icon: 'gavel',          color: '#f87171', label: (l) => `disputed ₹${Number(l.meta?.amount).toLocaleString('en-IN')} payment from ${l.meta?.fromName}` },
-                          evidence_submitted:   { icon: 'upload_file',    color: '#fbbf24', label: (l) => `submitted payment proof to ${l.meta?.toName}` },
-                          dispute_resolved:     { icon: 'verified',       color: '#4ade80', label: (l) => `resolved dispute of ₹${Number(l.meta?.amount).toLocaleString('en-IN')}` },
-                          dispute_rejected:     { icon: 'cancel',         color: '#f87171', label: (l) => `rejected proof for dispute of ₹${Number(l.meta?.amount).toLocaleString('en-IN')}` },
-                          member_added:         { icon: 'person_add',     color: '#60a5fa', label: (l) => `added ${l.meta?.memberName} to the group` },
-                          member_removed:       { icon: 'person_remove',  color: '#f87171', label: () => `removed a member from the group` },
-                          member_left:          { icon: 'exit_to_app',    color: '#94a3b8', label: () => `left the group` },
-                        }[log.type] || { icon: 'info', color: '#475569', label: () => log.type }
+              return (
+                <div className="flex flex-col gap-2 animate-in fade-in duration-200">
 
-                        const timeAgo = (date) => {
-                          const diff = now - new Date(date).getTime()
-                          if (diff < 60000)   return 'just now'
-                          if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
-                          if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
-                          return new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-                        }
-
-                        return (
-                          <div key={log._id} className={`flex items-start gap-3 py-3 px-1 ${idx !== activityLogs.length - 1 ? 'border-b border-white/5' : ''}`}>
-                            {/* Icon */}
-                            <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 z-10"
-                              style={{ backgroundColor: `${cfg.color}10`, border: `1.5px solid ${cfg.color}25` }}>
-                              <span className="material-symbols-outlined text-[14px]" style={{ color: cfg.color, fontVariationSettings: "'FILL' 1" }}>{cfg.icon}</span>
-                            </div>
-
-                            {/* Text */}
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs text-white leading-snug">
-                                <span className="font-bold text-white">{log.actor?.name ?? 'Someone'}</span>{' '}
-                                <span className="text-on-surface-variant font-medium">{cfg.label(log)}</span>
-                              </p>
-                              <p className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant/40 mt-1">{timeAgo(log.createdAt)}</p>
-                            </div>
+                  {activityLoading && activityLogs.length === 0 ? (
+                    <div className="flex flex-col gap-3 pt-2">
+                      {[...Array(5)].map((_, i) => (
+                        <div key={i} className="flex items-start gap-3 px-1">
+                          <div className="w-8 h-8 rounded-xl bg-white/5 animate-pulse flex-shrink-0" />
+                          <div className="flex-1 flex flex-col gap-1.5 pt-1">
+                            <div className="h-3 w-2/3 bg-white/5 rounded animate-pulse" />
+                            <div className="h-2.5 w-1/3 bg-white/5 rounded animate-pulse" />
                           </div>
-                        )
-                      })}
+                        </div>
+                      ))}
                     </div>
+                  ) : activityLogs.length === 0 ? (
+                    <div className="text-center py-16 border-2 border-dashed border-outline-variant/20 rounded-2xl bg-white/5 flex flex-col items-center">
+                      <span className="material-symbols-outlined text-4xl text-outline-variant/40 mb-3">history</span>
+                      <p className="text-on-surface-variant text-sm font-semibold">No activity yet</p>
+                      <p className="text-xs text-on-surface-variant/60 mt-1">Events will appear here as the group is used</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Type Filter Pills */}
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        {[
+                          { id: 'all', label: 'All' },
+                          { id: 'expenses', label: 'Expenses' },
+                          { id: 'settlements', label: 'Settlements' },
+                          { id: 'members', label: 'Members' }
+                        ].map((filterOption) => (
+                          <button
+                            key={filterOption.id}
+                            onClick={() => setActivityFilter(filterOption.id)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                              activityFilter === filterOption.id
+                                ? 'bg-[#a78bfa]/15 text-[#a78bfa] border border-[#a78bfa]/25'
+                                : 'bg-white/5 text-on-surface-variant/75 hover:text-white border border-transparent'
+                            }`}
+                          >
+                            {filterOption.label}
+                          </button>
+                        ))}
+                      </div>
 
-                    {activityHasMore && (
-                      <button
-                        onClick={() => fetchActivity(true)}
-                        disabled={activityLoading}
-                        className="w-full mt-4 py-3 text-xs font-bold uppercase tracking-wider text-on-surface-variant border border-outline-variant/30 rounded-xl hover:bg-white/5 transition-colors cursor-pointer disabled:opacity-50"
-                      >
-                        {activityLoading ? 'Loading...' : `Load more · ${activityTotal - activityLogs.length} remaining`}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+                      {filteredLogs.length === 0 ? (
+                        <div className="text-center py-12 border border-dashed border-outline-variant/10 rounded-2xl bg-white/5 flex flex-col items-center">
+                          <span className="material-symbols-outlined text-3xl text-outline-variant/40 mb-2">filter_alt_off</span>
+                          <p className="text-on-surface-variant text-xs font-semibold">No matching activity</p>
+                          <p className="text-[11px] text-on-surface-variant/50 mt-1">Try selecting a different filter</p>
+                        </div>
+                      ) : (
+                        <div className="relative">
+                          {/* Vertical line */}
+                          <div className="absolute left-[15px] top-4 bottom-4 w-px bg-white/5" />
+
+                          <div className="flex flex-col">
+                            {groupedLogs.map((group) => (
+                              <div key={group.dateLabel} className="mb-4 last:mb-0">
+                                {/* Date Header aligned with the timeline */}
+                                <div className="flex items-center gap-3 py-2">
+                                  <div className="w-8 flex-shrink-0 flex items-center justify-center">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-white/20 z-10" />
+                                  </div>
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60">
+                                    {group.dateLabel}
+                                  </span>
+                                </div>
+
+                                <div className="flex flex-col">
+                                  {group.items.map((log) => {
+                                    const isActorCurrentUser = (log.actor?._id || log.actor) === user._id;
+                                    const actorName = isActorCurrentUser ? 'You' : (log.actor?.name ?? 'Someone');
+
+                                    const cfg = {
+                                      group_created: { 
+                                        icon: 'group_add', 
+                                        color: '#a78bfa', 
+                                        label: () => `created this group` 
+                                      },
+                                      expense_added: { 
+                                        icon: (l) => categoryIconMap[l.meta?.category] || 'receipt_long', 
+                                        color: '#2563eb', 
+                                        label: (l) => `added "${l.meta?.description}" — ₹${Number(l.meta?.amount).toLocaleString('en-IN')}` 
+                                      },
+                                      expense_deleted: { 
+                                        icon: 'delete', 
+                                        color: '#f87171', 
+                                        label: (l) => `deleted expense "${l.meta?.description}" — ₹${Number(l.meta?.amount).toLocaleString('en-IN')}` 
+                                      },
+                                      settlement_requested: { 
+                                        icon: 'payments', 
+                                        color: (l) => (l.meta?.toId === user._id ? '#4ade80' : (isActorCurrentUser ? '#f87171' : '#4ade80')), 
+                                        label: (l) => {
+                                          const isTargetMe = l.meta?.toId === user._id;
+                                          return `sent ₹${Number(l.meta?.amount).toLocaleString('en-IN')} to ${isTargetMe ? 'you' : (l.meta?.toName || 'someone')}`;
+                                        } 
+                                      },
+                                      settlement_confirmed: { 
+                                        icon: 'check_circle', 
+                                        color: (l) => (isActorCurrentUser ? '#4ade80' : (l.meta?.fromId === user._id ? '#f87171' : '#4ade80')), 
+                                        label: (l) => {
+                                          const isTargetMe = l.meta?.fromId === user._id;
+                                          return `confirmed ₹${Number(l.meta?.amount).toLocaleString('en-IN')} from ${isTargetMe ? 'you' : (l.meta?.fromName || 'someone')}`;
+                                        } 
+                                      },
+                                      settlement_rejected: { 
+                                        icon: 'cancel', 
+                                        color: '#f87171', 
+                                        label: (l) => {
+                                          const isTargetMe = l.meta?.fromId === user._id;
+                                          return `rejected the ₹${Number(l.meta?.amount).toLocaleString('en-IN')} settlement from ${isTargetMe ? 'you' : (l.meta?.fromName || 'someone')}`;
+                                        } 
+                                      },
+                                      member_added: { 
+                                        icon: 'person_add', 
+                                        color: '#60a5fa', 
+                                        label: (l) => {
+                                          const isTargetMe = l.meta?.memberEmail === user.email;
+                                          return `added ${isTargetMe ? 'you' : (l.meta?.memberName || 'someone')} to the group`;
+                                        } 
+                                      },
+                                      member_removed: { 
+                                        icon: 'person_remove', 
+                                        color: '#f87171', 
+                                        label: () => `removed a member from the group` 
+                                      },
+                                      member_left: { 
+                                        icon: 'exit_to_app', 
+                                        color: '#94a3b8', 
+                                        label: () => `left the group` 
+                                      },
+                                    }[log.type] || { icon: 'info', color: '#475569', label: () => log.type };
+
+                                    const iconName = typeof cfg.icon === 'function' ? cfg.icon(log) : cfg.icon;
+                                    const itemColor = typeof cfg.color === 'function' ? cfg.color(log) : cfg.color;
+
+                                    const timeAgo = (date) => {
+                                      const diff = now - new Date(date).getTime();
+                                      if (diff < 60000) return 'just now';
+                                      if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+                                      if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+                                      return new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+                                    };
+
+                                    return (
+                                      <div key={log._id} className="flex items-start gap-3 py-3 px-1 border-b border-white/5 last:border-b-0">
+                                        {/* Icon */}
+                                        <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 z-10"
+                                          style={{ backgroundColor: `${itemColor}10`, border: `1.5px solid ${itemColor}25` }}>
+                                          <span className="material-symbols-outlined text-[14px]" style={{ color: itemColor, fontVariationSettings: "'FILL' 1" }}>{iconName}</span>
+                                        </div>
+
+                                        {/* Text */}
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-xs text-white leading-snug">
+                                            <span className="font-bold text-white">{actorName}</span>{' '}
+                                            <span className="text-on-surface-variant font-medium">{cfg.label(log)}</span>
+                                          </p>
+                                          <p className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant/40 mt-1">{timeAgo(log.createdAt)}</p>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {activityHasMore && (
+                            <button
+                              onClick={() => fetchActivity(true)}
+                              disabled={activityLoading}
+                              className="w-full mt-4 py-3 text-xs font-bold uppercase tracking-wider text-on-surface-variant border border-outline-variant/30 rounded-xl hover:bg-white/5 transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-center"
+                            >
+                              {activityLoading ? (
+                                <>
+                                  <span className="material-symbols-outlined text-[18px] animate-spin mr-2">sync</span>
+                                  Loading...
+                                </>
+                              ) : (
+                                <>
+                                  <span className="material-symbols-outlined text-[18px] mr-2">expand_more</span>
+                                  Load more · {activityTotal - activityLogs.length} remaining
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* ── HISTORY TAB ───────────────────────────────────────────────── */}
             {activeTab === 'chat' && (

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import axios from '../api/axios'
 
 export default function GoogleLoginButton({ onLoginSuccess, onError }) {
-  const buttonRef = useRef(null)
+  const [buttonNode, setButtonNode] = useState(null)
   const containerRef = useRef(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -116,13 +116,13 @@ export default function GoogleLoginButton({ onLoginSuccess, onError }) {
 
   // Hook 3: Initialize Google Sign-In and render the official button once DOM element is mounted
   useEffect(() => {
-    if (!isConfigured || !scriptLoaded || !buttonRef.current || !window.google?.accounts?.id) return
+    if (!isConfigured || !scriptLoaded || !buttonNode || !window.google?.accounts?.id) return
 
     // Clamp width to Google API guidelines: [200px, 400px]
     const clampedWidth = Math.max(200, Math.min(400, containerWidth - 32)) // account for card padding
 
     try {
-      buttonRef.current.innerHTML = ''
+      buttonNode.innerHTML = ''
 
       window.google.accounts.id.initialize({
         client_id: clientId,
@@ -131,9 +131,9 @@ export default function GoogleLoginButton({ onLoginSuccess, onError }) {
       })
 
       window.google.accounts.id.renderButton(
-        buttonRef.current,
+        buttonNode,
         {
-          theme: 'filled_blue', // Blends beautifully with neon slate dark card themes
+          theme: 'outline', // Subtler outlined button that integrates cleanly with our premium dark card layout
           size: 'large',
           text: 'signin_with',
           shape: 'pill',
@@ -146,35 +146,55 @@ export default function GoogleLoginButton({ onLoginSuccess, onError }) {
       setTimeout(() => setScriptFailed(true), 0)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scriptLoaded, isConfigured, clientId, containerWidth])
+  }, [scriptLoaded, isConfigured, clientId, containerWidth, buttonNode])
 
   const showMockButton = !isConfigured || scriptFailed
   const clampedWidth = Math.max(200, Math.min(400, containerWidth - 32))
 
   return (
     <div className="w-full flex flex-col items-center">
-      {/* Premium Divider */}
-      <div className="w-full flex items-center gap-3 my-4">
-        <div className="h-[1px] flex-1 bg-white/5" />
-        <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest leading-none">
+      {/* Refined Premium Divider with Gradient Line Fades */}
+      <div className="w-full flex items-center gap-4 my-5 select-none">
+        <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent to-white/10" />
+        <span className="text-slate-500 text-[9px] font-extrabold uppercase tracking-[0.2em] leading-none">
           or continue with
         </span>
-        <div className="h-[1px] flex-1 bg-white/5" />
+        <div className="h-[1px] flex-1 bg-gradient-to-l from-transparent to-white/10" />
       </div>
 
-      {/* Glassmorphic Centered Social Login Container */}
-      <div ref={containerRef} className="w-full p-4 rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md shadow-2xl shadow-indigo-500/5 hover:border-indigo-500/20 hover:shadow-indigo-500/10 transition-all duration-300 flex flex-col items-center justify-center gap-3 relative overflow-hidden group">
-        {/* Neon Glow Sphere Accent */}
-        <div className="absolute -inset-10 bg-gradient-to-r from-indigo-500/10 to-violet-500/10 rounded-full blur-2xl opacity-50 group-hover:opacity-75 transition-opacity duration-500 pointer-events-none -z-10" />
+      {/* Glassmorphic Centered Social Login Container with Inner Highlight & Refined Glow */}
+      <div 
+        ref={containerRef} 
+        className="w-full p-4 rounded-2xl border border-white/5 bg-gradient-to-b from-white/[0.04] to-white/[0.01] backdrop-blur-md shadow-[0_8px_32px_0_rgba(0,0,0,0.37)] hover:border-white/15 hover:scale-[1.01] active:scale-[0.99] hover:shadow-[0_8px_32px_0_rgba(59,130,246,0.1)] transition-all duration-300 flex flex-col items-center justify-center gap-3 relative overflow-hidden group"
+      >
+        {/* Shimmer CSS Style Injection */}
+        <style>{`
+          @keyframes shimmer {
+            0% {
+              background-position: -200% 0;
+            }
+            100% {
+              background-position: 200% 0;
+            }
+          }
+          .animate-shimmer {
+            background: linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.03) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.6s infinite linear;
+          }
+        `}</style>
+
+        {/* Soft Neon Glow Sphere Accent */}
+        <div className="absolute -inset-24 bg-gradient-to-tr from-secondary/5 via-blue-500/5 to-transparent rounded-full blur-3xl opacity-30 group-hover:opacity-100 group-hover:scale-110 transition-all duration-700 pointer-events-none -z-10" />
 
         {showMockButton ? (
-          /* Fallback mock button styled identically to Google filled_blue design */
+          /* Custom Fallback Button matching Settl's signature purple-blue gradient */
           <button
             type="button"
             onClick={handleMockLogin}
             disabled={loading}
             style={{ maxWidth: `${clampedWidth}px` }}
-            className="w-full h-10 bg-[#1a73e8] hover:bg-[#1557b0] active:bg-[#1b66ca] text-white rounded-full font-semibold text-xs flex items-center justify-center gap-3 transition-all cursor-pointer shadow-lg shadow-[#1a73e8]/20 hover:shadow-[#1a73e8]/30 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
+            className="w-full h-10 bg-gradient-to-r from-secondary to-blue-600 hover:brightness-110 active:brightness-95 text-white rounded-full font-semibold text-xs flex items-center justify-center gap-3 transition-all cursor-pointer shadow-lg shadow-secondary/15 hover:shadow-secondary/25 hover:scale-[1.01] active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
           >
             {loading ? (
               <span className="material-symbols-outlined text-[16px] animate-spin">sync</span>
@@ -201,15 +221,18 @@ export default function GoogleLoginButton({ onLoginSuccess, onError }) {
             <span>{loading ? 'Signing In...' : 'Sign in with Google'}</span>
           </button>
         ) : isConfigured && !scriptLoaded ? (
-          /* Glassmorphic Pulse Skeleton Loader */
-          <div className="w-full max-w-[320px] h-10 bg-white/5 border border-white/5 rounded-full animate-pulse flex items-center justify-center gap-3">
-            <div className="w-4 h-4 bg-white/20 rounded-full animate-ping" />
-            <div className="h-3.5 bg-white/15 rounded w-28" />
+          /* Premium Shimmer Skeleton Loader */
+          <div 
+            style={{ maxWidth: `${clampedWidth}px` }} 
+            className="w-full h-10 border border-white/5 rounded-full animate-shimmer flex items-center justify-center gap-3"
+          >
+            <div className="w-4 h-4 bg-white/10 rounded-full" />
+            <div className="h-3 bg-white/10 rounded w-28" />
           </div>
         ) : (
           /* Official Google SDK IFrame container */
           <div className="w-full flex justify-center min-h-[40px] transition-all duration-300">
-            <div ref={buttonRef} className="w-full flex justify-center" style={{ maxWidth: `${clampedWidth}px` }} />
+            <div ref={setButtonNode} className="w-full flex justify-center" style={{ maxWidth: `${clampedWidth}px` }} />
           </div>
         )}
 

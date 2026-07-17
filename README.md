@@ -1,6 +1,6 @@
-# Settl Technical Project Documentation 💸
+# Settl. 💸
 
-Settl is a premium, modern MERN-stack bill-sharing and expense-splitting application. It is tailored for peer-to-peer debt management, transaction simplification, and direct Indian UPI payment facilitation.
+Settl is a premium, modern MERN-stack bill-sharing, expense-splitting, and debt-simplification application designed for friends, flatmates, and travel groups. It simplifies the process of tracking group expenses, managing shared bills, and settling balances directly using Indian UPI IDs, dynamic QR codes, mobile payment deep links, and Google Gemini AI insights.
 
 ---
 
@@ -59,6 +59,58 @@ graph TD
 
 ---
 
+## 🚀 Key Highlights & Capabilities
+
+### 🎨 Visual Redesign & Presentation
+- **Futuristic Aesthetics**: A premium split-screen dashboard layout with a dark-mode color palette, ambient gradient glows, and delicate grid backdrops.
+- **Interactive Visualizer**: Features a vector representation of mathematical debt simplification using glowing SVG curves, animated flows, and glowing avatar badges.
+- **Fluid Layout**: Translucent rounded scrollbars (`custom-scrollbar` styles) and disabled horizontal scrollbars to optimize the viewport for standard browser zoom levels.
+
+### 💸 Debt Simplification Algorithm
+The core technical intelligence of Settl lies in its greedy net balance matching approach. Rather than resolving every individual debt transaction, it reduces complex networks of IOUs to the mathematically minimum number of transactions.
+1. **Net Balances**: Compute the net balance of each user within a group.
+   $$\text{Balance}(U) = \sum \text{Paid Expenses by } U - \sum \text{Share of Expenses for } U$$
+2. **Settlements Adjustment**: Subtract any confirmed settlements (receiver verified).
+3. **Partitioning & Greedy Matching**: Separate users into Creditors (net positive) and Debtors (net negative). Sort both lists in descending order of absolute values, matching the largest debtor with the largest creditor. Create a transaction of $\text{Settle Amount} = \min(\text{Debtor Owed}, \text{Creditor Owed})$ and deduct until all balances are fully matched.
+
+### 💳 Frictionless P2P UPI Payments
+- **Mobile Deep Linking**: When clicking "Pay" on mobile, the client builds a UPI deep-link URI:
+  ```text
+  upi://pay?pa=receiverVpa@okaxis&pn=ReceiverName&am=Amount&cu=INR&tn=Settl%20Payment
+  ```
+  This prompts iOS/Android to open compatible apps (GPay, PhonePe, Paytm, BHIM) with pre-filled payment fields.
+- **Desktop QR Code**: On desktop, `qrcode.react` renders the UPI URI as a high-contrast QR code. The user opens their phone's camera or UPI app to scan and pay.
+- **Verification Shield**: Implements a responsive two-column grid confirmation modal (`UpiConfirmModal`) that blocks registration and profile saves until the user double-checks and checkbox-authorizes their entered UPI ID to prevent lost payments.
+- **Partial Settlements**: Allows users to make partial settlements. The app automatically calculates the remaining balance, generates a partial UPI payment request, and updates the simplified debt ledger upon recipient confirmation.
+
+### ⚡ WebSocket Events & Real-Time Sync
+Settl implements real-time updates via `Socket.io`. Clients join WebSocket rooms segregated by `groupId`. When actions occur in the REST API, the server triggers events to the group room, notifying all logged-in members.
+- The React `NotificationContext` catches these events and triggers micro-animations, audio cues, or toast alerts.
+
+### 🧠 AI Financial Insights
+- **Google Gemini Integration**: On login, the dashboard queries the Google Gemini API (using the model `gemini-1.5-flash`).
+- **Contextual Instruction**: The prompt requests 10 financial tips tailored for young Indian professionals, spanning budgeting rules (e.g., 50/30/20), investment compounding (SIPs, index funds), debt safety, tax saving (80C, PPF, ELSS), and social expense etiquette.
+- **Session Cache**: Tips are validated and cached inside the client's `sessionStorage` to avoid spamming API limits. A pre-defined local array of tips serves as a fallback.
+
+### 🛡️ Session Management & Security
+- **HTTP-Only Cookies**: Application JWT tokens are stored securely in HTTP-only cookies, safeguarding them from Cross-Site Scripting (XSS) attacks. The same cookie handles validation for REST endpoints and Socket.IO connections.
+- **Graceful Session Eviction**: An Axios response interceptor monitors all responses. If any request returns a `401 Unauthorized`, it evicts user data from `localStorage`, flags session expiry, redirects to `/login`, and triggers an error banner toast.
+- **Email Verification Guard**: Requires users to complete email verification via high-fidelity, secure Nodemailer SMTP tokens before accessing group expenses, settlements, messages, or real-time websocket rooms.
+
+---
+
+## 🛠️ Tech Stack Reference
+
+| Layer | Technologies |
+| --- | --- |
+| **Frontend** | React 19, Vite, Tailwind CSS, Axios, Socket.IO Client, QR Code SVG |
+| **Backend** | Node.js, Express, Socket.IO Server |
+| **Database** | MongoDB Atlas, Mongoose ODM |
+| **Security & Auth** | HTTP-Only JWT Cookie, bcryptjs, Google OAuth 2.0 |
+| **Integrations** | Google Gemini API (`gemini-1.5-flash`), Nodemailer / Gmail SMTP, UPI deep link protocols |
+
+---
+
 ## 📂 Project Directory Structure
 
 ```text
@@ -71,8 +123,7 @@ Settl/
 │   │   ├── routes/                 # REST endpoints (auth, expenses, groups, settlements)
 │   │   ├── utils/                  # Core helpers (debtSimplify algorithm, emailService transporter)
 │   │   └── socket.js               # Socket.io connection and room triggers
-│   ├── server.js                   # Application server setup and socket integration
-│   └── start.js                    # Server dev launcher
+│   └── server.js                   # Application entry point & WebSockets setup
 ├── frontend/                       # Vite + React 19 Client
 │   ├── src/
 │   │   ├── api/                    # Axios API configuration & session interceptors (axios.js)
@@ -89,8 +140,6 @@ Settl/
 ---
 
 ## 💾 Database Schemas (Mongoose Models)
-
-Settl uses five main collections in MongoDB, structured as follows:
 
 ### 1. User Schema (`User.js`)
 Stores user profiles, credential hashes, UPI details, and email verification status.
@@ -149,43 +198,6 @@ Keeps a persistent historical log of group activities.
 
 ---
 
-## 🧮 Debt Simplification Algorithm
-
-The core technical intelligence of Settl lies in `debtSimplify.js`. Rather than resolving every individual debt transaction, it reduces complex networks of IOUs to the mathematically minimum number of transactions using a **Greedy Net Balance Matching** approach.
-
-### Calculation Method:
-1. **Net Balances**: Compute the net balance of each user within a group.
-   $$\text{Balance}(U) = \sum \text{Paid Expenses by } U - \sum \text{Share of Expenses for } U$$
-2. **Settlements Adjustment**: Subtract any confirmed settlements (receiver verified).
-3. **Partitioning**: Separate users into:
-   * **Creditors**: Net positive balance (owed money).
-   * **Debtors**: Net negative balance (owes money).
-4. **Greedy Matching**: 
-   * Sort both lists in descending order of absolute values.
-   * Match the largest debtor with the largest creditor.
-   * Create a transaction of $\text{Settle Amount} = \min(\text{Debtor Owed}, \text{Creditor Owed})$.
-   * Deduct this settle amount from both users' balances.
-   * If a balance drops to 0, advance to the next user in that list.
-   * Repeat until all balances are fully matched.
-
-### Reduction Example:
-For a group of 4 people:
-```text
-A paid ₹300, B paid ₹100, C paid ₹0, D paid ₹0. (Total bill: ₹400. Share per person: ₹100)
-Balances initially: 
-  A: +₹200 (Creditor)
-  B:  ₹0
-  C: -₹100 (Debtor)
-  D: -₹100 (Debtor)
-
-Simplified Transactions generated:
-  - C pays ₹100 to A
-  - D pays ₹100 to A
-(Total of 2 payments instead of multiple smaller sub-transfers)
-```
-
----
-
 ## 🔗 REST API Endpoint Specifications
 
 All endpoints are prefixed with `/api` and require a JSON Web Token inside the `Authorization` header (`Bearer <token>`) unless marked as **[Public]**.
@@ -200,7 +212,7 @@ All endpoints are prefixed with `/api` and require a JSON Web Token inside the `
 * `POST /resend-verification` [Protected]: Dispatches a fresh SMTP verification link.
 
 ### Expense Routes (`/api/expenses`)
-* `POST /` [Protected]: Record a new expense. Computes individual splits server-side. Broadcasts `expense_added` via Socket.io.
+* `POST /` [Protected]: Record a new expense. Computes splits server-side. Broadcasts `expense_added` via Socket.io.
 * `GET /group/:groupId` [Protected]: Retrieve a group's expenses with month-based pagination support.
 * `DELETE /:id` [Protected]: Delete an expense, updating group balances and logs.
 
@@ -222,18 +234,8 @@ All endpoints are prefixed with `/api` and require a JSON Web Token inside the `
 
 ---
 
-## ⚡ WebSocket Events & Synchronization
+## ⚡ WebSocket Event Protocol
 
-Settl implements real-time visual updates via `Socket.io`. Clients join WebSocket rooms segregated by `groupId`. When actions occur in the REST API, the server triggers events to the group room, notifying all logged-in members.
-
-### WebSocket Connection Lifecycle:
-1. Client connects via `socket.io-client` on app mount (if user token is present).
-2. The client fetches user groups and issues a `join_group` socket emit for each group ID.
-3. The server places the socket connection inside the corresponding rooms.
-4. When a user creates/removes an expense or files a settlement request, the API fires socket broadcasts.
-5. The React `NotificationContext` catches these events and triggers micro-animations, audio cues, or toast alerts.
-
-### Event Protocol:
 | Event Name | Emitter | Payload | Receiver Handler / Effect |
 | :--- | :--- | :--- | :--- |
 | `join_group` | Client | `groupId` | Joins socket room `groupId` on server |
@@ -246,71 +248,14 @@ Settl implements real-time visual updates via `Socket.io`. Clients join WebSocke
 
 ---
 
-## 💳 UPI Payment Flow & QR System
-
-Settl offers a frictionless peer-to-peer payment flow that bypasses intermediate payment processors entirely.
-
-```text
-             [Settle Up Screen]
-                     │
-          Does device support UPI?
-         ┌───────────┴───────────┐
-        YES                     NO
-         │                       │
- [Mobile Deep Link]      [Desktop QR Code]
-  - Auto-open UPI apps    - Generates dynamic QR
-  - Target VPA prefilled  - User scans with mobile
-  - Amount locked in      - One-click copy backup
-```
-
-### 1. Mobile Deep Linking
-When clicking "Pay" on mobile, the client builds a UPI deep-link URI:
-```text
-upi://pay?pa=receiverVpa@okaxis&pn=ReceiverName&am=Amount&cu=INR&tn=Settl%20Payment
-```
-Triggering this link prompts iOS/Android to open compatible apps (GPay, PhonePe, Paytm, BHIM) with pre-filled payment fields.
-
-### 2. Desktop QR Code Generation
-On desktop, `qrcode.react` renders the UPI URI as a high-contrast QR code. The user opens their phone's camera or UPI app, scans the code, and completes the transfer directly.
-
-### 3. Verification Queue
-* Once transferred, the payer clicks **"I've Paid"**.
-* The settlement status transitions to `pending`.
-* The receiver gets a notification.
-* Only when the receiver clicks **"Confirm"** is the transaction finalized in the DB.
-
----
-
-## 🔐 Session Management & Security
-
-* **Token Interception**: The Axios instance automatically intercepts outgoing HTTP requests, fetching the JWT from `localStorage` and injecting it as a Bearer authorization token.
-* **Graceful Session Eviction**: An Axios response interceptor monitors all responses. If any request returns a `401 Unauthorized` (indicating the token expired, was modified, or revoked):
-  1. It evicts user data from `localStorage`.
-  2. Flags a session expiry parameter (`settl_session_expired`).
-  3. Redirects the browser window to `/login`.
-  4. Triggers a red error banner toast.
-* **Email Verification Token Security**: Verification tokens are generated using cryptographically secure random bytes, expiring exactly 48 hours after generation.
-
----
-
-## 🧠 AI Financial Insights Integration
-
-To encourage healthy budgeting, Settl integrates Google Gemini API to generate personalized financial tips.
-
-1. **API Interaction**: On login, the dashboard queries the Google Gemini API (using the model `gemini-1.5-flash`).
-2. **Contextual Instruction**: The request includes a specific system prompt requiring 10 financial tips tailored for young Indian professionals, spanning budgeting rules (e.g., 50/30/20), investment compounding (SIPs, index funds), debt safety, tax saving (80C, PPF, ELSS), and social expense etiquette.
-3. **Session Cache**: Tips are validated and cached inside the client's `sessionStorage`. Subsequent dashboard navigation loads the tips instantly without spamming API limits.
-4. **Fallback Mechanism**: If the client is missing a Gemini key or the API is unreachable, the system falls back to a pre-defined array of tips, keeping the user interface clean and operational.
-
----
-
 ## 🚀 Local Development Setup
 
 ### Prerequisites
 * **Node.js** v18+ & **npm** v9+
 * **MongoDB** (Local instance or MongoDB Atlas URI)
-* A **Google AI Studio** Gemini API Key
-* A **Gmail** account with an App Password (SMTP relay setup)
+* A **Google AI Studio** Gemini API Key (optional for AI insights fallback)
+* A **Gmail** account with an **App Password** (for Nodemailer SMTP email verification)
+* **Google OAuth Client ID** credentials (optional for Google login)
 
 ### 1. Environment Variable Setup
 
@@ -356,3 +301,30 @@ cd ../frontend
 npm run dev
 ```
 Once run, navigate your browser to `http://localhost:5173`.
+
+---
+
+## 📜 Available Scripts
+
+Run these scripts from their respective directory (`backend` or `frontend`):
+
+| Path | Command | Description |
+| --- | --- | --- |
+| `backend` | `npm start` | Launches Node server in production |
+| `backend` | `npm run dev` | Launches server with nodemon auto-reload |
+| `frontend` | `npm run dev` | Starts Vite dev client server |
+| `frontend` | `npm run build` | Bundles production asset packages |
+| `frontend` | `npm run lint` | Inspects codebase with ESLint |
+
+---
+
+## 🔒 Security Practices
+- Keep all `.env` files out of public source code repositories.
+- Use secure, multi-character secrets for `JWT_SECRET`.
+- Ensure `FRONTEND_URL` is set to the exact deployed origin to prevent unauthorized CORS requests.
+- Deploy frontend and backend servers over HTTPS in production to enforce secure HTTP-only cookies.
+
+---
+
+## 📄 License
+This project is licensed under the [MIT License](LICENSE).

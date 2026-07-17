@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import axios from '../api/axios'
 import { useAuth } from '../context/AuthContext'
 import GoogleLoginButton from '../components/GoogleLoginButton'
+import ErrorToast from '../components/ErrorToast'
 
 export default function Login() {
   const [form, setForm] = useState({ email: '', password: '' })
@@ -185,12 +186,7 @@ export default function Login() {
               <p className="mt-1 text-xs text-slate-400 font-semibold">Sign in to manage your shared expenses</p>
             </div>
 
-            {error && (
-              <div role="alert" className="bg-red-500/10 border border-red-500/35 text-red-300 text-xs font-semibold rounded-xl px-4 py-3 mb-5 flex items-center gap-2.5 animate-in fade-in zoom-in duration-200">
-                <span className="material-symbols-outlined text-[16px] text-red-400 flex-shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>error</span>
-                <p className="leading-normal">{error}</p>
-              </div>
-            )}
+
 
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Email Input */}
@@ -298,6 +294,9 @@ export default function Login() {
           </div>
         </div>
       </div>
+      {error && (
+        <ErrorToast key={error} message={error} onClose={() => setError('')} />
+      )}
     </div>
   )
 }

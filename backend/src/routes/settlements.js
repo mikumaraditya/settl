@@ -6,7 +6,7 @@ import User from '../models/User.js';
 import ActivityLog from '../models/ActivityLog.js';
 import protect from '../middleware/auth.js';
 import requireVerified from '../middleware/requireVerified.js';
-import simplifyDebts from '../utils/debtSimplify.js';
+import simplifyDebts, { computeBalances } from '../utils/debtSimplify.js';
 import { io } from '../../server.js';
 
 const router = express.Router();
@@ -131,16 +131,30 @@ router.post("/settle", protect, async (req, res) => {
       return res.status(400).json({ message: 'Settlement recipient must be a member of this group' });
     }
 
-    // A settlement can only cover a debt currently shown by the same
-    // simplification algorithm that powers the Settle Up screen.
-    const [expenses, confirmedSettlements] = await Promise.all([
+    // A settlement must cover an outstanding net debt between these members
+    // using raw group balances (independent of greedy simplification path changes).
+    const [expenses, confirmedSettlements, pendingBetweenUs] = await Promise.all([
       Expense.find({ group: groupId }),
       Settlement.find({ group: groupId, $or: [{ status: 'confirmed' }, { status: { $exists: false } }] }),
+      Settlement.find({ group: groupId, from: req.user.id, to: toUserId, status: 'pending' }),
     ]);
-    const outstanding = simplifyDebts(expenses, confirmedSettlements).find(
-      (transaction) => transaction.from === req.user.id && transaction.to === toUserId,
-    );
-    if (!outstanding || amount > outstanding.amount) {
+
+    const balances = computeBalances(expenses, confirmedSettlements);
+    const payerBalance = balances[req.user.id] || 0;
+    const receiverBalance = balances[toUserId] || 0;
+
+    const rawPayerDebt = -payerBalance;
+    const rawReceiverCredit = receiverBalance;
+
+    // Prevent double-counting already-in-flight pending settlements between these two members
+    const otherPendingSum = pendingBetweenUs.reduce((sum, s) => sum + Math.round(s.amount * 100), 0);
+
+    const maxDebtPayer = rawPayerDebt - otherPendingSum;
+    const maxCreditReceiver = rawReceiverCredit - otherPendingSum;
+    const maxAllowedPaise = Math.min(maxDebtPayer, maxCreditReceiver);
+
+    const amountInPaise = Math.round(amount * 100);
+    if (rawPayerDebt <= 0 || rawReceiverCredit <= 0 || amountInPaise > maxAllowedPaise) {
       return res.status(400).json({ message: 'Settlement amount exceeds the outstanding debt to this member' });
     }
 
@@ -216,10 +230,17 @@ router.post("/confirm", protect, async (req, res) => {
       Expense.find({ group: groupId }),
       Settlement.find({ group: groupId, $or: [{ status: "confirmed" }, { status: { $exists: false } }] }),
     ]);
-    const outstanding = simplifyDebts(expenses, confirmedSettlements).find(
-      (transaction) => transaction.from === fromUserId && transaction.to === req.user.id,
-    );
-    if (!outstanding || settlement.amount > outstanding.amount) {
+
+    const balances = computeBalances(expenses, confirmedSettlements);
+    const payerBalance = balances[fromUserId] || 0;
+    const receiverBalance = balances[req.user.id] || 0;
+
+    const rawPayerDebt = -payerBalance;
+    const rawReceiverCredit = receiverBalance;
+
+    const amountInPaise = Math.round(settlement.amount * 100);
+
+    if (rawPayerDebt < amountInPaise || rawReceiverCredit < amountInPaise) {
       return res.status(400).json({ message: "This payment no longer matches an outstanding debt" });
     }
 
@@ -294,7 +315,7 @@ router.post("/reject", protect, async (req, res) => {
       from: fromUserId,
       to: req.user.id,
       status: "pending",
-    });
+    }).populate("from", "name");
 
     if (!settlement) {
       return res.status(404).json({
@@ -315,13 +336,12 @@ router.post("/reject", protect, async (req, res) => {
       group: groupId,
       actor: req.user.id,
       type: 'settlement_rejected',
-      meta: { amount: settlement.amount, fromId: fromUserId },
+      meta: { amount: settlement.amount, fromId: fromUserId, fromName: settlement.from?.name },
     });
 
     res.json({ message: "Settlement request rejected" });
   } catch (error) {
     console.error("Error rejecting settlement request:", error);
-    res.status(500).json({ message: "Internal server error" });
   }
 });
 
