@@ -88,7 +88,7 @@ Settl implements real-time updates via `Socket.io`. Clients join WebSocket rooms
 - The React `NotificationContext` catches these events and triggers micro-animations, audio cues, or toast alerts.
 
 ### 🧠 AI Financial Insights
-- **Google Gemini Integration**: On login, the dashboard queries the Google Gemini API (using the model `gemini-1.5-flash`).
+- **Google Gemini Integration**: On login, the dashboard queries the Google Gemini API (using the model `gemini-3.5-flash` with `gemini-2.5-flash` fallback).
 - **Contextual Instruction**: The prompt requests 10 financial tips tailored for young Indian professionals, spanning budgeting rules (e.g., 50/30/20), investment compounding (SIPs, index funds), debt safety, tax saving (80C, PPF, ELSS), and social expense etiquette.
 - **Session Cache**: Tips are validated and cached inside the client's `sessionStorage` to avoid spamming API limits. A pre-defined local array of tips serves as a fallback.
 
@@ -107,7 +107,7 @@ Settl implements real-time updates via `Socket.io`. Clients join WebSocket rooms
 | **Backend** | Node.js, Express, Socket.IO Server |
 | **Database** | MongoDB Atlas, Mongoose ODM |
 | **Security & Auth** | HTTP-Only JWT Cookie, bcryptjs, Google OAuth 2.0 |
-| **Integrations** | Google Gemini API (`gemini-1.5-flash`), Nodemailer / Gmail SMTP, UPI deep link protocols |
+| **Integrations** | Google Gemini API (`gemini-3.5-flash` / `gemini-2.5-flash`), Nodemailer / Gmail SMTP, UPI deep link protocols |
 
 ---
 

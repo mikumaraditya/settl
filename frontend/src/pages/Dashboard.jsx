@@ -85,12 +85,25 @@ export default function Dashboard() {
     // Call Gemini
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY
     const prompt = `You are a financial educator for young Indians aged 18-25. Generate exactly 10 unique, powerful financial tips. Use exactly 2 tips from each: BUDGETING, INVESTING, DEBT, INDIA FINANCE, GROUP HABITS. Use India context: ₹, SIP, PPF, UPI, 80C, CIBIL. Headline max 5 words. Explanation exactly 2 lines. Shuffle categories randomly. Return ONLY a raw JSON array, no markdown, no backticks: [{"category":"BUDGETING","emoji":"💡","headline":"...","explanation":"...","didYouKnow":"..."}]`
-    try {
-      const res  = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+    
+    const callGemini = async (model) => {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.9, maxOutputTokens: 2048 } }),
       })
+      if (!res.ok) throw new Error(`Model ${model} failed with status ${res.status}`)
+      return res
+    }
+
+    try {
+      let res
+      try {
+        res = await callGemini('gemini-3.5-flash')
+      } catch (err) {
+        console.warn('gemini-3.5-flash failed, falling back to gemini-2.5-flash:', err.message)
+        res = await callGemini('gemini-2.5-flash')
+      }
       const json = await res.json()
       let raw    = json?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
       raw = raw.replace(/```json/gi, '').replace(/```/g, '').trim()

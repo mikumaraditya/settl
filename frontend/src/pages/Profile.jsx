@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import { useAuth } from '../context/AuthContext'
@@ -16,6 +16,10 @@ export default function Profile() {
   const [profileSuccess, setProfileSuccess] = useState('')
   const [profileError,   setProfileError]   = useState('')
   const [showConfirmModal, setShowConfirmModal] = useState(false)
+
+  const [mentor, setMentor] = useState(null)
+  const [mentorLoading, setMentorLoading] = useState(true)
+  const [mentorError, setMentorError] = useState('')
 
   // ── Password form ─────────────────────────────────────────────────────────
   const [currentPassword, setCurrentPassword] = useState('')
@@ -65,6 +69,20 @@ export default function Profile() {
     setShowConfirmModal(false)
     submitProfile()
   }
+
+  useEffect(() => {
+    const fetchMentor = async () => {
+      try {
+        const { data } = await axios.get('/insights/mentor')
+        setMentor(data)
+      } catch (err) {
+        setMentorError(err.response?.data?.message || 'Your mentor report is unavailable right now.')
+      } finally {
+        setMentorLoading(false)
+      }
+    }
+    fetchMentor()
+  }, [])
 
   const handlePasswordChange = async (e) => {
     e.preventDefault()
@@ -141,6 +159,134 @@ export default function Profile() {
                 </span>
               )}
             </div>
+          </div>
+        </div>
+
+        {/* ── Financial Mentor Card ────────────────────────────────────── */}
+        <div className="glass-card rounded-3xl border border-white/5 overflow-hidden">
+          <div className="px-6 py-4 border-b border-white/5 flex items-center gap-3 bg-white/[0.01]">
+            <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
+              <span className="material-symbols-outlined text-[16px] text-indigo-400">psychology</span>
+            </div>
+            <div>
+              <h2 className="text-sm font-extrabold text-white">AI Financial Mentor</h2>
+              <p className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider mt-0.5">Personalized Insights & Recommendations</p>
+            </div>
+          </div>
+
+          <div className="p-6">
+            {mentorLoading ? (
+              <div className="flex flex-col items-center justify-center py-10 gap-3">
+                <span className="material-symbols-outlined text-[32px] text-indigo-400 animate-spin">sync</span>
+                <p className="text-xs text-on-surface-variant font-semibold">Analyzing your cross-group activity...</p>
+              </div>
+            ) : mentorError ? (
+              <div className="flex items-center gap-2.5 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-2xl px-4 py-3 text-xs font-semibold">
+                <span className="material-symbols-outlined text-[16px]">error</span>
+                {mentorError}
+              </div>
+            ) : mentor?.status === 'not_enough_data' ? (
+              <div className="flex flex-col items-center text-center py-6 px-4 gap-3 bg-white/[0.01] rounded-2xl border border-white/5">
+                <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-400">
+                  <span className="material-symbols-outlined text-[24px]">analytics</span>
+                </div>
+                <h3 className="text-xs font-extrabold text-white uppercase tracking-wider">Not Enough Activity Yet</h3>
+                <p className="text-xs text-on-surface-variant max-w-md leading-relaxed">{mentor.reason}</p>
+                {mentor.activity && (
+                  <div className="grid grid-cols-2 gap-3 mt-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-wider w-full max-w-sm">
+                    <div className="bg-white/[0.02] border border-white/5 p-3 rounded-xl flex flex-col items-center justify-center">
+                      <span className="text-[10px] text-on-surface-variant">Expenses</span>
+                      <span className="text-white text-sm font-black mt-1">{mentor.activity.expenses} / 3</span>
+                    </div>
+                    <div className="bg-white/[0.02] border border-white/5 p-3 rounded-xl flex flex-col items-center justify-center">
+                      <span className="text-[10px] text-on-surface-variant">Months Active</span>
+                      <span className="text-white text-sm font-black mt-1">{mentor.activity.activeMonths} / 2</span>
+                    </div>
+                    <div className="bg-white/[0.02] border border-white/5 p-3 rounded-xl flex flex-col items-center justify-center col-span-2">
+                      <span className="text-[10px] text-on-surface-variant">Completed Settlements</span>
+                      <span className="text-white text-sm font-black mt-1">{mentor.activity.settlements} / 2</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-6">
+                {/* Score Section */}
+                <div className="flex flex-col md:flex-row items-center gap-6 bg-gradient-to-br from-indigo-500/10 to-blue-500/5 border border-indigo-500/15 p-5 rounded-2xl">
+                  {/* Circular Score */}
+                  <div className="relative flex-shrink-0 flex items-center justify-center w-24 h-24 rounded-full bg-white/[0.02] border-4 border-indigo-500/20">
+                    <svg className="absolute inset-0 -rotate-90 w-full h-full p-1" viewBox="0 0 36 36">
+                      <path
+                        className="text-white/[0.02]"
+                        strokeWidth="2.5"
+                        stroke="currentColor"
+                        fill="none"
+                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                      />
+                      <path
+                        className="text-indigo-400 transition-all duration-1000 ease-out"
+                        strokeDasharray={`${mentor?.score || 0}, 100`}
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        stroke="currentColor"
+                        fill="none"
+                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                      />
+                    </svg>
+                    <div className="flex flex-col items-center">
+                      <span className="text-2xl font-black text-white">{mentor?.score}</span>
+                      <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Score</span>
+                    </div>
+                  </div>
+                  <div className="flex-1 text-center md:text-left min-w-0">
+                    <h3 className="text-sm font-extrabold text-white">Financial Health Score</h3>
+                    <p className="text-xs text-on-surface-variant leading-relaxed mt-1.5">{mentor?.explanation}</p>
+                    {mentor?.settlementNote && (
+                      <div className="inline-flex items-center gap-1.5 text-[9px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-xl mt-2.5">
+                        <span className="material-symbols-outlined text-[13px]">info</span>
+                        {mentor.settlementNote}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Behavioral Observations */}
+                {mentor?.observations && mentor.observations.length > 0 && (
+                  <div className="flex flex-col gap-3">
+                    <h4 className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest ml-1">Behavioral Observations</h4>
+                    <div className="flex flex-col gap-2.5">
+                      {mentor.observations.map((obs, idx) => (
+                        <div key={idx} className="flex gap-3 bg-white/[0.02] border border-white/5 p-3 rounded-xl items-start">
+                          <span className="material-symbols-outlined text-[16px] text-indigo-400 mt-0.5">analytics</span>
+                          <p className="text-xs text-on-surface-variant font-medium leading-relaxed">{obs}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Actionable Suggestions */}
+                {mentor?.suggestions && mentor.suggestions.length > 0 && (
+                  <div className="flex flex-col gap-3">
+                    <h4 className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest ml-1">Actionable Suggestions</h4>
+                    <div className="flex flex-col gap-2.5">
+                      {mentor.suggestions.map((sug, idx) => (
+                        <div key={idx} className="flex gap-3 bg-white/[0.02] border border-white/5 p-3 rounded-xl items-start">
+                          <span className="material-symbols-outlined text-[16px] text-emerald-400 mt-0.5">lightbulb</span>
+                          <p className="text-xs text-on-surface-variant font-medium leading-relaxed">{sug}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Footer Info */}
+                <div className="flex justify-between items-center text-[9px] text-on-surface-variant/70 font-bold uppercase tracking-wider border-t border-white/5 pt-4">
+                  <span>Cross-Group Analysis</span>
+                  <span>Generated {mentor?.generatedAt ? new Date(mentor.generatedAt).toLocaleDateString() : ''} {mentor?.generatedAt ? new Date(mentor.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

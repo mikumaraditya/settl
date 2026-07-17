@@ -247,8 +247,8 @@ export default function Landing() {
         </div>
 
         {/* Supporting Visual (Interactive Split Calculator) */}
-        <div className="w-full lg:w-auto flex justify-center max-w-full animate-in fade-in slide-in-from-bottom-12 duration-700">
-          <div className="glass-card p-6 rounded-3xl border border-white/10 bg-gradient-to-b from-white/[0.04] to-white/[0.01] shadow-[0_20px_50px_rgba(0,0,0,0.3)] space-y-5 max-w-[380px] w-full select-none overflow-hidden hover:border-white/15 transition-all">
+        <div className="w-full lg:w-[400px] flex-none flex justify-center max-w-full animate-in fade-in slide-in-from-bottom-12 duration-700">
+          <div className="glass-card p-6 rounded-3xl border border-white/10 bg-gradient-to-b from-white/[0.04] to-white/[0.01] shadow-[0_20px_50px_rgba(0,0,0,0.3)] space-y-5 w-full select-none overflow-hidden hover:border-white/15 transition-all">
             <div className="flex justify-between items-center border-b border-white/5 pb-2.5">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />

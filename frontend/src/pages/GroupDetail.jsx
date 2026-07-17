@@ -1634,7 +1634,7 @@ export default function GroupDetail() {
       {expenseToDelete && (() => {
         const { canDelete, label } = getTimeStatus(expenseToDelete.createdAt)
         return (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="modal-overlay bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
             <div className="glass-card rounded-3xl max-w-sm w-full border border-rose-500/20 shadow-2xl p-6 animate-in zoom-in-95 duration-200 relative overflow-hidden">
               <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-rose-500/5 blur-xl pointer-events-none" />
               
@@ -1692,7 +1692,7 @@ export default function GroupDetail() {
 
       {/* ── Add Expense Modal ─────────────────────────────────────────────────── */}
       {showAddExpense && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="modal-overlay bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="glass-modal rounded-3xl max-w-2xl w-full border border-white/10 shadow-2xl overflow-y-auto md:overflow-hidden max-h-[90vh] md:max-h-[none] flex flex-col md:flex-row animate-in zoom-in-95 duration-200 hide-scrollbar">
             {/* Left section: Category and Amount */}
             <div className="md:w-5/12 bg-white/[0.02] border-b md:border-b-0 md:border-r border-white/5 p-6 flex flex-col justify-between relative overflow-hidden">
@@ -1740,7 +1740,7 @@ export default function GroupDetail() {
                       <select
                         value={expenseForm.category}
                         onChange={e => setExpenseForm({ ...expenseForm, category: e.target.value })}
-                        className="w-full bg-[#131b2e] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-blue-500 transition-all font-semibold cursor-pointer"
+                        className="group-category-select w-full bg-[#131b2e] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-blue-500 transition-all font-semibold cursor-pointer"
                       >
                         <option value="food">🍽️ Food</option>
                         <option value="travel">✈️ Travel</option>
@@ -1853,7 +1853,7 @@ export default function GroupDetail() {
 
       {/* ── Add Member Modal ──────────────────────────────────────────────────── */}
       {showAddMember && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="modal-overlay bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="glass-card rounded-3xl max-w-md w-full border border-white/10 shadow-2xl p-6 animate-in zoom-in-95 duration-200 relative overflow-hidden">
             <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-blue-500/5 blur-xl pointer-events-none" />
             
@@ -1903,7 +1903,7 @@ export default function GroupDetail() {
 
       {/* ── Leave Group Modal ─────────────────────────────────────────────────── */}
       {showLeaveGroup && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="modal-overlay bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="glass-card rounded-3xl max-w-sm w-full border border-amber-500/20 shadow-2xl p-6 animate-in zoom-in-95 duration-200 relative overflow-hidden">
             <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-amber-500/5 blur-xl pointer-events-none" />
             
@@ -1935,7 +1935,7 @@ export default function GroupDetail() {
 
       {/* ── Delete Group Modal ────────────────────────────────────────────────── */}
       {showDeleteGroup && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="modal-overlay bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="glass-card rounded-3xl max-w-sm w-full border border-rose-500/20 shadow-2xl p-6 animate-in zoom-in-95 duration-200 relative overflow-hidden">
             <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-rose-500/5 blur-xl pointer-events-none" />
             

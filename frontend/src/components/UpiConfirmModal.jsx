@@ -14,10 +14,10 @@ export default function UpiConfirmModal({ open, upiId, onConfirm, onCancel }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+      className="modal-overlay z-50 bg-black/75 flex items-center justify-center p-4 animate-in fade-in duration-200"
       onClick={(e) => { if (e.target === e.currentTarget) onCancel() }}
     >
-      <div className="glass-card relative w-full max-w-md md:max-w-2xl rounded-3xl border border-white/10 flex flex-col gap-6 p-6 md:p-8 animate-in zoom-in-95 duration-200 bg-[#0b1222] text-white shadow-2xl overflow-hidden">
+      <div className="upi-confirm-modal glass-card relative w-full max-w-md md:max-w-2xl rounded-3xl border border-white/10 flex flex-col gap-6 p-6 md:p-8 animate-in zoom-in-95 duration-200 bg-[#0b1222] text-white shadow-2xl overflow-hidden">
         {/* Top Accent line */}
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-secondary to-blue-500" />
         
@@ -36,19 +36,19 @@ export default function UpiConfirmModal({ open, upiId, onConfirm, onCancel }) {
                 </span>
               </div>
               <div>
-                <h3 className="text-lg font-extrabold text-white tracking-tight">Confirm Your UPI ID</h3>
-                <p className="text-xs mt-1.5 text-slate-400 font-semibold leading-relaxed">
+                <h3 className="upi-confirm-heading text-lg font-extrabold text-white tracking-tight">Confirm Your UPI ID</h3>
+                <p className="upi-confirm-copy text-xs mt-1.5 text-slate-400 font-semibold leading-relaxed">
                   Please double check the payment handle you entered.
                 </p>
               </div>
             </div>
 
             {/* Highlighted UPI ID Display */}
-            <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-4 flex flex-col gap-1.5">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block text-center md:text-left leading-none">
+            <div className="upi-confirm-upi-panel bg-white/[0.03] border border-white/5 rounded-2xl p-4 flex flex-col gap-1.5">
+              <span className="upi-confirm-copy text-[10px] font-bold text-slate-400 uppercase tracking-widest block text-center md:text-left leading-none">
                 Entered UPI ID
               </span>
-              <span className="font-mono font-bold text-white select-all bg-white/5 border border-white/10 px-3.5 py-2.5 rounded-xl block text-center mt-1 text-sm tracking-wide break-all">
+              <span className="upi-confirm-upi-value font-mono font-bold text-white select-all bg-white/5 border border-white/10 px-3.5 py-2.5 rounded-xl block text-center mt-1 text-sm tracking-wide break-all">
                 {upiId}
               </span>
             </div>
@@ -57,19 +57,19 @@ export default function UpiConfirmModal({ open, upiId, onConfirm, onCancel }) {
           {/* Right Column: Warnings, Checkbox, Actions */}
           <div className="flex flex-col gap-5">
             {/* Notice text */}
-            <div className="text-xs text-slate-400 font-semibold space-y-2.5 leading-relaxed bg-amber-500/[0.02] border border-amber-500/10 rounded-2xl p-4">
+            <div className="upi-confirm-notice text-xs text-slate-400 font-semibold space-y-2.5 leading-relaxed bg-amber-500/[0.02] border border-amber-500/10 rounded-2xl p-4">
               <p className="text-amber-400/90 font-bold flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-[15px]">info</span>
                 Crucial Notice
               </p>
               <p>
-                Settl <strong className="text-white">cannot verify</strong> whether this UPI ID is real, active, or actually belongs to you.
+                Settl <strong className="upi-confirm-emphasis text-white">cannot verify</strong> whether this UPI ID is real, active, or actually belongs to you.
               </p>
               <p>
-                All member payments will route directly to this address. There is <strong className="text-white">no reversal path</strong> or way to cancel payments through the app.
+                All member payments will route directly to this address. There is <strong className="upi-confirm-emphasis text-white">no reversal path</strong> or way to cancel payments through the app.
               </p>
               <p>
-                If you entered an incorrect handle, your group payments will be permanently lost. This is the <strong className="text-white">user's responsibility</strong>, not the app's.
+                If you entered an incorrect handle, your group payments will be permanently lost. This is the <strong className="upi-confirm-emphasis text-white">user's responsibility</strong>, not the app's.
               </p>
             </div>
 
@@ -90,7 +90,7 @@ export default function UpiConfirmModal({ open, upiId, onConfirm, onCancel }) {
                   {checked && <span className="material-symbols-outlined text-[14px] font-black">check</span>}
                 </div>
               </div>
-              <span className="text-xs text-slate-400 font-semibold leading-relaxed">
+              <span className="upi-confirm-copy text-xs text-slate-400 font-semibold leading-relaxed">
                 I have double-checked this UPI ID is correct and mine, and understand the app cannot verify it.
               </span>
             </label>
@@ -108,7 +108,7 @@ export default function UpiConfirmModal({ open, upiId, onConfirm, onCancel }) {
 
               <button
                 onClick={onCancel}
-                className="w-full py-3 rounded-2xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 border border-white/10 text-white hover:bg-white/5 transition-all active:scale-95 cursor-pointer"
+                className="upi-confirm-cancel w-full py-3 rounded-2xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 border border-white/10 text-white hover:bg-white/5 transition-all active:scale-95 cursor-pointer"
               >
                 Go Back
               </button>

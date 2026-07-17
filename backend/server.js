@@ -22,6 +22,7 @@ import expenseRoutes from "./src/routes/expenses.js";
 import groupRoutes from "./src/routes/groups.js";
 import settlementRoutes from "./src/routes/settlements.js";
 import messageRoutes from "./src/routes/messages.js";
+import insightRoutes from "./src/routes/insights.js";
 
 connectDB();
 
@@ -45,6 +46,7 @@ app.use("/api/expenses", expenseRoutes);
 app.use("/api/groups", groupRoutes);
 app.use("/api/settlements", settlementRoutes);
 app.use("/api/messages", messageRoutes);
+app.use("/api/insights", insightRoutes);
 
 // Health check
 app.get("/health", (req, res) => {

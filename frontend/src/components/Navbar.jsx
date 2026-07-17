@@ -322,9 +322,9 @@ export default function Navbar() {
 
         {/* Mobile Notification Sheet Slide-up Overlay */}
         {bellOpen && (
-          <div ref={mobileBellRef} className="fixed inset-0 z-50 flex items-end justify-center">
+          <div ref={mobileBellRef} className="modal-overlay z-50 flex items-end justify-center">
             {/* Backdrop */}
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setBellOpen(false)} />
+            <div className="absolute inset-0 bg-black/60" onClick={() => setBellOpen(false)} />
             
             {/* Bottom Sheet Card */}
             <div className="relative w-full max-w-lg rounded-t-3xl shadow-2xl flex flex-col glass-card !bg-white dark:!bg-[#0a0f1d] border-t border-white/10 h-[65vh] animate-in slide-in-from-bottom duration-300">
@@ -337,9 +337,9 @@ export default function Navbar() {
 
         {/* Mobile Group Selector Slide-up Overlay */}
         {showGroupSelector && (
-          <div ref={mobileGroupSelectorRef} className="fixed inset-0 z-50 flex items-end justify-center">
+          <div ref={mobileGroupSelectorRef} className="modal-overlay z-50 flex items-end justify-center">
             {/* Backdrop */}
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowGroupSelector(false)} />
+            <div className="absolute inset-0 bg-black/60" onClick={() => setShowGroupSelector(false)} />
             
             {/* Bottom Sheet Card */}
             <div className="relative w-full max-w-lg rounded-t-3xl shadow-2xl flex flex-col glass-card !bg-white dark:!bg-[#0a0f1d] border-t border-white/10 h-[50vh] animate-in slide-in-from-bottom duration-300">
