@@ -6,6 +6,36 @@ import { useAuth } from '../context/AuthContext'
 import { io } from 'socket.io-client'
 import { useNotifications } from '../context/NotificationContext'
 
+const getInitialsBg = (name) => {
+  const colors = [
+    'bg-blue-500/80 border-blue-400/30',
+    'bg-purple-500/80 border-purple-400/30',
+    'bg-indigo-500/80 border-indigo-400/30',
+    'bg-violet-500/80 border-violet-400/30',
+    'bg-fuchsia-500/80 border-fuchsia-400/30',
+    'bg-pink-500/80 border-pink-400/30',
+    'bg-emerald-500/80 border-emerald-400/30',
+    'bg-teal-500/80 border-teal-400/30',
+    'bg-cyan-500/80 border-cyan-400/30',
+    'bg-sky-500/80 border-sky-400/30'
+  ];
+  if (!name) return colors[0];
+  let sum = 0;
+  for (let i = 0; i < name.length; i++) {
+    sum += name.charCodeAt(i);
+  }
+  return colors[sum % colors.length];
+};
+
+const formatTimeAgo = (date) => {
+  if (!date) return 'just now';
+  const diff = Date.now() - new Date(date).getTime();
+  if (diff < 60000) return 'just now';
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+  return new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
 export default function GroupDetail() {
   const { id } = useParams()
   const { user } = useAuth()
@@ -29,6 +59,15 @@ export default function GroupDetail() {
   const [chatLoading, setChatLoading] = useState(false)
   const [messageText, setMessageText] = useState('')
   const [sendingMessage, setSendingMessage] = useState(false)
+  const [unreadChat, setUnreadChat] = useState(false)
+  const chatContainerRef = useRef(null)
+  const chatInputRef = useRef(null)
+  const prevMessageLengthRef = useRef(0)
+  const activeTabRef = useRef(activeTab)
+
+  useEffect(() => {
+    activeTabRef.current = activeTab
+  }, [activeTab])
 
   // ── Activity log state ────────────────────────────────────────────────────────
   const [activityLogs, setActivityLogs]       = useState([])
@@ -180,8 +219,11 @@ export default function GroupDetail() {
 
   const handleTabChange = (tab) => {
     setActiveTab(tab)
+    if (tab === 'chat') {
+      setUnreadChat(false)
+      if (messages.length === 0) fetchMessages()
+    }
     if (tab === 'activity' && !activityFetched) fetchActivity()
-    if (tab === 'chat' && messages.length === 0) fetchMessages()
   }
 
   const fetchMessages = async () => {
@@ -193,14 +235,97 @@ export default function GroupDetail() {
   }
 
   const sendMessage = async (event) => {
-    event.preventDefault()
-    if (!messageText.trim() || sendingMessage) return
+    if (event) event.preventDefault()
+    const text = messageText.trim();
+    if (!text) return;
+
+    const tempId = `optimistic-${Date.now()}`;
+    const optimisticMsg = {
+      _id: tempId,
+      content: text,
+      sender: {
+        _id: user._id,
+        name: user.name
+      },
+      createdAt: new Date().toISOString(),
+      isOptimistic: true
+    };
+
+    setMessages(prev => [...prev, optimisticMsg]);
+    setMessageText('');
+
+    if (chatInputRef.current) {
+      chatInputRef.current.focus();
+    }
+
     try {
-      setSendingMessage(true)
-      await axios.post('/messages', { groupId: id, content: messageText })
-      setMessageText('')
-    } finally { setSendingMessage(false) }
-  }
+      const { data } = await axios.post('/messages', { groupId: id, content: text });
+      setMessages(prev => {
+        const idx = prev.findIndex(m => m._id === tempId);
+        if (idx !== -1) {
+          const updated = [...prev];
+          updated[idx] = data;
+          return updated;
+        }
+        return prev;
+      });
+    } catch (err) {
+      console.error("Failed to send message:", err);
+      setMessages(prev => {
+        const idx = prev.findIndex(m => m._id === tempId);
+        if (idx !== -1) {
+          const updated = [...prev];
+          updated[idx] = { ...prev[idx], isOptimistic: false, isFailed: true, rawText: text };
+          return updated;
+        }
+        return prev;
+      });
+    }
+  };
+
+  const retrySendMessage = async (failedMsg) => {
+    const text = failedMsg.rawText || failedMsg.content;
+
+    setMessages(prev => prev.filter(m => m._id !== failedMsg._id));
+
+    const tempId = `optimistic-${Date.now()}`;
+    const optimisticMsg = {
+      _id: tempId,
+      content: text,
+      sender: {
+        _id: user._id,
+        name: user.name
+      },
+      createdAt: new Date().toISOString(),
+      isOptimistic: true
+    };
+
+    setMessages(prev => [...prev, optimisticMsg]);
+
+    try {
+      const { data } = await axios.post('/messages', { groupId: id, content: text });
+      setMessages(prev => {
+        const idx = prev.findIndex(m => m._id === tempId);
+        if (idx !== -1) {
+          const updated = [...prev];
+          updated[idx] = data;
+          return updated;
+        }
+        return prev;
+      });
+    } catch (err) {
+      console.error("Failed to retry message:", err);
+      setMessages(prev => {
+        const idx = prev.findIndex(m => m._id === tempId);
+        if (idx !== -1) {
+          const updated = [...prev];
+          updated[idx] = { ...prev[idx], isOptimistic: false, isFailed: true, rawText: text };
+          return updated;
+        }
+        return prev;
+      });
+    }
+  };
 
   const fetchActivity = async (append = false) => {
     setActivityLoading(true)
@@ -389,7 +514,23 @@ export default function GroupDetail() {
     const onSettlementDone      = () => fetchSettlements()
     const onSettlementUndone    = () => fetchSettlements()
     const onSettlementRequested = () => fetchSettlements()
-    const onMessageCreated = (message) => setMessages(prev => prev.some(m => m._id === message._id) ? prev : [...prev, message])
+    const onMessageCreated = (message) => {
+      setMessages(prev => {
+        if (prev.some(m => m._id === message._id)) return prev;
+        if (message.sender?._id === user._id) {
+          const idx = prev.findIndex(m => m.isOptimistic && m.content === message.content);
+          if (idx !== -1) {
+            const updated = [...prev];
+            updated[idx] = message;
+            return updated;
+          }
+        }
+        return [...prev, message];
+      });
+      if (activeTabRef.current !== 'chat') {
+        setUnreadChat(true);
+      }
+    };
 
     socket.on('expense_added',                onExpenseAdded)
     socket.on('expense_deleted',              onExpenseDeleted)
@@ -411,6 +552,34 @@ export default function GroupDetail() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  // Auto-scroll logic for Chat Tab
+  useEffect(() => {
+    if (activeTab !== 'chat' || !chatContainerRef.current) return;
+    const container = chatContainerRef.current;
+    
+    if (messages.length > prevMessageLengthRef.current || prevMessageLengthRef.current === 0) {
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+      const lastMsg = messages[messages.length - 1];
+      const isMyMsg = lastMsg?.sender?._id === user._id || lastMsg?.isOptimistic;
+      
+      if (isNearBottom || isMyMsg || prevMessageLengthRef.current === 0) {
+        setTimeout(() => {
+          container.scrollTop = container.scrollHeight;
+        }, 50);
+      }
+    }
+    prevMessageLengthRef.current = messages.length;
+  }, [messages, activeTab, user._id]);
+
+  useEffect(() => {
+    if (activeTab === 'chat' && chatContainerRef.current) {
+      const container = chatContainerRef.current;
+      setTimeout(() => {
+        container.scrollTop = container.scrollHeight;
+      }, 50);
+    }
+  }, [activeTab]);
 
   // ── Loading screen ────────────────────────────────────────────────────────────
   if (loading) return (
@@ -587,6 +756,9 @@ export default function GroupDetail() {
                 className={`px-5 py-3.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer -mb-px flex-shrink-0 ${activeTab === 'chat' ? 'border-cyan-400 text-cyan-300 bg-cyan-400/5 rounded-t-xl' : 'border-transparent text-on-surface-variant hover:text-white'}`}
               >
                 <span className="material-symbols-outlined text-[18px]">forum</span> Chat
+                {unreadChat && (
+                  <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse flex-shrink-0" />
+                )}
               </button>
 
               {/* Activity tab */}
@@ -1056,20 +1228,108 @@ export default function GroupDetail() {
 
             {/* ── HISTORY TAB ───────────────────────────────────────────────── */}
             {activeTab === 'chat' && (
-              <div className="glass-card rounded-3xl border border-white/5 overflow-hidden">
-                <div className="p-4 border-b border-white/5"><h3 className="font-bold text-white">Group chat</h3></div>
-                <div className="h-[380px] overflow-y-auto p-4 space-y-3">
-                  {chatLoading ? <p className="text-on-surface-variant text-sm">Loading messages...</p> : messages.length === 0 ? <p className="text-on-surface-variant text-sm text-center pt-24">No messages yet. Start the conversation.</p> : messages.map(message => {
-                    const mine = message.sender?._id === user._id
-                    return <div key={message._id} className={`flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
-                      <span className="text-[10px] text-on-surface-variant mb-1">{mine ? 'You' : message.sender?.name || 'Member'}</span>
-                      <p className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm ${mine ? 'bg-secondary text-white rounded-br-sm' : 'bg-white/10 text-white rounded-bl-sm'}`}>{message.content}</p>
-                    </div>
-                  })}
+              <div className="glass-card rounded-3xl border border-white/5 overflow-hidden flex flex-col h-[500px]">
+                <div className="p-4 border-b border-white/5 flex items-center justify-between">
+                  <h3 className="font-bold text-white flex items-center gap-2">
+                    <span className="material-symbols-outlined text-cyan-400 text-[18px]">forum</span>
+                    Group Chat
+                  </h3>
+                  {messages.length > 0 && (
+                    <span className="text-[10px] text-on-surface-variant/60 font-bold uppercase tracking-wider">
+                      {messages.length} messages
+                    </span>
+                  )}
                 </div>
-                <form onSubmit={sendMessage} className="flex gap-2 p-3 border-t border-white/5">
-                  <input value={messageText} onChange={event => setMessageText(event.target.value)} maxLength={1000} placeholder="Write a message..." className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm outline-none" />
-                  <button disabled={!messageText.trim() || sendingMessage} className="px-4 rounded-xl bg-secondary text-white disabled:opacity-40"><span className="material-symbols-outlined">send</span></button>
+                <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-1 scrollbar-thin">
+                  {chatLoading ? (
+                    <div className="flex flex-col items-center justify-center pt-24 gap-3">
+                      <span className="material-symbols-outlined text-cyan-400 animate-spin text-[32px]">sync</span>
+                      <p className="text-on-surface-variant text-sm font-semibold">Loading conversation...</p>
+                    </div>
+                  ) : messages.length === 0 ? (
+                    <div className="text-center pt-24 flex flex-col items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-cyan-400/10 border border-cyan-400/20 flex items-center justify-center text-cyan-400 text-xl shadow-lg shadow-cyan-400/5">
+                        <span className="material-symbols-outlined">chat_bubble</span>
+                      </div>
+                      <p className="text-on-surface-variant text-sm font-bold">No messages yet</p>
+                      <p className="text-on-surface-variant/60 text-xs max-w-[200px]">Send a message to start the conversation with the group.</p>
+                    </div>
+                  ) : (
+                    messages.map((message, i) => {
+                      const mine = message.sender?._id === user._id
+                      const isConsecutive = i > 0 && 
+                        messages[i-1].sender?._id === message.sender?._id &&
+                        Math.abs(new Date(message.createdAt || Date.now()) - new Date(messages[i-1].createdAt || Date.now())) < 5 * 60 * 1000
+
+                      const senderName = mine ? 'You' : message.sender?.name || 'Member'
+                      const initials = (message.sender?.name || 'M').charAt(0).toUpperCase()
+
+                      return (
+                        <div key={message._id || i} className={`flex gap-3 items-start ${mine ? 'flex-row-reverse justify-start' : 'justify-start'} ${isConsecutive ? 'mt-0.5' : 'mt-4'}`}>
+                          {/* Avatar Initials Circle */}
+                          {!mine && (
+                            <div className="w-8 h-8 flex-shrink-0 select-none">
+                              {!isConsecutive && (
+                                <div className={`w-8 h-8 rounded-full ${getInitialsBg(message.sender?.name)} text-white flex items-center justify-center font-extrabold text-xs border shadow-md transition-all`}>
+                                  {initials}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Bubble + Metadata Column */}
+                          <div className={`flex flex-col max-w-[70%] ${mine ? 'items-end' : 'items-start'}`}>
+                            {!isConsecutive && (
+                              <div className="flex items-center gap-1.5 mb-1 px-1 select-none">
+                                <span className="text-[10px] font-extrabold text-slate-200">{senderName}</span>
+                                <span className="text-[8px] text-on-surface-variant/40">•</span>
+                                <span className="text-[9px] text-on-surface-variant/50 font-bold">
+                                  {formatTimeAgo(message.createdAt)}
+                                </span>
+                              </div>
+                            )}
+
+                            <div className="relative group flex items-center gap-2">
+                              <p className={`px-4 py-2 rounded-2xl text-sm leading-relaxed ${
+                                mine 
+                                  ? `bg-secondary text-white ${isConsecutive ? 'rounded-r-2xl rounded-l-2xl' : 'rounded-tr-sm'}` 
+                                  : `bg-white/10 text-white ${isConsecutive ? 'rounded-l-2xl rounded-r-2xl' : 'rounded-tl-sm'}`
+                              } ${message.isOptimistic ? 'opacity-40 italic' : ''} ${message.isFailed ? 'border border-rose-500/30 bg-rose-500/10' : ''}`}>
+                                {message.content}
+                              </p>
+
+                              {message.isFailed && (
+                                <button 
+                                  type="button" 
+                                  onClick={() => retrySendMessage(message)} 
+                                  className="w-6 h-6 rounded-full bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/35 flex items-center justify-center text-rose-400 cursor-pointer transition-all hover:scale-105 active:scale-95"
+                                  title="Failed to send. Click to retry."
+                                >
+                                  <span className="material-symbols-outlined text-[14px]">refresh</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+                <form onSubmit={sendMessage} className="flex gap-2 p-3 border-t border-white/5 bg-black/[0.08]">
+                  <input 
+                    ref={chatInputRef}
+                    value={messageText} 
+                    onChange={event => setMessageText(event.target.value)} 
+                    maxLength={1000} 
+                    placeholder="Write a message..." 
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm outline-none focus:border-cyan-500/40 focus:bg-white/[0.08] transition-all" 
+                  />
+                  <button 
+                    disabled={!messageText.trim() && !sendingMessage} 
+                    className="px-4 py-2.5 rounded-xl bg-secondary text-white disabled:opacity-40 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">send</span>
+                  </button>
                 </form>
               </div>
             )}
