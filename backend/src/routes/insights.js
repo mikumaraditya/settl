@@ -4,36 +4,66 @@ import Group from "../models/Group.js";
 import Settlement from "../models/Settlement.js";
 import protect from "../middleware/auth.js";
 import requireVerified from "../middleware/requireVerified.js";
+import { computeMentorReport } from "../utils/financialMentor.js";
 
 const router = express.Router();
 const MENTOR_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
 const mentorCache = new Map();
 
 const round = (value) => Math.round(value * 100) / 100;
-const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const median = (values) => {
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 };
 
-const fallbackMentorCopy = (score, signals) => ({
-  explanation: `Your score is ${score}/100 based on your confirmed settlement follow-through, how quickly your payments are confirmed, and how steady your shared spending is month to month.`,
-  suggestions: [
-    signals.followThrough < 80
-      ? "Clear any pending settlements soon so your shared balances stay accurate."
-      : "Keep confirming settlements promptly to maintain clear group balances.",
-    signals.consistency < 60
-      ? "Review your higher-spend months before adding another large shared expense."
-      : "Use your spending pattern as a baseline when planning your next group activity.",
-  ],
-});
+const fallbackMentorCopy = (score, scoreBand, signalBreakdown) => {
+  const weakest = signalBreakdown.filter(s => s.isWeakest).map(s => s.label).join(" and ");
+  const explanation = `Your Financial Health Score is ${score}/100, placing you in the '${scoreBand}' category. Your lowest-performing metric is ${weakest}, which currently offers the biggest opportunity for improvement.`;
 
-const getMentorCopy = async (score, observations, signals) => {
-  const fallback = fallbackMentorCopy(score, signals);
+  const suggestions = [];
+  const followThroughSig = signalBreakdown.find(s => s.key === "followThrough");
+  const promptnessSig = signalBreakdown.find(s => s.key === "promptness");
+  const consistencySig = signalBreakdown.find(s => s.key === "consistency");
+
+  if (followThroughSig && followThroughSig.value < 80) {
+    suggestions.push("Settle outstanding balances promptly so that your group accounts remain transparent and accurate, helping everyone plan their budgets better.");
+  } else if (promptnessSig && promptnessSig.value < 80) {
+    suggestions.push("Confirm payments more quickly to build trust with group members and ensure shared debts are resolved without delay.");
+  } else {
+    suggestions.push("Keep confirming settlements promptly to maintain clean balances and a high level of trust within your group.");
+  }
+
+  if (consistencySig && consistencySig.value < 60) {
+    suggestions.push("Establish a regular baseline for monthly shared costs to eliminate wild budget swings and make future group activities easier to fund.");
+  } else {
+    suggestions.push("Continue using your stable spending baseline when estimating and planning upcoming group activities.");
+  }
+
+  return {
+    explanation,
+    suggestions: suggestions.slice(0, 2)
+  };
+};
+
+const getMentorCopy = async (score, scoreBand, signalBreakdown, observations, signals) => {
+  const fallback = fallbackMentorCopy(score, scoreBand, signalBreakdown);
   if (!process.env.GEMINI_API_KEY) return fallback;
 
-  const prompt = `You are Settl's Financial Mentor. Explain only the supplied data; do not calculate, infer, or invent figures. Return valid JSON only with this exact shape: {"explanation":"short plain-language explanation","suggestions":["specific action 1","specific action 2"]}. Give one or two suggestions.\n\nFinancial Health Score: ${score}/100\nSignals: ${JSON.stringify(signals)}\nReal observations: ${JSON.stringify(observations)}`;
+  const prompt = `You are Settl's Financial Mentor. Explain only the supplied data; do not calculate, infer, or invent figures. 
+Return valid JSON only with this exact shape: {"explanation":"short plain-language explanation","suggestions":["specific action with benefit 1","specific action with benefit 2"]}. 
+Give one or two suggestions.
+
+In your response:
+1. Explain what the score and the score band mean in plain terms (e.g. why a score of ${score} puts them in the '${scoreBand}' band).
+2. Name the weakest signal(s) from the breakdown by name, and explain why it matters to the user's financial health.
+3. Every suggestion MUST state a concrete benefit (payoff) for the user, not just a generic action.
+
+Financial Health Score: ${score}/100
+Score Band: ${scoreBand}
+Signals: ${JSON.stringify(signals)}
+Signal Breakdown: ${JSON.stringify(signalBreakdown)}
+Real observations: ${JSON.stringify(observations)}`;
 
   const callGemini = async (model) => {
     const response = await fetch(
@@ -78,10 +108,8 @@ const getMentorCopy = async (score, observations, signals) => {
 router.get("/mentor", protect, requireVerified, async (req, res) => {
   try {
     const cached = mentorCache.get(req.user.id);
-    if (cached && cached.expiresAt > Date.now()) return res.json({ ...cached.data, cached: true });
+    if (cached && cached.expiresAt > Date.now() && req.query.bypassCache !== "true") return res.json({ ...cached.data, cached: true });
 
-    // Membership is resolved first, then every query is constrained to those group IDs.
-    // This keeps the report cross-group while preventing data from non-member groups leaking in.
     const groups = await Group.find({ "members.user": req.user.id }).select("name").lean();
     const groupIds = groups.map((group) => group._id);
     if (groupIds.length === 0) {
@@ -106,7 +134,6 @@ router.get("/mentor", protect, requireVerified, async (req, res) => {
     }).filter((expense) => expense.personalShare > 0);
 
     const activeMonths = new Set(personalExpenses.map((expense) => expense.createdAt.toISOString().slice(0, 7)));
-    // Primary gate: A score is shown only with enough expense history (at least 3 expenses over 2 months)
     if (personalExpenses.length < 3 || activeMonths.size < 2) {
       const data = {
         status: "not_enough_data",
@@ -117,38 +144,8 @@ router.get("/mentor", protect, requireVerified, async (req, res) => {
       return res.json(data);
     }
 
-    const hasSettlements = settlements.length >= 1;
-    let followThrough = 0;
-    let promptness = 0;
-    let averageConfirmationHours = 14 * 24;
-
-    if (hasSettlements) {
-      const confirmed = settlements.filter((settlement) => !settlement.status || settlement.status === "confirmed");
-      const confirmationHours = confirmed.map((settlement) => Math.max(0, (new Date(settlement.updatedAt) - new Date(settlement.createdAt)) / 36e5));
-      averageConfirmationHours = confirmationHours.length
-        ? confirmationHours.reduce((sum, hours) => sum + hours, 0) / confirmationHours.length
-        : 14 * 24;
-      followThrough = (confirmed.length / settlements.length) * 100;
-      promptness = clamp(100 - (averageConfirmationHours / (14 * 24)) * 100, 0, 100);
-    }
-
-    const monthlyTotals = {};
-    personalExpenses.forEach((expense) => {
-      const month = expense.createdAt.toISOString().slice(0, 7);
-      monthlyTotals[month] = (monthlyTotals[month] || 0) + expense.personalShare;
-    });
-    const monthlyValues = Object.values(monthlyTotals);
-    const monthlyMean = monthlyValues.reduce((sum, value) => sum + value, 0) / monthlyValues.length;
-    const coefficientOfVariation = monthlyMean
-      ? Math.sqrt(monthlyValues.reduce((sum, value) => sum + (value - monthlyMean) ** 2, 0) / monthlyValues.length) / monthlyMean
-      : 1;
-    const consistency = clamp(100 * (1 - coefficientOfVariation), 0, 100);
-
-    // If the user has completed at least 1 settlement, use the full explainable formula.
-    // Otherwise, score is calculated based entirely on their spending consistency.
-    const score = hasSettlements
-      ? Math.round(0.35 * followThrough + 0.30 * promptness + 0.35 * consistency)
-      : Math.round(consistency);
+    // Call computeMentorReport utility
+    const report = computeMentorReport(settlements, personalExpenses);
 
     const categoryTotals = {};
     const categoryGroups = {};
@@ -176,21 +173,16 @@ router.get("/mentor", protect, requireVerified, async (req, res) => {
       observations.push(`"${largestRecent.description}" in ${largestRecent.groupName} was an unusually large recent share at ₹${round(largestRecent.personalShare).toLocaleString("en-IN")}, versus your typical ₹${round(typicalShare).toLocaleString("en-IN")} expense share.`);
     }
 
-    const signals = {
-      followThrough: Math.round(followThrough),
-      averageConfirmationHours: round(averageConfirmationHours),
-      promptness: Math.round(promptness),
-      consistency: Math.round(consistency),
-      confirmedSettlements: hasSettlements ? settlements.filter((s) => !s.status || s.status === "confirmed").length : 0,
-      totalSettlements: settlements.length,
-    };
-    const mentor = await getMentorCopy(score, observations, signals);
+    const mentor = await getMentorCopy(report.score, report.scoreBand, report.signalBreakdown, observations, report.signals);
     const data = {
       status: "ready",
-      score,
+      score: report.score,
+      scoreBand: report.scoreBand,
+      scoreBandSummary: report.scoreBandSummary,
+      signalBreakdown: report.signalBreakdown,
       observations,
       ...mentor,
-      settlementNote: !hasSettlements ? "Settlement-based insights will improve once you've completed a payment." : null,
+      settlementNote: settlements.length === 0 ? "Settlement-based insights will improve once you've completed a payment." : null,
       generatedAt: new Date().toISOString(),
       cached: false,
     };

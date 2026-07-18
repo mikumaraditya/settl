@@ -9,9 +9,18 @@ import VerifyEmail from './pages/VerifyEmail'
 import Profile from './pages/Profile'
 import Landing from './pages/Landing'
 
+import FinancialMentorWidget from './components/FinancialMentorWidget'
+
 const ProtectedRoute = ({ children }) => {
   const { user } = useAuth()
-  return user ? children : <Navigate to="/login" />
+  return user ? (
+    <>
+      {children}
+      <FinancialMentorWidget />
+    </>
+  ) : (
+    <Navigate to="/login" />
+  )
 }
 
 const RootRoute = () => {
