@@ -120,22 +120,22 @@ export default function FinancialMentorWidget() {
       {isOpen && (
         <div
           ref={panelRef}
-          className="fixed bottom-36 md:bottom-24 left-4 right-4 md:left-auto md:right-8 md:w-[380px] max-h-[60vh] md:max-h-[70vh] glass-card rounded-3xl border border-white/5 shadow-2xl shadow-black/50 overflow-hidden flex flex-col z-50 animate-in fade-in slide-in-from-bottom-4 duration-200"
+          className="fixed bottom-36 md:bottom-24 left-4 right-4 md:left-auto md:right-8 md:w-[380px] max-h-[60vh] md:max-h-[70vh] bg-white dark:bg-[#182237] rounded-3xl border border-slate-200 dark:border-white/10 shadow-2xl shadow-slate-350/20 dark:shadow-black/60 overflow-hidden flex flex-col z-50 animate-in fade-in slide-in-from-bottom-4 duration-200"
         >
           {/* Header */}
-          <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
+          <div className="px-5 py-4 border-b border-slate-200 dark:border-white/10 flex items-center justify-between bg-slate-50 dark:bg-white/[0.01]">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
-                <span className="material-symbols-outlined text-[16px] text-indigo-400">psychology</span>
+                <span className="material-symbols-outlined text-[16px] text-indigo-500 dark:text-indigo-400">psychology</span>
               </div>
               <div>
-                <h2 className="text-sm font-extrabold text-white">AI Financial Mentor</h2>
+                <h2 className="text-sm font-extrabold text-slate-800 dark:text-white">AI Financial Mentor</h2>
                 <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-wider mt-0.5">Personalized Insights</p>
               </div>
             </div>
             <button
               onClick={() => setIsOpen(false)}
-              className="text-on-surface-variant hover:text-white transition-colors cursor-pointer w-6 h-6 flex items-center justify-center rounded-lg hover:bg-white/5"
+              className="text-on-surface-variant hover:text-slate-800 dark:hover:text-white transition-colors cursor-pointer w-6 h-6 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-white/5"
             >
               <span className="material-symbols-outlined text-[16px]">close</span>
             </button>
@@ -154,25 +154,25 @@ export default function FinancialMentorWidget() {
                 <span className="leading-relaxed">{error}</span>
               </div>
             ) : mentor?.status === 'not_enough_data' ? (
-              <div className="flex flex-col items-center text-center py-4 px-2 gap-3 bg-white/[0.01] rounded-2xl border border-white/5">
-                <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-400">
+              <div className="flex flex-col items-center text-center py-4 px-2 gap-3 bg-slate-50 dark:bg-white/[0.01] rounded-2xl border border-slate-200 dark:border-white/5">
+                <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 dark:text-amber-400">
                   <span className="material-symbols-outlined text-[24px]">analytics</span>
                 </div>
-                <h3 className="text-xs font-extrabold text-white uppercase tracking-wider">Not Enough Activity Yet</h3>
+                <h3 className="text-xs font-extrabold text-slate-800 dark:text-white uppercase tracking-wider">Not Enough Activity Yet</h3>
                 <p className="text-xs text-on-surface-variant leading-relaxed">{mentor.reason}</p>
                 {mentor.activity && (
                   <div className="grid grid-cols-2 gap-3 mt-3 text-[9px] font-bold text-on-surface-variant uppercase tracking-wider w-full">
-                    <div className="bg-white/[0.02] border border-white/5 p-2.5 rounded-xl flex flex-col items-center justify-center">
+                    <div className="bg-slate-100 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-2.5 rounded-xl flex flex-col items-center justify-center">
                       <span className="text-[9px] text-on-surface-variant">Expenses</span>
-                      <span className="text-white text-xs font-black mt-1">{mentor.activity.expenses} / 3</span>
+                      <span className="text-slate-850 dark:text-white text-xs font-black mt-1">{mentor.activity.expenses} / 3</span>
                     </div>
-                    <div className="bg-white/[0.02] border border-white/5 p-2.5 rounded-xl flex flex-col items-center justify-center">
+                    <div className="bg-slate-100 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-2.5 rounded-xl flex flex-col items-center justify-center">
                       <span className="text-[9px] text-on-surface-variant">Months Active</span>
-                      <span className="text-white text-xs font-black mt-1">{mentor.activity.activeMonths} / 2</span>
+                      <span className="text-slate-850 dark:text-white text-xs font-black mt-1">{mentor.activity.activeMonths} / 2</span>
                     </div>
-                    <div className="bg-white/[0.02] border border-white/5 p-2.5 rounded-xl flex flex-col items-center justify-center col-span-2">
+                    <div className="bg-slate-100 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-2.5 rounded-xl flex flex-col items-center justify-center col-span-2">
                       <span className="text-[9px] text-on-surface-variant">Completed Settlements</span>
-                      <span className="text-white text-xs font-black mt-1">{mentor.activity.settlements} / 2</span>
+                      <span className="text-slate-850 dark:text-white text-xs font-black mt-1">{mentor.activity.settlements} / 2</span>
                     </div>
                   </div>
                 )}
@@ -180,19 +180,19 @@ export default function FinancialMentorWidget() {
             ) : (
               <div className="flex flex-col gap-5">
                 {/* Score Section */}
-                <div className="flex items-center gap-4 bg-gradient-to-br from-indigo-500/10 to-blue-500/5 border border-indigo-500/15 p-4 rounded-2xl">
+                <div className="flex items-center gap-4 bg-gradient-to-br from-indigo-500/5 to-blue-500/5 dark:from-indigo-500/15 dark:to-blue-500/5 border border-indigo-500/10 dark:border-indigo-500/20 p-4 rounded-2xl">
                   {/* Circular Score */}
-                  <div className="relative flex-shrink-0 flex items-center justify-center w-16 h-16 rounded-full bg-white/[0.02] border-[3px] border-indigo-500/20">
+                  <div className="relative flex-shrink-0 flex items-center justify-center w-16 h-16 rounded-full bg-slate-50 dark:bg-white/[0.02] border-[3px] border-indigo-500/20">
                     <svg className="absolute inset-0 -rotate-90 w-full h-full p-0.5" viewBox="0 0 36 36">
                       <path
-                        className="text-white/[0.02]"
+                        className="text-slate-100 dark:text-white/[0.02]"
                         strokeWidth="2.5"
                         stroke="currentColor"
                         fill="none"
                         d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                       />
                       <path
-                        className="text-indigo-400 transition-all duration-1000 ease-out"
+                        className="text-indigo-500 dark:text-indigo-400 transition-all duration-1000 ease-out"
                         strokeDasharray={`${mentor?.score || 0}, 100`}
                         strokeWidth="2.5"
                         strokeLinecap="round"
@@ -202,20 +202,20 @@ export default function FinancialMentorWidget() {
                       />
                     </svg>
                     <div className="flex flex-col items-center">
-                      <span className="text-lg font-black text-white">{mentor?.score}</span>
+                      <span className="text-lg font-black text-slate-800 dark:text-white">{mentor?.score}</span>
                       <span className="text-[7px] font-bold text-on-surface-variant uppercase tracking-wider">Score</span>
                     </div>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <h3 className="text-xs font-extrabold text-white">Financial Health Score</h3>
+                      <h3 className="text-xs font-extrabold text-slate-800 dark:text-white">Financial Health Score</h3>
                       {mentor?.scoreBand && (
                         <span className={`text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border ${
                           mentor.scoreBand === 'Excellent' || mentor.scoreBand === 'Good'
-                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
                             : mentor.scoreBand === 'Needs Attention'
-                            ? 'bg-amber-500/10 border-amber-500/20 text-amber-400'
-                            : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                            ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400'
+                            : 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400'
                         }`}>
                           {mentor.scoreBand}
                         </span>
@@ -223,7 +223,7 @@ export default function FinancialMentorWidget() {
                     </div>
                     <p className="text-[11px] text-on-surface-variant leading-relaxed mt-1">{mentor?.explanation}</p>
                     {mentor?.settlementNote && (
-                      <div className="inline-flex items-center gap-1.5 text-[8px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-lg mt-2">
+                      <div className="inline-flex items-center gap-1.5 text-[8px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-lg mt-2">
                         <span className="material-symbols-outlined text-[11px]">info</span>
                         {mentor.settlementNote}
                       </div>
@@ -242,23 +242,23 @@ export default function FinancialMentorWidget() {
                           className={`border rounded-xl p-3 flex flex-col gap-1.5 transition-all ${
                             sig.isWeakest
                               ? 'bg-amber-500/[0.03] border-amber-500/20 shadow-[inset_0_1px_1px_rgba(245,158,11,0.05)]'
-                              : 'bg-white/[0.01] border-white/5'
+                              : 'bg-slate-50 dark:bg-white/[0.01] border-slate-200 dark:border-white/5'
                           }`}
                         >
                           <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-bold text-white leading-none">{sig.label}</span>
+                            <span className="text-[11px] font-bold text-slate-800 dark:text-white leading-none">{sig.label}</span>
                             <div className="flex items-center gap-1.5">
                               {sig.isWeakest && (
-                                <span className="text-[7px] font-black uppercase tracking-wider text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-md leading-none">
+                                <span className="text-[7px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-md leading-none">
                                   Biggest Opportunity
                                 </span>
                               )}
-                              <span className="text-[11px] font-black text-white leading-none">{sig.value}%</span>
+                              <span className="text-[11px] font-black text-slate-800 dark:text-white leading-none">{sig.value}%</span>
                             </div>
                           </div>
 
                           {/* Progress Bar */}
-                          <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
+                          <div className="w-full bg-slate-200 dark:bg-white/5 h-1.5 rounded-full overflow-hidden">
                             <div
                               className={`h-full rounded-full transition-all duration-500 ${
                                 sig.isWeakest ? 'bg-amber-500' : 'bg-indigo-500'
@@ -282,8 +282,8 @@ export default function FinancialMentorWidget() {
                     <h4 className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest ml-1">Behavioral Observations</h4>
                     <div className="flex flex-col gap-2">
                       {mentor.observations.map((obs, idx) => (
-                        <div key={idx} className="flex gap-2.5 bg-white/[0.02] border border-white/5 p-2.5 rounded-xl items-start">
-                          <span className="material-symbols-outlined text-[14px] text-indigo-400 mt-0.5 flex-shrink-0">analytics</span>
+                        <div key={idx} className="flex gap-2.5 bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-2.5 rounded-xl items-start">
+                          <span className="material-symbols-outlined text-[14px] text-indigo-500 dark:text-indigo-400 mt-0.5 flex-shrink-0">analytics</span>
                           <p className="text-[11px] text-on-surface-variant font-medium leading-relaxed">{obs}</p>
                         </div>
                       ))}
@@ -297,8 +297,8 @@ export default function FinancialMentorWidget() {
                     <h4 className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest ml-1">Actionable Suggestions</h4>
                     <div className="flex flex-col gap-2">
                       {mentor.suggestions.map((sug, idx) => (
-                        <div key={idx} className="flex gap-2.5 bg-white/[0.02] border border-white/5 p-2.5 rounded-xl items-start">
-                          <span className="material-symbols-outlined text-[14px] text-emerald-400 mt-0.5 flex-shrink-0">lightbulb</span>
+                        <div key={idx} className="flex gap-2.5 bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-2.5 rounded-xl items-start">
+                          <span className="material-symbols-outlined text-[14px] text-emerald-500 dark:text-emerald-400 mt-0.5 flex-shrink-0">lightbulb</span>
                           <p className="text-[11px] text-on-surface-variant font-medium leading-relaxed">{sug}</p>
                         </div>
                       ))}
@@ -307,7 +307,7 @@ export default function FinancialMentorWidget() {
                 )}
 
                 {/* Footer */}
-                <div className="flex justify-between items-center text-[8px] text-on-surface-variant/70 font-bold uppercase tracking-wider border-t border-white/5 pt-3 mt-1">
+                <div className="flex justify-between items-center text-[8px] text-on-surface-variant/70 font-bold uppercase tracking-wider border-t border-slate-200 dark:border-white/5 pt-3 mt-1">
                   <span>Cross-Group Analysis</span>
                   <span>Generated {mentor?.generatedAt ? new Date(mentor.generatedAt).toLocaleDateString() : ''} {mentor?.generatedAt ? new Date(mentor.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
                 </div>
