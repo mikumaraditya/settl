@@ -212,11 +212,13 @@ export default function FinancialMentorWidget() {
               <div className="flex flex-col gap-5">
                 {/* Score Section */}
                 {/* Score & Summary Section */}
-                <div className="flex flex-col gap-4 bg-gradient-to-br from-indigo-500/5 via-purple-500/5 to-pink-500/5 dark:from-indigo-500/10 dark:via-purple-500/10 dark:to-pink-500/5 border border-purple-500/20 p-5 rounded-3xl shadow-[inset_0_1px_1px_rgba(168,85,247,0.15)] relative overflow-hidden">
+                <div className="flex flex-col gap-4 bg-gradient-to-br from-indigo-500/5 via-purple-500/5 to-pink-500/5 dark:from-indigo-500/10 dark:via-purple-500/10 dark:to-pink-500/5 border border-purple-500/20 p-5 rounded-3xl shadow-[inset_0_1px_1px_rgba(168,85,247,0.15)] relative">
                   {/* Subtle background glow */}
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl" />
+                  <div className="absolute inset-0 overflow-hidden rounded-3xl pointer-events-none">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl" />
+                  </div>
                   
-                  <div className="flex items-center gap-4 relative z-10">
+                  <div className="flex items-center gap-4 relative z-20">
                     {/* Circular Score */}
                     <div className="relative flex-shrink-0 flex items-center justify-center w-16 h-16 rounded-full bg-white dark:bg-slate-900 shadow-inner border border-purple-500/20">
                       <svg className="absolute inset-0 -rotate-90 w-full h-full p-0.5 drop-shadow-md" viewBox="0 0 36 36">
