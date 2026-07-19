@@ -208,11 +208,13 @@ export default function FinancialMentorWidget() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <h3 className="text-xs font-extrabold text-slate-800 dark:text-white">Financial Health Score</h3>
+                      <h3 className="text-xs font-extrabold text-slate-800 dark:text-white">Trust Score</h3>
                       {mentor?.scoreBand && (
                         <span className={`text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border ${
                           mentor.scoreBand === 'Excellent' || mentor.scoreBand === 'Good'
                             ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                            : mentor.scoreBand === 'New'
+                            ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-600 dark:text-indigo-400'
                             : mentor.scoreBand === 'Needs Attention'
                             ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400'
                             : 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400'

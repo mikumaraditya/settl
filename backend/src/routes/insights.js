@@ -5,6 +5,8 @@ import Settlement from "../models/Settlement.js";
 import protect from "../middleware/auth.js";
 import requireVerified from "../middleware/requireVerified.js";
 import { computeMentorReport } from "../utils/financialMentor.js";
+import ActivityLog from "../models/ActivityLog.js";
+import mongoose from "mongoose";
 
 const router = express.Router();
 const MENTOR_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
@@ -19,7 +21,7 @@ const median = (values) => {
 
 const fallbackMentorCopy = (score, scoreBand, signalBreakdown) => {
   const weakest = signalBreakdown.filter(s => s.isWeakest).map(s => s.label).join(" and ");
-  const explanation = `Your Financial Health Score is ${score}/100, placing you in the '${scoreBand}' category. Your lowest-performing metric is ${weakest}, which currently offers the biggest opportunity for improvement.`;
+  const explanation = `Your Trust Score is ${score}/100, placing you in the '${scoreBand}' category. Your lowest-performing metric is ${weakest}, which currently offers the biggest opportunity for improvement.`;
 
   const suggestions = [];
   const followThroughSig = signalBreakdown.find(s => s.key === "followThrough");
@@ -56,10 +58,10 @@ Give one or two suggestions.
 
 In your response:
 1. Explain what the score and the score band mean in plain terms (e.g. why a score of ${score} puts them in the '${scoreBand}' band).
-2. Name the weakest signal(s) from the breakdown by name, and explain why it matters to the user's financial health/trust reliability. Note: "Settlement Initiative" measures how quickly the user requests settlements after group expenses are created. If this is the weakest signal, suggest the user proactively settle up after shared spending instead of letting debts linger.
+2. Name the weakest signal(s) from the breakdown by name, and explain why it matters to the user's trust reliability. Note: "Settlement Initiative" measures how quickly the user requests settlements after group expenses are created. "Reliability Incidents" measures settlement claims that were rejected by receivers. If this is the weakest signal, suggest the user only claim settlements that have actually been paid.
 3. Every suggestion MUST state a concrete benefit (payoff) for the user, not just a generic action.
 
-Financial Health Score: ${score}/100
+Trust Score: ${score}/100
 Score Band: ${scoreBand}
 Signals: ${JSON.stringify(signals)}
 Signal Breakdown: ${JSON.stringify(signalBreakdown)}
@@ -112,12 +114,15 @@ export async function getTrustScoreForUser(userId) {
     return { status: "not_enough_data", score: null, scoreBand: "N/A" };
   }
 
-  const [expenses, settlements] = await Promise.all([
+  const [expenses, settlements, rejections] = await Promise.all([
     Expense.find({ group: { $in: groupIds }, "splits.user": userId })
       .select("description amount category group splits createdAt")
       .lean(),
     Settlement.find({ group: { $in: groupIds }, from: userId })
       .select("status amount group createdAt updatedAt")
+      .lean(),
+    ActivityLog.find({ type: 'settlement_rejected', 'meta.fromId': new mongoose.Types.ObjectId(userId), group: { $in: groupIds } })
+      .select("createdAt")
       .lean(),
   ]);
 
@@ -130,14 +135,14 @@ export async function getTrustScoreForUser(userId) {
   const activeMonths = new Set(personalExpenses.map((expense) => expense.createdAt.toISOString().slice(0, 7)));
   if (personalExpenses.length < 3 || activeMonths.size < 2) {
     return {
-      status: "not_enough_data",
-      score: null,
-      scoreBand: "N/A",
+      status: "new",
+      score: 100,
+      scoreBand: "New",
       activity: { expenses: personalExpenses.length, activeMonths: activeMonths.size, settlements: settlements.length, groups: groups.length },
     };
   }
 
-  const report = computeMentorReport(settlements, personalExpenses);
+  const report = computeMentorReport(settlements, personalExpenses, rejections);
   return {
     status: "ready",
     score: report.score,
@@ -179,12 +184,15 @@ router.get("/mentor", protect, requireVerified, async (req, res) => {
       return res.json(data);
     }
 
-    const [expenses, settlements] = await Promise.all([
+    const [expenses, settlements, rejections] = await Promise.all([
       Expense.find({ group: { $in: groupIds }, "splits.user": req.user.id })
         .select("description amount category group splits createdAt")
         .lean(),
       Settlement.find({ group: { $in: groupIds }, from: req.user.id })
         .select("status amount group createdAt updatedAt")
+        .lean(),
+      ActivityLog.find({ type: 'settlement_rejected', 'meta.fromId': new mongoose.Types.ObjectId(req.user.id), group: { $in: groupIds } })
+        .select("createdAt")
         .lean(),
     ]);
 
@@ -197,16 +205,24 @@ router.get("/mentor", protect, requireVerified, async (req, res) => {
     const activeMonths = new Set(personalExpenses.map((expense) => expense.createdAt.toISOString().slice(0, 7)));
     if (personalExpenses.length < 3 || activeMonths.size < 2) {
       const data = {
-        status: "not_enough_data",
-        reason: "Add at least three shared expenses over two active months to unlock your mentor report.",
+        status: "new",
+        score: 100,
+        scoreBand: "New",
+        scoreBandSummary: "You're starting at a perfect trust score. It'll update automatically as you add expenses and settle up.",
+        explanation: "You're starting at a perfect trust score. It'll update automatically as you add expenses and settle up.",
+        suggestions: [],
+        observations: [],
+        signalBreakdown: [],
         activity: { expenses: personalExpenses.length, activeMonths: activeMonths.size, settlements: settlements.length, groups: groups.length },
+        generatedAt: new Date().toISOString(),
+        cached: false,
       };
       mentorCache.set(req.user.id, { data, expiresAt: Date.now() + MENTOR_CACHE_TTL_MS });
       return res.json(data);
     }
 
     // Call computeMentorReport utility
-    const report = computeMentorReport(settlements, personalExpenses);
+    const report = computeMentorReport(settlements, personalExpenses, rejections);
 
     const categoryTotals = {};
     const categoryGroups = {};

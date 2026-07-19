@@ -1,6 +1,6 @@
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export function computeMentorReport(settlements = [], personalExpenses = []) {
+export function computeMentorReport(settlements = [], personalExpenses = [], rejections = []) {
   const hasSettlements = settlements.length >= 1;
   let followThrough = 0;
   let settlementInitiative = 0;
@@ -23,19 +23,36 @@ export function computeMentorReport(settlements = [], personalExpenses = []) {
       firstTimeInit = false;
     }
   });
+  rejections.forEach(r => {
+    const d = new Date(r.createdAt);
+    if (firstTimeInit || d > latestDate) {
+      latestDate = d;
+      firstTimeInit = false;
+    }
+  });
   const refDate = latestDate;
 
   if (hasSettlements) {
-    // 2. Follow-Through: confirmed settlements / total settlements, weighted by recency
-    // Recency weighting step decay:
-    // - Created <= 30 days ago: weight 1.0
-    // - 30 to 90 days ago: weight 0.5
-    // - > 90 days ago: weight 0.2
+    // 2. Follow-Through: confirmed settlements / total settlements, weighted by recency & staleness.
+    //
+    // Interaction of Recency Weight and Staleness Credit:
+    // - Recency weighting (weight: 1.0 / 0.5 / 0.2) controls the MAGNITUDE of a transaction's overall impact on the followThrough rating.
+    // - Staleness credit (credit: 1.0 -> 0.0) controls the VALUE/CREDIT of unconfirmed settlements based on how long they have been pending.
+    //
+    // These two axes compose without double-discounting anomalies:
+    // For example, if a settlement is 100 days old and still pending:
+    // - Recency weight is 0.2 (low overall impact).
+    // - Staleness credit factor is 0.0 (treated as fully unconfirmed/unpaid).
+    // - Contribution to total sum is 0.2, and to confirmed sum is 0.2 * 0 = 0.
+    // This correctly drags the score down, but because its recency weight is small (0.2), it has a smaller drag on the ratio than a fresh unconfirmed settlement.
+    // This allows old behavior to decay gracefully while still correctly penalizing unresolved status.
     let weightedConfirmedSum = 0;
     let weightedTotalSum = 0;
 
     settlements.forEach((s) => {
       const ageDays = Math.max(0, (refDate - new Date(s.createdAt)) / 864e5);
+      
+      // A. Recency weight:
       let weight = 1.0;
       if (ageDays > 90) {
         weight = 0.2;
@@ -43,11 +60,27 @@ export function computeMentorReport(settlements = [], personalExpenses = []) {
         weight = 0.5;
       }
 
+      // B. Staleness credit factor for pending settlements:
+      // - Confirmed: 100% credit
+      // - Pending < 3 days: 100% credit (grace period, neutral)
+      // - Pending 3-14 days: scales linearly from 100% down to 0% credit
+      // - Pending > 14 days: 0% credit (full penalty)
+      let credit = 0.0;
       const isConfirmed = !s.status || s.status === "confirmed";
-      weightedTotalSum += weight;
       if (isConfirmed) {
-        weightedConfirmedSum += weight;
+        credit = 1.0;
+      } else {
+        if (ageDays < 3) {
+          credit = 1.0;
+        } else if (ageDays <= 14) {
+          credit = 1.0 - (ageDays - 3) / 11;
+        } else {
+          credit = 0.0;
+        }
       }
+
+      weightedTotalSum += weight;
+      weightedConfirmedSum += weight * credit;
     });
 
     followThrough = weightedTotalSum > 0 ? (weightedConfirmedSum / weightedTotalSum) * 100 : 100;
@@ -136,13 +169,38 @@ export function computeMentorReport(settlements = [], personalExpenses = []) {
     : 1;
   const consistency = clamp(100 * (1 - coefficientOfVariation), 0, 100);
 
-  // Rebalanced score formula:
-  // - Settlement Follow-Through (honesty/reliability): 40%
-  // - Settlement Initiative (speed/proactiveness): 35%
-  // - Spending Consistency (budget predictability): 25%
-  const score = hasSettlements
-    ? Math.round(0.40 * followThrough + 0.35 * settlementInitiative + 0.25 * consistency)
+  // 5. Reliability Incidents (rejection penalty by receivers)
+  // Recency weighted: rejections from <= 30 days have weight 1.0, 30-90 days weight 0.5, >90 days weight 0.2.
+  let weightedRejectionsCount = 0;
+  rejections.forEach((r) => {
+    const ageDays = Math.max(0, (refDate - new Date(r.createdAt)) / 864e5);
+    let weight = 1.0;
+    if (ageDays > 90) {
+      weight = 0.2;
+    } else if (ageDays > 30) {
+      weight = 0.5;
+    }
+    weightedRejectionsCount += weight;
+  });
+
+  // Diminishing returns penalty formula: max 50 points penalty
+  const penaltyPoints = Math.round(50 * (1 - Math.exp(-0.4 * weightedRejectionsCount)));
+  const reliabilityScore = Math.max(0, 100 - penaltyPoints);
+
+  // Rebalanced score formula (total = 1.0):
+  // - Settlement Follow-Through (reliability): 35%
+  // - Settlement Initiative (proactiveness): 35%
+  // - Spending Consistency (predictability): 30%
+  // Applied rejections penalty (diminishing return) after the three-signal calculation.
+  let score = hasSettlements
+    ? Math.round(0.35 * followThrough + 0.35 * settlementInitiative + 0.30 * consistency)
     : Math.round(consistency);
+
+  if (hasSettlements) {
+    score = Math.max(0, score - penaltyPoints);
+  }
+
+  score = clamp(score, 0, 100);
 
   let scoreBand = "At Risk";
   let scoreBandSummary = "Several unresolved balances or delayed settlement initiatives indicate low trust reliability.";
@@ -178,6 +236,12 @@ export function computeMentorReport(settlements = [], personalExpenses = []) {
         label: "Spending Consistency",
         value: Math.round(consistency),
         description: "How steady your shared expenses are month-to-month."
+      },
+      {
+        key: "reliabilityIncidents",
+        label: "Reliability Incidents",
+        value: Math.round(reliabilityScore),
+        description: "Settlement claims that were rejected by the receiver as not actually received."
       }
     ];
   } else {
@@ -207,8 +271,10 @@ export function computeMentorReport(settlements = [], personalExpenses = []) {
       averageInitiativeHours: Math.round(averageInitiativeHours * 100) / 100,
       settlementInitiative: Math.round(settlementInitiative),
       consistency: Math.round(consistency),
+      reliabilityIncidents: Math.round(reliabilityScore),
       confirmedSettlements: hasSettlements ? settlements.filter((s) => !s.status || s.status === "confirmed").length : 0,
       totalSettlements: settlements.length,
+      rejectionsCount: rejections.length
     }
   };
 }

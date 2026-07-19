@@ -1609,16 +1609,18 @@ export default function GroupDetail() {
                           <div>
                             {(() => {
                               const scoreData = memberScores[m.user?._id];
-                              if (scoreData && scoreData.status === "ready") {
+                              if (scoreData && (scoreData.status === "ready" || scoreData.status === "new")) {
                                 return (
                                   <span className={`inline-flex items-center text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-lg border ${
                                     scoreData.scoreBand === 'Excellent' || scoreData.scoreBand === 'Good'
                                       ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                                      : scoreData.scoreBand === 'New'
+                                      ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400'
                                       : scoreData.scoreBand === 'Needs Attention'
                                       ? 'bg-amber-500/10 border-amber-500/20 text-amber-400'
                                       : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
-                                  }`} title="Financial Health / Trust Score">
-                                    Trust: {scoreData.score} ({scoreData.scoreBand})
+                                  }`} title="Trust Score">
+                                    {scoreData.scoreBand === 'New' ? 'Trust: New Member' : `Trust: ${scoreData.score} (${scoreData.scoreBand})`}
                                   </span>
                                 );
                               } else if (scoreData && scoreData.status === "not_enough_data") {
