@@ -87,8 +87,19 @@ The core technical intelligence of Settl lies in its greedy net balance matching
 Settl implements real-time updates via `Socket.io`. Clients join WebSocket rooms segregated by `groupId`. When actions occur in the REST API, the server triggers events to the group room, notifying all logged-in members.
 - The React `NotificationContext` catches these events and triggers micro-animations, audio cues, or toast alerts.
 
-### 🧠 AI Financial Insights
-- **Google Gemini Integration**: On login, the dashboard queries the Google Gemini API (using the model `gemini-2.5-flash` with `gemini-2.5-flash-lite` fallback).
+### 🎯 AI Trust Score & Financial Mentor
+- **Weighted Core Dimensions**: The trust engine computes a user score out of 100 based on three distinct behavioral aspects:
+  - *Repayment Reliability* (50% weight): Measures how quickly a user pays back (Average Initiative Hours) and how reliably they follow through.
+  - *Upfront Contribution* (35% weight): Tracks the ratio of upfront spending fronted by the user relative to their total involved share.
+  - *Spending Consistency* (15% weight): Measures month-to-month variation in personal share totals, favoring predictable patterns.
+- **Dynamic Renormalization Gating**: Each dimension requires a minimum activity baseline (e.g., at least 2 settlements for reliability, 3 expenses for contribution, and 3 active months for consistency). To prevent penalizing new users due to missing history, dimensions with insufficient data are skipped, and weights are dynamically renormalized across the active qualifying factors.
+- **Post-Weighted Fraud Penalty**: Settlement claims rejected/disputed by receivers act as a negative fraud/reliability signal. Instead of being blended into the weighted dimensions, a separate, disproportionate penalty is calculated using a diminishing returns formula and deducted directly from the final score (capping at a 50-point maximum deduction).
+- **AI Financial Mentor Panel**: Rather than exposing internal numeric sub-metrics or signal names, a dedicated Gemini integration provides natural-language coaching. The prompt uses raw behavioral facts (exact ₹ values fronted, days-to-settle, settlement counts, and rejection logs) to draft actionable tips and constructive advice.
+- **Trend Tracking & What-If Projection**: The Mentor tracks historical progress by saving and comparing scores since the last calculation to present trends (e.g., score delta). It also highlights the user's weakest score dimension and displays a "what-if" projection showing the exact score impact if the user follows the top recommendation.
+- **Separation of Services**: This system operates independently of the Dashboard "Financial Tips" feature, utilizing distinct Gemini API integrations and prompts optimized for secure, fact-based behavioral coaching.
+
+### 🧠 AI Financial Tips (Dashboard)
+- **Google Gemini Integration**: On login, the dashboard queries the Google Gemini API (using the model `gemini-2.5-flash` with `gemini-3.5-flash` fallback).
 - **Contextual Instruction**: The prompt requests 10 financial tips tailored for young Indian professionals, spanning budgeting rules (e.g., 50/30/20), investment compounding (SIPs, index funds), debt safety, tax saving (80C, PPF, ELSS), and social expense etiquette.
 - **Session Cache**: Tips are validated and cached inside the client's `sessionStorage` to avoid spamming API limits. A pre-defined local array of tips serves as a fallback.
 
@@ -96,6 +107,7 @@ Settl implements real-time updates via `Socket.io`. Clients join WebSocket rooms
 - **HTTP-Only Cookies**: Application JWT tokens are stored securely in HTTP-only cookies, safeguarding them from Cross-Site Scripting (XSS) attacks. The same cookie handles validation for REST endpoints and Socket.IO connections.
 - **Graceful Session Eviction**: An Axios response interceptor monitors all responses. If any request returns a `401 Unauthorized`, it evicts user data from `localStorage`, flags session expiry, redirects to `/login`, and triggers an error banner toast.
 - **Email Verification Guard**: Requires users to complete email verification via high-fidelity, secure Nodemailer SMTP tokens before accessing group expenses, settlements, messages, or real-time websocket rooms.
+- **Production Authentication & Key Scope**: In production environments, Google OAuth is the sole supported authentication path (bypassing any development mock logins). Crucially, while the Dashboard Tips feature makes client-side requests using a client-side API key (`VITE_GEMINI_API_KEY`), the Gemini API keys for the Trust Score & AI Financial Mentor features are restricted server-side only and never exposed to the client.
 
 ---
 
@@ -107,7 +119,7 @@ Settl implements real-time updates via `Socket.io`. Clients join WebSocket rooms
 | **Backend** | Node.js, Express, Socket.IO Server |
 | **Database** | MongoDB Atlas, Mongoose ODM |
 | **Security & Auth** | HTTP-Only JWT Cookie, bcryptjs, Google OAuth 2.0 |
-| **Integrations** | Google Gemini API (`gemini-2.5-flash` / `gemini-2.5-flash-lite`), Nodemailer / Gmail SMTP, UPI deep link protocols |
+| **Integrations** | Google Gemini API (`gemini-2.5-flash` / `gemini-3.5-flash` fallback), Nodemailer / Gmail SMTP, UPI deep link protocols |
 
 ---
 

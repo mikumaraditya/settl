@@ -158,8 +158,8 @@ Real observations: ${JSON.stringify(enrichedObservations)}`;
     try {
       result = await callGemini("gemini-2.5-flash");
     } catch (err) {
-      console.warn("gemini-2.5-flash failed, trying gemini-2.5-flash-lite fallback:", err.message);
-      result = await callGemini("gemini-2.5-flash-lite");
+      console.warn("gemini-2.5-flash failed, trying gemini-3.5-flash fallback:", err.message);
+      result = await callGemini("gemini-3.5-flash");
     }
 
     return {

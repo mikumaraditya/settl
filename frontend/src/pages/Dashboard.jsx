@@ -104,8 +104,8 @@ export default function Dashboard() {
       try {
         res = await callGemini('gemini-2.5-flash')
       } catch (err) {
-        console.warn('gemini-2.5-flash failed, falling back to gemini-2.5-flash-lite:', err.message)
-        res = await callGemini('gemini-2.5-flash-lite')
+        console.warn('gemini-2.5-flash failed, falling back to gemini-3.5-flash:', err.message)
+        res = await callGemini('gemini-3.5-flash')
       }
       const json = await res.json()
       let raw    = json?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
