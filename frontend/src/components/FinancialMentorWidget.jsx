@@ -252,7 +252,7 @@ export default function FinancialMentorWidget() {
                               info
                             </span>
                             <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 p-3 bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-md border border-slate-700/50 dark:border-white/10 rounded-xl text-[10px] text-slate-200 font-medium leading-normal shadow-xl pointer-events-none transition-all duration-200 ease-out origin-top scale-95 opacity-0 invisible group-hover:visible group-hover:opacity-100 group-hover:scale-100 z-50">
-                              Trust Score reflects how reliably you settle debts — based on whether your payments get confirmed, how quickly you clear your share after group expenses, how consistent your spending is, and whether any payment claims were disputed. It updates automatically as you're more active.
+                              Trust Score reflects how reliably you handle shared money — how consistently you pay back what you owe, how often you front costs for the group, and how steady your spending is over time. It's reduced if any payment you claimed to make was disputed. The score updates automatically as you're more active.
                               <div className="absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-slate-900/95 dark:border-b-slate-950/95"></div>
                             </div>
                           </div>

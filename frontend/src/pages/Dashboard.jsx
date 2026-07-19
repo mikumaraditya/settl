@@ -92,17 +92,20 @@ export default function Dashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.9, maxOutputTokens: 2048 } }),
       })
-      if (!res.ok) throw new Error(`Model ${model} failed with status ${res.status}`)
+      if (!res.ok) {
+        const errBody = await res.text()
+        throw new Error(`Model ${model} failed with status ${res.status}: ${errBody}`)
+      }
       return res
     }
 
     try {
       let res
       try {
-        res = await callGemini('gemini-3.5-flash')
+        res = await callGemini('gemini-1.5-flash')
       } catch (err) {
-        console.warn('gemini-3.5-flash failed, falling back to gemini-2.5-flash:', err.message)
-        res = await callGemini('gemini-2.5-flash')
+        console.warn('gemini-1.5-flash failed, falling back to gemini-2.0-flash:', err.message)
+        res = await callGemini('gemini-2.0-flash')
       }
       const json = await res.json()
       let raw    = json?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
