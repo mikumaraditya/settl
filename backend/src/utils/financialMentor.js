@@ -137,9 +137,24 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
   const refMonth = refDate.getMonth();
 
   const monthlyTotals = {};
+  let equalSplitCount = 0;
+  let unequalSplitCount = 0;
+
   personalExpenses.forEach((expense) => {
     const month = new Date(expense.createdAt).toISOString().slice(0, 7);
-    monthlyTotals[month] = (monthlyTotals[month] || 0) + expense.personalShare;
+    const isEqual = !expense.splitType || expense.splitType === "equal";
+    
+    if (isEqual) {
+      equalSplitCount++;
+    } else {
+      unequalSplitCount++;
+    }
+
+    // Weight equal splits at 0.5x (mostly reflect group spending choices), and exact/percentage at 1.0x (reflect direct individual behavior)
+    const splitWeight = isEqual ? 0.5 : 1.0;
+    const weightedShare = expense.personalShare * splitWeight;
+
+    monthlyTotals[month] = (monthlyTotals[month] || 0) + weightedShare;
   });
 
   const monthsData = Object.entries(monthlyTotals).map(([monthStr, total]) => {
@@ -167,7 +182,16 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
   const coefficientOfVariation = weightedMean
     ? weightedStdDev / weightedMean
     : 1;
-  const consistency = clamp(100 * (1 - coefficientOfVariation), 0, 100);
+
+  let consistency = clamp(100 * (1 - coefficientOfVariation), 0, 100);
+
+  // Confidence reduction mechanism for equal-split-heavy datasets:
+  // If user splits are mostly equal, scale consistency by confidence multiplier [0.6 - 1.0]
+  const totalExpensesCount = equalSplitCount + unequalSplitCount;
+  const confidenceMultiplier = totalExpensesCount > 0
+    ? (0.6 + 0.4 * (unequalSplitCount / totalExpensesCount))
+    : 1.0;
+  consistency = clamp(consistency * confidenceMultiplier, 0, 100);
 
   // 5. Reliability Incidents (rejection penalty by receivers)
   // Recency weighted: rejections from <= 30 days have weight 1.0, 30-90 days weight 0.5, >90 days weight 0.2.
@@ -188,12 +212,12 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
   const reliabilityScore = Math.max(0, 100 - penaltyPoints);
 
   // Rebalanced score formula (total = 1.0):
-  // - Settlement Follow-Through (reliability): 35%
-  // - Settlement Initiative (proactiveness): 35%
-  // - Spending Consistency (predictability): 30%
+  // - Settlement Follow-Through (reliability): 40% (direct reliability/honesty behavior)
+  // - Settlement Initiative (proactiveness): 40% (direct action-based behavior)
+  // - Spending Consistency (predictability): 20% (budget-predictability only; weighted lower)
   // Applied rejections penalty (diminishing return) after the three-signal calculation.
   let score = hasSettlements
-    ? Math.round(0.35 * followThrough + 0.35 * settlementInitiative + 0.30 * consistency)
+    ? Math.round(0.40 * followThrough + 0.40 * settlementInitiative + 0.20 * consistency)
     : Math.round(consistency);
 
   if (hasSettlements) {
@@ -216,6 +240,12 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
     scoreBandSummary = "Some delays in taking initiative to clear debts or inconsistent follow-through on settlement requests.";
   }
 
+  // Determine low-confidence status for equal-split-heavy data
+  const isLowConfidence = totalExpensesCount > 0 && (unequalSplitCount / totalExpensesCount) < 0.3;
+  const consistencyDescription = isLowConfidence
+    ? "How steady your shared expenses are month-to-month. (Note: Low confidence as your expenses are mostly equal-split)"
+    : "How steady your shared expenses are month-to-month. (Confidence is high based on individual spending splits)";
+
   let signalBreakdown = [];
   if (hasSettlements) {
     signalBreakdown = [
@@ -235,7 +265,7 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
         key: "consistency",
         label: "Spending Consistency",
         value: Math.round(consistency),
-        description: "How steady your shared expenses are month-to-month."
+        description: consistencyDescription
       },
       {
         key: "reliabilityIncidents",
@@ -250,7 +280,7 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
         key: "consistency",
         label: "Spending Consistency",
         value: Math.round(consistency),
-        description: "How steady your shared expenses are month-to-month."
+        description: consistencyDescription
       }
     ];
   }

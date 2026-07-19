@@ -208,7 +208,23 @@ export default function FinancialMentorWidget() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <h3 className="text-xs font-extrabold text-slate-800 dark:text-white">Trust Score</h3>
+                      <div className="flex items-center gap-1">
+                        <h3 className="text-xs font-extrabold text-slate-800 dark:text-white">Trust Score</h3>
+                        <div className="relative group inline-block">
+                          <span
+                            className="material-symbols-outlined text-[11px] text-on-surface-variant/60 cursor-help select-none hover:text-slate-800 dark:hover:text-white transition-colors focus:outline-none focus:text-slate-800 dark:focus:text-white"
+                            tabIndex="0"
+                            aria-label="Trust Score Information"
+                          >
+                            info
+                          </span>
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 p-3 bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-md border border-slate-700/50 dark:border-white/10 rounded-xl text-[10px] text-slate-200 font-medium leading-normal shadow-xl pointer-events-none transition-all duration-200 ease-out origin-top scale-95 opacity-0 invisible group-hover:visible group-hover:opacity-100 group-hover:scale-100 group-focus-within:visible group-focus-within:opacity-100 group-focus-within:scale-100 z-50">
+                            Trust Score reflects how reliably you settle debts — based on whether your payments get confirmed, how quickly you clear your share after group expenses, how consistent your spending is, and whether any payment claims were disputed. It updates automatically as you're more active.
+                            {/* Tooltip arrow */}
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-slate-900/95 dark:border-b-slate-950/95"></div>
+                          </div>
+                        </div>
+                      </div>
                       {mentor?.scoreBand && (
                         <span className={`text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border ${
                           mentor.scoreBand === 'Excellent' || mentor.scoreBand === 'Good'

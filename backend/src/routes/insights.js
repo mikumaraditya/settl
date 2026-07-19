@@ -116,7 +116,7 @@ export async function getTrustScoreForUser(userId) {
 
   const [expenses, settlements, rejections] = await Promise.all([
     Expense.find({ group: { $in: groupIds }, "splits.user": userId })
-      .select("description amount category group splits createdAt")
+      .select("description amount category group splits splitType createdAt")
       .lean(),
     Settlement.find({ group: { $in: groupIds }, from: userId })
       .select("status amount group createdAt updatedAt")
@@ -186,7 +186,7 @@ router.get("/mentor", protect, requireVerified, async (req, res) => {
 
     const [expenses, settlements, rejections] = await Promise.all([
       Expense.find({ group: { $in: groupIds }, "splits.user": req.user.id })
-        .select("description amount category group splits createdAt")
+        .select("description amount category group splits splitType createdAt")
         .lean(),
       Settlement.find({ group: { $in: groupIds }, from: req.user.id })
         .select("status amount group createdAt updatedAt")

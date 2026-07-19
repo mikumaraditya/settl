@@ -9,8 +9,8 @@ console.log("Running Redesigned Trust Score & Settlement Initiative Unit Tests..
 {
   const settlements = [];
   const expenses = [
-    { personalShare: 100, createdAt: new Date("2026-05-01") },
-    { personalShare: 100, createdAt: new Date("2026-06-01") }
+    { personalShare: 100, splitType: "exact", createdAt: new Date("2026-05-01") },
+    { personalShare: 100, splitType: "exact", createdAt: new Date("2026-06-01") }
   ];
   const res = computeMentorReport(settlements, expenses);
   assert.strictEqual(res.score, 100);
@@ -24,8 +24,8 @@ console.log("Running Redesigned Trust Score & Settlement Initiative Unit Tests..
 {
   const settlements = [];
   const expenses = [
-    { personalShare: 100, createdAt: new Date("2026-05-01") },
-    { personalShare: 300, createdAt: new Date("2026-06-01") }
+    { personalShare: 100, splitType: "exact", createdAt: new Date("2026-05-01") },
+    { personalShare: 300, splitType: "exact", createdAt: new Date("2026-06-01") }
   ];
   const res = computeMentorReport(settlements, expenses);
   assert.strictEqual(res.score, 50);
@@ -42,7 +42,7 @@ console.log("Running Redesigned Trust Score & Settlement Initiative Unit Tests..
 // SettlementInitiative = clamp(100 - (12 / 336) * 100, 0, 100) = 96.4 -> 96.
 // FollowThrough = 100%.
 // Expenses: consistency = 100.
-// Score = 0.35 * 100 + 0.35 * 96.43 + 0.30 * 100 = 35 + 33.75 + 30 = 98.75 -> 99.
+// Score = 0.40 * 100 + 0.40 * 96.43 + 0.20 * 100 = 40 + 38.57 + 20 = 98.57 -> 99.
 {
   const createdAt = new Date("2026-06-01T12:00:00Z");
   const updatedAt = new Date("2026-06-01T14:24:00Z");
@@ -50,8 +50,8 @@ console.log("Running Redesigned Trust Score & Settlement Initiative Unit Tests..
     { status: "confirmed", createdAt, updatedAt }
   ];
   const expenses = [
-    { personalShare: 100, createdAt: new Date("2026-05-01") },
-    { personalShare: 100, createdAt: new Date("2026-06-01") }
+    { personalShare: 100, splitType: "exact", createdAt: new Date("2026-05-01") },
+    { personalShare: 100, splitType: "exact", createdAt: new Date("2026-06-01") }
   ];
   const res = computeMentorReport(settlements, expenses);
   assert.strictEqual(res.signals.followThrough, 100);
@@ -71,21 +71,21 @@ console.log("Running Redesigned Trust Score & Settlement Initiative Unit Tests..
 // SettlementInitiative = clamp(100 - (192 / 336) * 100, 0, 100) = 42.85 -> 43.
 // Follow-through = 50 (since pending is 15 days old relative to 2026-06-16, c = 0.0).
 // Consistency = 50.
-// Score = 0.35 * 50 + 0.35 * 43 + 0.30 * 50 = 17.5 + 15.05 + 15 = 47.55 -> 48.
+// Score = 0.40 * 50 + 0.40 * 43 + 0.20 * 50 = 20 + 17.2 + 10 = 47.2 -> 47.
 {
   const settlements = [
     { status: "confirmed", createdAt: new Date("2026-06-16T12:00:00Z"), updatedAt: new Date("2026-06-16T15:00:00Z") },
     { status: "pending", createdAt: new Date("2026-06-01T12:00:00Z") }
   ];
   const expenses = [
-    { personalShare: 100, createdAt: new Date("2026-05-01") },
-    { personalShare: 300, createdAt: new Date("2026-06-01") }
+    { personalShare: 100, splitType: "exact", createdAt: new Date("2026-05-01") },
+    { personalShare: 300, splitType: "exact", createdAt: new Date("2026-06-01") }
   ];
   const res = computeMentorReport(settlements, expenses);
   assert.strictEqual(res.signals.followThrough, 50);
   assert.strictEqual(res.signals.settlementInitiative, 43);
   assert.strictEqual(res.signals.consistency, 50);
-  assert.strictEqual(res.score, 48);
+  assert.strictEqual(res.score, 47);
   console.log("✔ Test Case 4 Passed (Mixed settlements, moderate score)");
 }
 
@@ -97,7 +97,7 @@ console.log("Running Redesigned Trust Score & Settlement Initiative Unit Tests..
     { status: "confirmed", createdAt: new Date("2026-06-01T00:00:00Z"), updatedAt: new Date("2026-06-01T02:00:00Z") }
   ];
   const expenses = [
-    { personalShare: 100, createdAt: new Date("2026-06-02T00:00:00Z") }
+    { personalShare: 100, splitType: "exact", createdAt: new Date("2026-06-02T00:00:00Z") }
   ];
   const res = computeMentorReport(settlements, expenses);
   assert.strictEqual(res.signals.settlementInitiative, 100);
@@ -111,15 +111,15 @@ console.log("Running Redesigned Trust Score & Settlement Initiative Unit Tests..
 // Rejections count = 1.0.
 // Penalty points = Math.round(50 * (1 - Math.exp(-0.4 * 1.0))) = 16.
 // Reliability incidents score = 100 - 16 = 84.
-// Base score = 0.35 * 100 + 0.35 * 96 + 0.30 * 100 = 98.6 -> 99.
+// Base score = 0.40 * 100 + 0.40 * 96.43 + 0.20 * 100 = 98.57 -> 99.
 // Final score = 99 - 16 = 83.
 {
   const settlements = [
     { status: "confirmed", createdAt: new Date("2026-06-01T12:00:00Z"), updatedAt: new Date("2026-06-01T15:00:00Z") }
   ];
   const expenses = [
-    { personalShare: 100, createdAt: new Date("2026-05-01") },
-    { personalShare: 100, createdAt: new Date("2026-06-01T00:00:00Z") }
+    { personalShare: 100, splitType: "exact", createdAt: new Date("2026-05-01") },
+    { personalShare: 100, splitType: "exact", createdAt: new Date("2026-06-01T00:00:00Z") }
   ];
   const rejections = [
     { createdAt: new Date("2026-06-02T12:00:00Z") }
@@ -132,6 +132,7 @@ console.log("Running Redesigned Trust Score & Settlement Initiative Unit Tests..
   assert.strictEqual(res.signalBreakdown.find(s => s.key === "reliabilityIncidents").isWeakest, true);
   console.log("✔ Test Case 6 Passed (Reliability incident penalty factored correctly)");
 }
+
 // Test Case 7: Staleness penalty for pending settlements
 // - Fresh pending (2 days old): grace period applied, 100% follow-through credit, score remains high.
 // - Stale pending (30 days old): 0% credit, follow-through drags down to 0, score drags down.
@@ -141,8 +142,8 @@ console.log("Running Redesigned Trust Score & Settlement Initiative Unit Tests..
     { status: "pending", createdAt: new Date("2026-06-01") } // 2 days old on 2026-06-03
   ];
   const freshExpenses = [
-    { personalShare: 100, createdAt: new Date("2026-06-01") },
-    { personalShare: 100, createdAt: new Date("2026-06-03") } // establishes 2026-06-03 as refDate
+    { personalShare: 100, splitType: "exact", createdAt: new Date("2026-06-01") },
+    { personalShare: 100, splitType: "exact", createdAt: new Date("2026-06-03") } // establishes 2026-06-03 as refDate
   ];
   
   const resFresh = computeMentorReport(freshSettlements, freshExpenses);
@@ -154,14 +155,41 @@ console.log("Running Redesigned Trust Score & Settlement Initiative Unit Tests..
     { status: "pending", createdAt: new Date("2026-06-01") } // 29 days old on 2026-06-30
   ];
   const staleExpenses = [
-    { personalShare: 100, createdAt: new Date("2026-06-01") },
-    { personalShare: 100, createdAt: new Date("2026-06-30") } // establishes 2026-06-30 as refDate
+    { personalShare: 100, splitType: "exact", createdAt: new Date("2026-06-01") },
+    { personalShare: 100, splitType: "exact", createdAt: new Date("2026-06-30") } // establishes 2026-06-30 as refDate
   ];
   
   const resStale = computeMentorReport(staleSettlements, staleExpenses);
   assert.strictEqual(resStale.signals.followThrough, 0);
-  assert.strictEqual(resStale.score, 65);
+  assert.strictEqual(resStale.score, 60);
   console.log("✔ Test Case 7 Passed (Fresh pending gets grace credit, stale pending penalized fully)");
+}
+
+// Test Case 8: splitType-weighted consistency and confidence multiplier
+// User A: Mostly equal splits (0.5x contribution, 0.6x confidence multiplier). Score: 60, low confidence description.
+// User B: Mostly exact/percentage splits (1.0x contribution, 1.0x confidence multiplier). Score: 100, high confidence description.
+{
+  const settlements = [];
+  
+  // User A: Equal splits only
+  const expensesA = [
+    { personalShare: 100, splitType: "equal", createdAt: new Date("2026-05-01") },
+    { personalShare: 100, splitType: "equal", createdAt: new Date("2026-06-01") }
+  ];
+  const resA = computeMentorReport(settlements, expensesA);
+  assert.strictEqual(resA.score, 60);
+  assert.ok(resA.signalBreakdown[0].description.includes("Low confidence"));
+
+  // User B: Exact splits only
+  const expensesB = [
+    { personalShare: 100, splitType: "exact", createdAt: new Date("2026-05-01") },
+    { personalShare: 100, splitType: "exact", createdAt: new Date("2026-06-01") }
+  ];
+  const resB = computeMentorReport(settlements, expensesB);
+  assert.strictEqual(resB.score, 100);
+  assert.ok(resB.signalBreakdown[0].description.includes("Confidence is high"));
+
+  console.log("✔ Test Case 8 Passed (splitType weightings and confidence multiplier verified)");
 }
 
 console.log("All unit tests passed successfully!");
