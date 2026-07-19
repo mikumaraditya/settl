@@ -139,6 +139,40 @@ export default function GroupDetail() {
   const [expenseForm, setExpenseForm]         = useState({
     description: '', amount: '', category: 'food', splitType: 'equal'
   })
+  const [splitPercentages, setSplitPercentages] = useState({})
+
+  useEffect(() => {
+    if (showAddExpense && group?.members?.length > 0) {
+      const equalShare = 100 / group.members.length;
+      const initial = {};
+      group.members.forEach(m => {
+        initial[m.user?._id] = equalShare;
+      });
+      setSplitPercentages(initial);
+    }
+  }, [showAddExpense, group]);
+
+  const handleSliderChange = (changedUserId, newValue) => {
+    setSplitPercentages(prev => {
+      const otherIds = Object.keys(prev).filter(id => id !== changedUserId);
+      if (otherIds.length === 0) return { [changedUserId]: 100 };
+      
+      const newPrev = { ...prev, [changedUserId]: parseFloat(newValue) };
+      const remainingPercentage = 100 - parseFloat(newValue);
+      
+      const oldTotalOthers = otherIds.reduce((sum, id) => sum + prev[id], 0);
+      
+      if (oldTotalOthers === 0) {
+        const equalShare = remainingPercentage / otherIds.length;
+        otherIds.forEach(id => newPrev[id] = equalShare);
+      } else {
+        otherIds.forEach(id => {
+          newPrev[id] = (prev[id] / oldTotalOthers) * remainingPercentage;
+        });
+      }
+      return newPrev;
+    });
+  };
   const [addingExpense, setAddingExpense]     = useState(false)
   const [addingMember, setAddingMember]       = useState(false)
   const [deletingGroup, setDeletingGroup]     = useState(false)
@@ -389,7 +423,14 @@ export default function GroupDetail() {
     if (isNaN(parsedAmount) || parsedAmount <= 0) return
     setAddingExpense(true)
     try {
-      await axios.post('/expenses', { ...expenseForm, amount: parsedAmount, groupId: id })
+      const payload = { ...expenseForm, amount: parsedAmount, groupId: id }
+      if (expenseForm.splitType === 'percentage') {
+        payload.splits = Object.entries(splitPercentages).map(([userId, pct]) => ({
+          user: userId,
+          percentage: pct
+        }));
+      }
+      await axios.post('/expenses', payload)
       setExpenseForm({ description: '', amount: '', category: 'food', splitType: 'equal' })
       setShowAddExpense(false)
     } catch (err) {
@@ -1879,28 +1920,51 @@ export default function GroupDetail() {
               <div>
                 <p className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest mb-2">Split Method</p>
                 <div className="bg-white/5 border border-white/5 p-1 rounded-2xl flex gap-1 mb-5">
-                  <button type="button" className="flex-1 py-2 px-3 rounded-xl text-xs font-bold bg-white/10 text-white border border-white/5 shadow-sm">Split Equally</button>
-                  <button type="button" disabled className="flex-1 py-2 px-3 rounded-xl text-xs font-bold text-white/20 cursor-not-allowed">Exact Amount</button>
+                  <button type="button" onClick={() => setExpenseForm({...expenseForm, splitType: 'equal'})} className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${expenseForm.splitType === 'equal' ? 'bg-white/10 text-white border border-white/5 shadow-sm' : 'text-white/50 hover:text-white/80'}`}>Split Equally</button>
+                  <button type="button" onClick={() => setExpenseForm({...expenseForm, splitType: 'percentage'})} className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${expenseForm.splitType === 'percentage' ? 'bg-white/10 text-white border border-white/5 shadow-sm' : 'text-white/50 hover:text-white/80'}`}>Uneven Split</button>
+                  <button type="button" disabled className="flex-1 py-2 px-3 rounded-xl text-xs font-bold text-white/20 cursor-not-allowed hidden md:block">Exact Amount</button>
                 </div>
                 
                 <p className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest mb-3">Split with group members</p>
                 <div className="space-y-2 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
-                  {group?.members.map((m) => (
-                    <div key={m.user?._id} className="p-3 bg-white/[0.01] hover:bg-white/[0.03] border border-white/5 rounded-2xl flex items-center justify-between text-xs transition-all">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-zinc-700 to-zinc-600 text-white flex items-center justify-center font-bold text-[10px]">
-                          {m.user?.name?.charAt(0).toUpperCase()}
+                  {group?.members.map((m) => {
+                    const pct = splitPercentages[m.user?._id] || 0;
+                    const amount = expenseForm.amount ? parseFloat(expenseForm.amount) : 0;
+                    const calculatedShare = expenseForm.splitType === 'percentage' 
+                      ? (amount * (pct / 100)) 
+                      : (amount / group.members.length);
+                      
+                    return (
+                    <div key={m.user?._id} className="p-3 bg-white/[0.01] hover:bg-white/[0.03] border border-white/5 rounded-2xl flex flex-col gap-2 text-xs transition-all">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-zinc-700 to-zinc-600 text-white flex items-center justify-center font-bold text-[10px]">
+                            {m.user?.name?.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="font-bold text-white">{m.user?._id === user._id ? 'You' : m.user?.name}</p>
+                            <p className="text-[9px] text-on-surface-variant/70 font-semibold">{m.user?._id === user._id ? 'Paid full amount' : 'Owes split'}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-bold text-white">{m.user?._id === user._id ? 'You' : m.user?.name}</p>
-                          <p className="text-[9px] text-on-surface-variant/70 font-semibold">{m.user?._id === user._id ? 'Paid full amount' : 'Owes split'}</p>
-                        </div>
+                        <span className="font-bold text-white/80">
+                          ₹{calculatedShare.toFixed(2)}
+                        </span>
                       </div>
-                      <span className="font-bold text-white/80">
-                        ₹{expenseForm.amount ? (parseFloat(expenseForm.amount) / group.members.length).toFixed(2) : '0.00'}
-                      </span>
+                      
+                      {expenseForm.splitType === 'percentage' && (
+                        <div className="flex items-center gap-3 mt-1">
+                          <input 
+                            type="range" 
+                            min="0" max="100" step="1"
+                            value={pct}
+                            onChange={(e) => handleSliderChange(m.user?._id, e.target.value)}
+                            className="flex-1 accent-blue-500 h-1 bg-white/10 rounded-lg appearance-none cursor-pointer"
+                          />
+                          <span className="text-[10px] font-bold text-blue-400 w-8 text-right">{Math.round(pct)}%</span>
+                        </div>
+                      )}
                     </div>
-                  ))}
+                  )})}
                 </div>
               </div>
               

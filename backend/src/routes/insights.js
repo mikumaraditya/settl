@@ -58,8 +58,8 @@ Give one or two suggestions.
 
 In your response:
 1. Explain what the score and the score band mean in plain terms (e.g. why a score of ${score} puts them in the '${scoreBand}' band).
-2. Name the weakest signal(s) from the breakdown by name, and explain why it matters to the user's trust reliability. Note: "Settlement Initiative" measures how quickly the user requests settlements after group expenses are created. "Reliability Incidents" measures settlement claims that were rejected by receivers. If this is the weakest signal, suggest the user only claim settlements that have actually been paid.
-3. Every suggestion MUST state a concrete benefit (payoff) for the user, not just a generic action.
+2. Look deeply into the user's Buying Power, Promptness, and Reliability based on the Real Observations provided. Emphasize these behavioral traits. Stop giving generic category-based advice.
+3. Every suggestion MUST state a concrete benefit (payoff) for the user, and should be highly specific to their actual group behavior (e.g., advising them to keep fronting money if they have high buying power, or to settle faster if their promptness is low).
 
 Trust Score: ${score}/100
 Score Band: ${scoreBand}
@@ -240,30 +240,38 @@ router.get("/mentor", protect, requireVerified, async (req, res) => {
     // Call computeMentorReport utility
     const report = computeMentorReport(settlements, personalExpenses, rejections);
 
-    const categoryTotals = {};
-    const categoryGroups = {};
-    personalExpenses.forEach((expense) => {
-      categoryTotals[expense.category] = (categoryTotals[expense.category] || 0) + expense.personalShare;
-      categoryGroups[expense.category] ||= {};
-      categoryGroups[expense.category][expense.groupName] = (categoryGroups[expense.category][expense.groupName] || 0) + expense.personalShare;
-    });
-    const totalSharedSpend = personalExpenses.reduce((sum, expense) => sum + expense.personalShare, 0);
-    const [topCategory, topCategoryAmount] = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1])[0];
-    const observations = [`${topCategory[0].toUpperCase() + topCategory.slice(1)} is your largest shared-spend category at ₹${round(topCategoryAmount).toLocaleString("en-IN")} (${Math.round((topCategoryAmount / totalSharedSpend) * 100)}% of your tracked share).`];
-
-    const groupComparison = Object.entries(categoryGroups[topCategory]).sort((a, b) => b[1] - a[1]);
-    if (groupComparison.length >= 2 && groupComparison[1][1] > 0) {
-      const [high, low] = groupComparison;
-      observations.push(`In ${topCategory}, your share in ${high[0]} (₹${round(high[1]).toLocaleString("en-IN")}) is ${round(high[1] / low[1])}× your share in ${low[0]} (₹${round(low[1]).toLocaleString("en-IN")}).`);
-    } else {
-      observations.push(`${groupComparison[0][0]} accounts for ₹${round(groupComparison[0][1]).toLocaleString("en-IN")} of your ${topCategory} share.`);
+    const totalPersonalShare = personalExpenses.reduce((sum, e) => sum + e.personalShare, 0);
+    const totalFrontedAmount = personalExpenses.filter(e => e.isPaidByUser).reduce((sum, e) => sum + e.amount, 0);
+    
+    const observations = [];
+    
+    // 1. Buying Power & Generosity
+    if (totalFrontedAmount > totalPersonalShare * 1.5) {
+      observations.push(`You have strong buying power and generosity: you've fronted ₹${round(totalFrontedAmount).toLocaleString("en-IN")} for group expenses, which is significantly higher than your personal share of ₹${round(totalPersonalShare).toLocaleString("en-IN")}.`);
+    } else if (totalFrontedAmount > 0) {
+      observations.push(`You've paid ₹${round(totalFrontedAmount).toLocaleString("en-IN")} upfront for group expenses so far, while your personal share was ₹${round(totalPersonalShare).toLocaleString("en-IN")}.`);
     }
 
-    const recentExpenses = personalExpenses.filter((expense) => Date.now() - new Date(expense.createdAt) <= 90 * 24 * 60 * 60 * 1000);
-    const largestRecent = [...recentExpenses].sort((a, b) => b.personalShare - a.personalShare)[0];
-    const typicalShare = median(personalExpenses.map((expense) => expense.personalShare));
-    if (largestRecent && largestRecent.personalShare >= typicalShare * 1.75) {
-      observations.push(`"${largestRecent.description}" in ${largestRecent.groupName} was an unusually large recent share at ₹${round(largestRecent.personalShare).toLocaleString("en-IN")}, versus your typical ₹${round(typicalShare).toLocaleString("en-IN")} expense share.`);
+    // 2. Promptness
+    if (report.signals.averageInitiativeHours !== undefined && report.signals.averageInitiativeHours > 0) {
+      const avgHours = report.signals.averageInitiativeHours;
+      if (avgHours <= 24) {
+        observations.push(`Excellent promptness: On average, you clear or initiate settlements within ${avgHours} hours of an expense being added.`);
+      } else {
+        const days = Math.round(avgHours / 24);
+        observations.push(`On average, it takes you about ${days} days to initiate settlements after shared spending happens.`);
+      }
+    }
+
+    // 3. Reliability
+    const rejectionsCount = report.signals.rejectionsCount || 0;
+    const totalSettlements = report.signals.totalSettlements || 0;
+    if (totalSettlements > 0) {
+      if (rejectionsCount === 0) {
+        observations.push(`Perfect reliability: Out of ${totalSettlements} settlements you initiated, none were flagged or rejected by receivers.`);
+      } else {
+        observations.push(`Reliability notice: Out of ${totalSettlements} settlements you initiated, ${rejectionsCount} were rejected by the receiver.`);
+      }
     }
 
     const mentor = await getMentorCopy(report.score, report.scoreBand, report.signalBreakdown, observations, report.signals);
