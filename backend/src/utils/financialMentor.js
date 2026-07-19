@@ -238,38 +238,56 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
   const penaltyPoints = Math.round(50 * (1 - Math.exp(-0.4 * weightedRejectionsCount)));
   const reliabilityScore = Math.max(0, 100 - penaltyPoints);
 
-  // Rebalanced score formula (total = 1.0):
-  // - With settlements:
-  //   - Settlement Follow-Through (reliability): 30% (direct reliability/honesty behavior)
-  //   - Settlement Initiative (proactiveness): 30% (direct action-based behavior)
-  //   - Upfront Contribution (generosity/fronting): 25% (new signal!)
-  //   - Spending Consistency (predictability): 15% (budget-predictability only; weighted lower)
-  // - Without settlements:
-  //   - Upfront Contribution (generosity/fronting): 70% (primary trust-generating activity)
-  //   - Spending Consistency (predictability): 30% (secondary indicator)
-  // Applied rejections penalty (diminishing return) after the calculation.
-  let score = hasSettlements
-    ? Math.round(0.30 * followThrough + 0.30 * settlementInitiative + 0.25 * contribution + 0.15 * consistency)
-    : Math.round(0.70 * contribution + 0.30 * consistency);
+  // Rebalanced score formula:
+  const DIMENSION_CONFIG = {
+    repaymentReliability: { weight: 0.50, minSettlements: 2 },
+    contribution:         { weight: 0.35, minInvolvedExpenses: 3 },
+    consistency:          { weight: 0.15, minActiveMonths: 3 },
+  };
 
-  if (hasSettlements) {
-    score = Math.max(0, score - penaltyPoints);
+  const activeMonthsCount = Object.keys(monthlyTotals).length;
+  const repaymentQualifies = settlements.length >= DIMENSION_CONFIG.repaymentReliability.minSettlements;
+  const contributionQualifies = personalExpenses.length >= DIMENSION_CONFIG.contribution.minInvolvedExpenses;
+  const consistencyQualifies = activeMonthsCount >= DIMENSION_CONFIG.consistency.minActiveMonths;
+
+  const dimensions = {
+    repaymentReliability: repaymentQualifies ? clamp(0.6 * followThrough + 0.4 * settlementInitiative, 0, 100) : null,
+    contribution: contributionQualifies ? contribution : null,
+    consistency: consistencyQualifies ? consistency : null,
+  };
+
+  const qualifying = Object.entries(dimensions).filter(([_, v]) => v !== null);
+
+  let rawScore = 100;
+  if (qualifying.length > 0) {
+    const totalWeight = qualifying.reduce((sum, [key]) => sum + DIMENSION_CONFIG[key].weight, 0);
+    rawScore = qualifying.reduce((sum, [key, value]) => {
+      return sum + (DIMENSION_CONFIG[key].weight / totalWeight) * value;
+    }, 0);
   }
 
-  score = clamp(score, 0, 100);
+  let score = rawScore;
+  if (weightedRejectionsCount > 0) {
+    score = Math.max(0, score - penaltyPoints);
+  }
+  score = clamp(Math.round(score), 0, 100);
 
-  let scoreBand = "At Risk";
-  let scoreBandSummary = "Several unresolved balances or delayed settlement initiatives indicate low trust reliability.";
-  
-  if (score >= 80) {
-    scoreBand = "Excellent";
-    scoreBandSummary = "Highly reliable. You clear your debts instantly and follow through on settlements with outstanding consistency.";
-  } else if (score >= 60) {
-    scoreBand = "Good";
-    scoreBandSummary = "Good trust record, but there is room to improve settlement initiative speed or payment consistency.";
-  } else if (score >= 40) {
-    scoreBand = "Needs Attention";
-    scoreBandSummary = "Some delays in taking initiative to clear debts or inconsistent follow-through on settlement requests.";
+  let scoreBand = "New";
+  let scoreBandSummary = "You're starting at a perfect trust score. It'll update automatically as you add expenses and settle up.";
+
+  if (qualifying.length > 0 || weightedRejectionsCount > 0) {
+    scoreBand = "At Risk";
+    scoreBandSummary = "Several unresolved balances or delayed payment initiatives indicate low trust reliability.";
+    if (score >= 80) {
+      scoreBand = "Excellent";
+      scoreBandSummary = "Highly reliable. You clear your debts instantly and follow through on payments with outstanding consistency.";
+    } else if (score >= 60) {
+      scoreBand = "Good";
+      scoreBandSummary = "Good trust record, but there is room to improve payment speed or consistency.";
+    } else if (score >= 40) {
+      scoreBand = "Needs Attention";
+      scoreBandSummary = "Some delays in taking initiative to pay back debts or inconsistent follow-through on payment requests.";
+    }
   }
 
   // Determine low-confidence status for equal-split-heavy data
@@ -278,110 +296,83 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
     ? "How steady your shared expenses are month-to-month. (Note: Low confidence as your expenses are mostly equal-split)"
     : "How steady your shared expenses are month-to-month. (Confidence is high based on individual spending splits)";
 
-  let signalBreakdown = [];
-  if (hasSettlements) {
-    signalBreakdown = [
-      {
-        key: "followThrough",
-        label: "Settlement Follow-Through",
-        value: Math.round(followThrough),
-        description: "Percentage of requested settlements you have paid."
-      },
-      {
-        key: "settlementInitiative",
-        label: "Settlement Initiative",
-        value: Math.round(settlementInitiative),
-        description: "How quickly you clear your share after shared spending happens."
-      },
-      {
-        key: "consistency",
-        label: "Spending Consistency",
-        value: Math.round(consistency),
-        description: consistencyDescription
-      },
-      {
+  const signalBreakdown = [];
+  if (qualifying.length > 0) {
+    const totalQualifyingWeight = qualifying.reduce((sum, [key]) => sum + DIMENSION_CONFIG[key].weight, 0);
+
+    if (repaymentQualifies) {
+      const normWeight = DIMENSION_CONFIG.repaymentReliability.weight / totalQualifyingWeight;
+      signalBreakdown.push({
+        key: "repaymentReliability",
+        label: "Repayment Reliability",
+        value: Math.round(dimensions.repaymentReliability),
+        weight: Math.round(normWeight * 100) / 100,
+        description: "Composite score of follow-through and payment speed when you owe money."
+      });
+    }
+
+    if (contributionQualifies) {
+      const normWeight = DIMENSION_CONFIG.contribution.weight / totalQualifyingWeight;
+      signalBreakdown.push({
         key: "contribution",
         label: "Contribution",
-        value: Math.round(contribution),
+        value: Math.round(dimensions.contribution),
+        weight: Math.round(normWeight * 100) / 100,
         description: "How often you pay for shared expenses upfront."
-      },
-      {
-        key: "reliabilityIncidents",
-        label: "Reliability Incidents",
-        value: Math.round(reliabilityScore),
-        description: "Settlement claims that were rejected by the receiver as not actually received."
-      }
-    ];
-  } else {
-    signalBreakdown = [
-      {
-        key: "contribution",
-        label: "Contribution",
-        value: Math.round(contribution),
-        description: "How often you pay for shared expenses upfront."
-      },
-      {
+      });
+    }
+
+    if (consistencyQualifies) {
+      const normWeight = DIMENSION_CONFIG.consistency.weight / totalQualifyingWeight;
+      signalBreakdown.push({
         key: "consistency",
         label: "Spending Consistency",
-        value: Math.round(consistency),
+        value: Math.round(dimensions.consistency),
+        weight: Math.round(normWeight * 100) / 100,
         description: consistencyDescription
-      }
-    ];
+      });
+    }
+
+    // Find weakest signal(s) - lowest value among the breakdown items
+    const minValue = Math.min(...signalBreakdown.map(s => s.value));
+    signalBreakdown.forEach(s => {
+      s.isWeakest = s.value === minValue;
+    });
   }
 
-  // Find weakest signal(s) - lowest value among the breakdown items
-  const minValue = Math.min(...signalBreakdown.map(s => s.value));
-  signalBreakdown.forEach(s => {
-    s.isWeakest = s.value === minValue;
+  // Add reliabilityIncidents as a separate clearly-flagged override entry (not blended into the same list/weakest calculation)
+  signalBreakdown.push({
+    key: "reliabilityIncidents",
+    label: "Reliability Incidents (Override Penalty)",
+    value: Math.round(reliabilityScore),
+    penaltyApplied: penaltyPoints,
+    description: "Settlement claims that were rejected by the receiver as not actually received."
   });
 
   // Compute biggest lever (primaryFocus)
   let primaryFocus = "settlement_speed";
-  if (hasSettlements) {
-    const weights = {
-      followThrough: 0.30,
-      settlementInitiative: 0.30,
-      contribution: 0.25,
-      consistency: 0.15
-    };
+  if (qualifying.length > 0) {
     let maxGain = -1;
-    let bestKey = "settlementInitiative";
-    
-    const gainFT = (100 - followThrough) * weights.followThrough;
-    if (gainFT > maxGain) {
-      maxGain = gainFT;
-      bestKey = "followThrough";
-    }
-    const gainSI = (100 - settlementInitiative) * weights.settlementInitiative;
-    if (gainSI > maxGain) {
-      maxGain = gainSI;
-      bestKey = "settlementInitiative";
-    }
-    const gainContrib = (100 - contribution) * weights.contribution;
-    if (gainContrib > maxGain) {
-      maxGain = gainContrib;
-      bestKey = "contribution";
-    }
-    const gainConst = (100 - consistency) * weights.consistency;
-    if (gainConst > maxGain) {
-      maxGain = gainConst;
-      bestKey = "consistency";
-    }
-    
-    if (bestKey === "settlementInitiative") primaryFocus = "settlement_speed";
-    else if (bestKey === "followThrough") primaryFocus = "settlement_follow_through";
-    else if (bestKey === "contribution") primaryFocus = "upfront_contribution";
-    else if (bestKey === "consistency") primaryFocus = "spending_consistency";
-  } else {
-    const weights = {
-      contribution: 0.70,
-      consistency: 0.30
-    };
-    const gainContrib = (100 - contribution) * weights.contribution;
-    const gainConst = (100 - consistency) * weights.consistency;
-    if (gainContrib >= gainConst) {
+    let bestKey = "";
+
+    qualifying.forEach(([key, value]) => {
+      const weight = DIMENSION_CONFIG[key].weight;
+      const gain = (100 - value) * weight;
+      if (gain > maxGain) {
+        maxGain = gain;
+        bestKey = key;
+      }
+    });
+
+    if (bestKey === "repaymentReliability") {
+      if (followThrough <= settlementInitiative) {
+        primaryFocus = "settlement_follow_through";
+      } else {
+        primaryFocus = "settlement_speed";
+      }
+    } else if (bestKey === "contribution") {
       primaryFocus = "upfront_contribution";
-    } else {
+    } else if (bestKey === "consistency") {
       primaryFocus = "spending_consistency";
     }
   }
@@ -404,4 +395,90 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
       rejectionsCount: rejections.length
     }
   };
+}
+
+/**
+ * computeWhatIfProjection — re-runs computeMentorReport with one hypothetical improvement
+ * applied to the weakest qualifying dimension to show the user a concrete score incentive.
+ *
+ * @param {Array} settlements  - same settlements passed to the real report
+ * @param {Array} personalExpenses - same personalExpenses
+ * @param {Array} rejections   - same rejections
+ * @param {string} weakestDimension - "repaymentReliability" | "contribution" | "consistency"
+ * @param {number} currentScore - real score, used to ensure we never project lower
+ * @returns {{ dimension: string, projectedScore: number, delta: number } | null}
+ */
+export function computeWhatIfProjection(settlements, personalExpenses, rejections, weakestDimension, currentScore) {
+  try {
+    if (weakestDimension === "repaymentReliability") {
+      // Hypothetical: user settles within 3 days (72 hours) on every debt instead of their real average.
+      const TARGET_HOURS = 72; // 3 days
+      const modifiedSettlements = settlements.map(s => ({
+        ...s,
+        // Shift createdAt forward so the gap from the prior expense becomes exactly TARGET_HOURS.
+        // We do this by computing a synthetic updatedAt, keeping status as "confirmed" so
+        // follow-through = 100 in the hypothetical.
+        _whatIfCreatedAt: s.createdAt,
+        status: "confirmed",
+      }));
+
+      // To simulate faster initiative without touching the real expense dates, we inject
+      // fake settlements whose createdAt is TARGET_HOURS after the most-recent expense they'd match.
+      // Simpler approach: replace each settlement's createdAt to be TARGET_HOURS after the
+      // earliest expense in the same calendar month.
+      const sortedExpenseDates = personalExpenses
+        .map(e => new Date(e.createdAt))
+        .sort((a, b) => a - b);
+
+      const hypotheticalSettlements = modifiedSettlements.map((s, i) => {
+        const refExpense = sortedExpenseDates[Math.min(i, sortedExpenseDates.length - 1)];
+        const hypotheticalCreatedAt = refExpense
+          ? new Date(refExpense.getTime() + TARGET_HOURS * 60 * 60 * 1000)
+          : s.createdAt;
+        return { ...s, createdAt: hypotheticalCreatedAt, status: "confirmed" };
+      });
+
+      const projected = computeMentorReport(hypotheticalSettlements, personalExpenses, rejections);
+      const projectedScore = Math.max(currentScore, projected.score);
+      return {
+        dimension: "repaymentReliability",
+        targetDays: 3,
+        projectedScore,
+        delta: projectedScore - currentScore,
+      };
+    }
+
+    if (weakestDimension === "contribution") {
+      // Hypothetical: user fronts +15% more expenses upfront (capped at 100%).
+      const totalExpenses = personalExpenses.length;
+      const currentPaidCount = personalExpenses.filter(e => e.isPaidByUser).length;
+      const currentRatio = totalExpenses > 0 ? currentPaidCount / totalExpenses : 0;
+      const hypotheticalRatio = Math.min(1.0, currentRatio + 0.15);
+      const hypotheticalPaidCount = Math.round(hypotheticalRatio * totalExpenses);
+
+      // Flip the isPaidByUser flag on the unpaid expenses (earliest-first) to reach the target count
+      let flipped = 0;
+      const modifiedExpenses = personalExpenses.map(e => {
+        if (!e.isPaidByUser && flipped < hypotheticalPaidCount - currentPaidCount) {
+          flipped++;
+          return { ...e, isPaidByUser: true };
+        }
+        return e;
+      });
+
+      const projected = computeMentorReport(settlements, modifiedExpenses, rejections);
+      const projectedScore = Math.max(currentScore, projected.score);
+      return {
+        dimension: "contribution",
+        targetRatioIncrease: 15,
+        projectedScore,
+        delta: projectedScore - currentScore,
+      };
+    }
+
+    // "consistency" — skip (too hard to simulate meaningfully)
+    return null;
+  } catch {
+    return null;
+  }
 }

@@ -272,6 +272,23 @@ export default function FinancialMentorWidget() {
                         )}
                       </div>
                       
+                      {/* Score Trend Badge */}
+                      {mentor?.scoreTrend && mentor.scoreTrend.delta !== 0 && (
+                        <div className={`inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-lg border mt-1.5 ${
+                          mentor.scoreTrend.delta > 0
+                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                            : 'bg-rose-500/10 border-rose-500/20 text-rose-500 dark:text-rose-400'
+                        }`}>
+                          <span className="material-symbols-outlined text-[11px]">
+                            {mentor.scoreTrend.delta > 0 ? 'trending_up' : 'trending_down'}
+                          </span>
+                          {mentor.scoreTrend.delta > 0 ? '↑' : '↓'} {Math.abs(mentor.scoreTrend.delta)} pts
+                          {mentor.scoreTrend.daysAgo > 0 && (
+                            <span className="opacity-60 font-normal"> · {mentor.scoreTrend.daysAgo}d ago</span>
+                          )}
+                        </div>
+                      )}
+
                       {mentor?.settlementNote && (
                         <div className="inline-flex items-center gap-1.5 text-[8px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-lg mt-2">
                           <span className="material-symbols-outlined text-[11px]">info</span>

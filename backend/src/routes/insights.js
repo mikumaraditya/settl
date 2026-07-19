@@ -4,8 +4,9 @@ import Group from "../models/Group.js";
 import Settlement from "../models/Settlement.js";
 import protect from "../middleware/auth.js";
 import requireVerified from "../middleware/requireVerified.js";
-import { computeMentorReport } from "../utils/financialMentor.js";
+import { computeMentorReport, computeWhatIfProjection } from "../utils/financialMentor.js";
 import ActivityLog from "../models/ActivityLog.js";
+import ScoreHistory from "../models/ScoreHistory.js";
 import mongoose from "mongoose";
 import rateLimit from "express-rate-limit";
 
@@ -20,18 +21,33 @@ const median = (values) => {
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 };
 
-const fallbackMentorCopy = (score, scoreBand, signalBreakdown) => {
-  const explanation = `Your Trust Score is ${score}/100, placing you in the '${scoreBand}' category. Your recent group activity shows some areas for potential improvement.`;
+const fallbackMentorCopy = (score, scoreBand, signalBreakdown, scoreTrend = null, whatIf = null) => {
+  let explanation = `Your Trust Score is ${score}/100, placing you in the '${scoreBand}' category.`;
+  if (scoreTrend && scoreTrend.delta > 0) {
+    explanation += ` Your score is up ${scoreTrend.delta} point${scoreTrend.delta !== 1 ? 's' : ''} since last time — nice work.`;
+  } else if (scoreTrend && scoreTrend.delta < 0) {
+    explanation += ` Your score dipped ${Math.abs(scoreTrend.delta)} point${Math.abs(scoreTrend.delta) !== 1 ? 's' : ''} since last time — let's get it back up.`;
+  } else {
+    explanation += ` Your recent group activity shows some areas for potential improvement.`;
+  }
 
   const suggestions = [];
-  const followThroughSig = signalBreakdown.find(s => s.key === "followThrough");
-  const settlementInitiativeSig = signalBreakdown.find(s => s.key === "settlementInitiative");
+  const repaymentSig = signalBreakdown.find(s => s.key === "repaymentReliability");
+  const contributionSig = signalBreakdown.find(s => s.key === "contribution");
   const consistencySig = signalBreakdown.find(s => s.key === "consistency");
 
-  if (followThroughSig && followThroughSig.value < 80) {
-    suggestions.push("Pay back what you owe to someone in your group as soon as you can, so your group knows they'll get their money.");
-  } else if (settlementInitiativeSig && settlementInitiativeSig.value < 80) {
-    suggestions.push("Pay back what you owe to someone in your group closer to when the spending happens so things stay transparent.");
+  if (repaymentSig && repaymentSig.value < 80) {
+    const base = "Pay back what you owe to someone in your group as soon as you can, so your group knows they'll get their money.";
+    const suffix = (whatIf && whatIf.dimension === "repaymentReliability" && whatIf.delta > 0)
+      ? ` Hitting a faster pace on repayments could push your score to around ${whatIf.projectedScore}.`
+      : "";
+    suggestions.push(base + suffix);
+  } else if (contributionSig && contributionSig.value < 80) {
+    const base = "Pay for a few more shared expenses upfront when you can — your group will notice.";
+    const suffix = (whatIf && whatIf.dimension === "contribution" && whatIf.delta > 0)
+      ? ` Paying upfront for just 15% more expenses could push your score to around ${whatIf.projectedScore}.`
+      : "";
+    suggestions.push(base + suffix);
   } else {
     suggestions.push("Keep paying people back quickly when you owe them money to maintain a high level of trust.");
   }
@@ -49,9 +65,27 @@ const fallbackMentorCopy = (score, scoreBand, signalBreakdown) => {
   };
 };
 
-export const getMentorCopy = async (score, scoreBand, signalBreakdown, observations, signals, primaryFocus) => {
-  const fallback = fallbackMentorCopy(score, scoreBand, signalBreakdown);
+export const getMentorCopy = async (score, scoreBand, signalBreakdown, observations, signals, primaryFocus, scoreTrend = null, whatIf = null) => {
+  const fallback = fallbackMentorCopy(score, scoreBand, signalBreakdown, scoreTrend, whatIf);
   if (!process.env.GEMINI_API_KEY) return fallback;
+
+  const trendObservation = scoreTrend && scoreTrend.delta !== 0
+    ? (scoreTrend.delta > 0
+        ? `The user's trust score improved by ${scoreTrend.delta} points since ${scoreTrend.daysAgo} day${scoreTrend.daysAgo !== 1 ? 's' : ''} ago (previous score: ${scoreTrend.previousScore}).`
+        : `The user's trust score dropped by ${Math.abs(scoreTrend.delta)} points since ${scoreTrend.daysAgo} day${scoreTrend.daysAgo !== 1 ? 's' : ''} ago (previous score: ${scoreTrend.previousScore}).`)
+    : null;
+
+  const whatIfObservation = whatIf && whatIf.delta > 0
+    ? (whatIf.dimension === "repaymentReliability"
+        ? `If the user paid back within 3 days instead of their usual pace, their trust score would climb to around ${whatIf.projectedScore} (up ${whatIf.delta} points).`
+        : `If the user paid upfront for 15% more shared expenses, their trust score would climb to around ${whatIf.projectedScore} (up ${whatIf.delta} points).`)
+    : null;
+
+  const enrichedObservations = [
+    ...observations,
+    ...(trendObservation ? [trendObservation] : []),
+    ...(whatIfObservation ? [whatIfObservation] : []),
+  ];
 
   const prompt = `You are a friendly, human-like Financial Mentor for Settl. Your goal is to help users improve their group financial habits in simple, everyday language. Use the tone of a confident, direct personal coach who is a clear, honest friend.
 Explain only the supplied data.
@@ -74,6 +108,8 @@ COACHING DIRECTIONS:
 - If the user has money owed to them building up, suggest a simple personal habit (e.g., "check in with them once the balance crosses ₹1,000 to keep communication open"), NOT an app action they cannot take (do not tell them to mark it paid, request, or initiate a payment).
 - If the user owes money and it is taking longer than 7 days on average to pay back, suggest a specific fixed weekly pay-back day as the concrete target (e.g., "Pay back what you owe every Sunday to clear your average of X days").
 - Identify whichever behavior is most improvable (based on the Primary Focus Hint) and lead with that as the primary suggestion. Keep a second suggestion only if it is a separate, non-conflicting point.
+- If a what-if projection is provided in the observations, state it as a concrete incentive in the suggestion text, e.g. "If you paid back within 3 days instead of your usual pace, your score would climb to around 74." Work it naturally into the suggestion, don't just append it.
+- If a score trend is provided and positive, briefly acknowledge the improvement at the start of the explanation before giving suggestions. If negative, mention it factually without being discouraging.
 
 DEBT DIRECTION GUARDRAILS:
 - Do not suggest the user "mark it as paid" or "pay back what they owe" in connection with money they paid upfront or are owed. Marking a payment as paid is only an action available to the person who owes money.
@@ -88,7 +124,7 @@ GUARDRAILS:
 
 Score Band: ${scoreBand}
 Primary Focus Hint: ${primaryFocus || 'N/A'}
-Real observations: ${JSON.stringify(observations)}`;
+Real observations: ${JSON.stringify(enrichedObservations)}`;
 
   const callGemini = async (model) => {
     const response = await fetch(
@@ -305,7 +341,42 @@ router.get("/mentor", protect, requireVerified, mentorRateLimiter, async (req, r
       }
     }
 
-    const mentor = await getMentorCopy(report.score, report.scoreBand, report.signalBreakdown, observations, report.signals, report.primaryFocus);
+    // --- Score History & Trend ---
+    // Save a new score entry (fire-and-forget; don't let DB errors break the response)
+    let scoreTrend = null;
+    try {
+      const newEntry = await ScoreHistory.create({ user: req.user.id, score: report.score });
+      // Fetch the single most-recent prior entry (before this one)
+      const priorEntry = await ScoreHistory.findOne(
+        { user: req.user.id, _id: { $ne: newEntry._id } },
+        { score: 1, createdAt: 1 },
+        { sort: { createdAt: -1 } }
+      );
+      if (priorEntry) {
+        const daysAgo = Math.round((newEntry.createdAt - priorEntry.createdAt) / (1000 * 60 * 60 * 24));
+        scoreTrend = {
+          delta: report.score - priorEntry.score,
+          previousScore: priorEntry.score,
+          daysAgo: Math.max(daysAgo, 0),
+        };
+      }
+    } catch (histErr) {
+      console.warn("ScoreHistory write failed (non-fatal):", histErr.message);
+    }
+
+    // --- What-If Projection ---
+    // Identify the weakest qualifying dimension (lowest value, excluding reliabilityIncidents)
+    const qualifyingBreakdown = report.signalBreakdown.filter(s => s.key !== "reliabilityIncidents");
+    const weakestEntry = qualifyingBreakdown.reduce((min, s) => (!min || s.value < min.value) ? s : min, null);
+    const whatIf = weakestEntry
+      ? computeWhatIfProjection(settlements, personalExpenses, rejections, weakestEntry.key, report.score)
+      : null;
+
+    const mentor = await getMentorCopy(
+      report.score, report.scoreBand, report.signalBreakdown,
+      observations, report.signals, report.primaryFocus,
+      scoreTrend, whatIf
+    );
     const data = {
       status: "ready",
       score: report.score,
@@ -314,6 +385,8 @@ router.get("/mentor", protect, requireVerified, mentorRateLimiter, async (req, r
       signalBreakdown: report.signalBreakdown,
       observations,
       ...mentor,
+      scoreTrend,
+      whatIf,
       settlementNote: settlements.length === 0 ? "Settlement-based insights will improve once you've completed a payment." : null,
       generatedAt: new Date().toISOString(),
       cached: false,
