@@ -140,15 +140,19 @@ export default function GroupDetail() {
     description: '', amount: '', category: 'food', splitType: 'equal'
   })
   const [splitPercentages, setSplitPercentages] = useState({})
+  const [exactAmounts, setExactAmounts] = useState({})
 
   useEffect(() => {
     if (showAddExpense && group?.members?.length > 0) {
       const equalShare = 100 / group.members.length;
       const initial = {};
+      const initialExact = {};
       group.members.forEach(m => {
         initial[m.user?._id] = equalShare;
+        initialExact[m.user?._id] = '';
       });
       setSplitPercentages(initial);
+      setExactAmounts(initialExact);
     }
   }, [showAddExpense, group]);
 
@@ -428,6 +432,11 @@ export default function GroupDetail() {
         payload.splits = Object.entries(splitPercentages).map(([userId, pct]) => ({
           user: userId,
           percentage: pct
+        }));
+      } else if (expenseForm.splitType === 'exact') {
+        payload.splits = Object.entries(exactAmounts).map(([userId, amt]) => ({
+          user: userId,
+          amount: parseFloat(amt) || 0
         }));
       }
       await axios.post('/expenses', payload)
@@ -1922,7 +1931,7 @@ export default function GroupDetail() {
                 <div className="bg-white/5 border border-white/5 p-1 rounded-2xl flex gap-1 mb-5">
                   <button type="button" onClick={() => setExpenseForm({...expenseForm, splitType: 'equal'})} className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${expenseForm.splitType === 'equal' ? 'bg-white/10 text-white border border-white/5 shadow-sm' : 'text-white/50 hover:text-white/80'}`}>Split Equally</button>
                   <button type="button" onClick={() => setExpenseForm({...expenseForm, splitType: 'percentage'})} className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${expenseForm.splitType === 'percentage' ? 'bg-white/10 text-white border border-white/5 shadow-sm' : 'text-white/50 hover:text-white/80'}`}>Uneven Split</button>
-                  <button type="button" disabled className="flex-1 py-2 px-3 rounded-xl text-xs font-bold text-white/20 cursor-not-allowed hidden md:block">Exact Amount</button>
+                  <button type="button" onClick={() => setExpenseForm({...expenseForm, splitType: 'exact'})} className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${expenseForm.splitType === 'exact' ? 'bg-white/10 text-white border border-white/5 shadow-sm' : 'text-white/50 hover:text-white/80'}`}>Exact Amount</button>
                 </div>
                 
                 <p className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest mb-3">Split with group members</p>
@@ -1932,7 +1941,9 @@ export default function GroupDetail() {
                     const amount = expenseForm.amount ? parseFloat(expenseForm.amount) : 0;
                     const calculatedShare = expenseForm.splitType === 'percentage' 
                       ? (amount * (pct / 100)) 
-                      : (amount / group.members.length);
+                      : expenseForm.splitType === 'exact'
+                        ? (parseFloat(exactAmounts[m.user?._id]) || 0)
+                        : (amount / group.members.length);
                       
                     return (
                     <div key={m.user?._id} className="p-3 bg-white/[0.01] hover:bg-white/[0.03] border border-white/5 rounded-2xl flex flex-col gap-2 text-xs transition-all">
@@ -1961,6 +1972,20 @@ export default function GroupDetail() {
                             className="flex-1 accent-blue-500 h-1 bg-white/10 rounded-lg appearance-none cursor-pointer"
                           />
                           <span className="text-[10px] font-bold text-blue-400 w-8 text-right">{Math.round(pct)}%</span>
+                        </div>
+                      )}
+                      
+                      {expenseForm.splitType === 'exact' && (
+                        <div className="flex items-center gap-3 mt-1">
+                          <span className="text-[12px] font-bold text-white/50">₹</span>
+                          <input 
+                            type="number" 
+                            min="0" step="0.01"
+                            value={exactAmounts[m.user?._id] || ''}
+                            onChange={(e) => setExactAmounts(prev => ({ ...prev, [m.user?._id]: e.target.value }))}
+                            className="flex-1 bg-transparent border-b border-white/10 focus:border-blue-500 focus:ring-0 text-white font-bold text-xs p-1 outline-none transition-all"
+                            placeholder="0.00"
+                          />
                         </div>
                       )}
                     </div>

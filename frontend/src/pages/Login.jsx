@@ -47,14 +47,14 @@ export default function Login() {
         
         <div className="max-w-[500px] z-10 space-y-5 lg:space-y-6 animate-in fade-in slide-in-from-left-6 duration-700">
           {/* Brand */}
-          <div className="flex items-center gap-3">
+          <Link to="/" className="flex items-center gap-3 w-max hover:opacity-80 transition-opacity">
             <div className="inline-flex items-center justify-center w-10 h-10 bg-gradient-to-tr from-secondary to-blue-600 rounded-xl shadow-lg shadow-secondary/20">
               <span className="material-symbols-outlined text-white text-[22px] font-bold">account_balance_wallet</span>
             </div>
             <h2 className="text-3xl font-extrabold tracking-tight flex items-center gap-1 leading-none text-on-surface">
               <span>Settl</span><span className="w-2.5 h-2.5 rounded-full bg-secondary"></span>
             </h2>
-          </div>
+          </Link>
 
           {/* Catchy Slogan */}
           <div className="space-y-2">
@@ -158,6 +158,12 @@ export default function Login() {
 
       {/* Right Panel: Authentication (Form) */}
       <div className="w-full lg:w-1/2 flex flex-col justify-center items-center px-6 py-6 lg:py-8 relative overflow-y-auto lg:overflow-hidden h-full">
+        {/* Back Link */}
+        <Link to="/" className="absolute top-6 right-6 lg:top-8 lg:right-8 flex items-center gap-1 text-[11px] font-bold text-on-surface-variant hover:text-on-surface transition-colors bg-slate-100 dark:bg-white/5 px-3 py-1.5 rounded-full border border-slate-200 dark:border-white/10 hover:bg-slate-200 dark:hover:bg-white/10 z-10">
+          <span className="material-symbols-outlined text-[16px]">arrow_back</span>
+          Back to Home
+        </Link>
+        
         {/* Decorative Glow Sphere on Right */}
         <div className="absolute top-[20%] right-[-10%] w-[300px] h-[300px] bg-secondary/10 rounded-full blur-[100px] pointer-events-none -z-10 animate-pulse-glow"></div>
         <div className="absolute bottom-[20%] left-[-10%] w-[250px] h-[250px] bg-blue-600/5 rounded-full blur-[100px] pointer-events-none -z-10 animate-pulse-glow"></div>
@@ -165,14 +171,14 @@ export default function Login() {
         <div className="w-full max-w-[420px] flex flex-col space-y-6">
           {/* Brand Header for Mobile Only */}
           <div className="flex flex-col items-center lg:hidden mb-2">
-            <div className="flex items-center gap-2">
+            <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
               <div className="inline-flex items-center justify-center w-8 h-8 bg-gradient-to-tr from-secondary to-blue-600 rounded-xl shadow-md">
                 <span className="material-symbols-outlined text-white text-[18px] font-bold">account_balance_wallet</span>
               </div>
               <h1 className="text-2xl font-extrabold text-on-surface tracking-tight flex items-center gap-0.5 animate-pulse-glow">
                 <span>Settl</span><span className="w-2 h-2 rounded-full bg-secondary"></span>
               </h1>
-            </div>
+            </Link>
             <p className="text-[10px] text-on-surface-variant font-semibold uppercase tracking-wider mt-1.5">Split now · Settl later</p>
           </div>
 

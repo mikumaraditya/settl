@@ -296,50 +296,7 @@ export default function FinancialMentorWidget() {
                   </div>
                 </div>
 
-                {/* What's Behind Your Score */}
-                {mentor?.signalBreakdown && mentor.signalBreakdown.length > 0 && (
-                  <div className="flex flex-col gap-2">
-                    <h4 className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest ml-1">What's Behind Your Score</h4>
-                    <div className="flex flex-col gap-2">
-                      {mentor.signalBreakdown.map((sig) => (
-                        <div
-                          key={sig.key}
-                          className={`border rounded-xl p-3 flex flex-col gap-1.5 transition-all ${
-                            sig.isWeakest
-                              ? 'bg-amber-500/[0.03] border-amber-500/20 shadow-[inset_0_1px_1px_rgba(245,158,11,0.05)]'
-                              : 'bg-slate-50 dark:bg-white/[0.01] border-slate-200 dark:border-white/5'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-extrabold text-slate-800 dark:text-white leading-none">{sig.label}</span>
-                            <div className="flex items-center gap-1.5">
-                              {sig.isWeakest && (
-                                <span className="text-[7px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-md leading-none shadow-[0_0_10px_rgba(245,158,11,0.2)]">
-                                  Biggest Opportunity
-                                </span>
-                              )}
-                              <span className="text-[11px] font-black text-slate-800 dark:text-white leading-none">{sig.value}%</span>
-                            </div>
-                          </div>
 
-                          {/* Progress Bar */}
-                          <div className="w-full bg-slate-200 dark:bg-white/5 h-1.5 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full transition-all duration-500 ${
-                                sig.isWeakest ? 'bg-amber-500' : 'bg-indigo-500'
-                              }`}
-                              style={{ width: `${sig.value}%` }}
-                            />
-                          </div>
-
-                          <p className="text-[9px] text-on-surface-variant/80 font-medium leading-relaxed">
-                            {sig.description}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
                 {/* Behavioral Observations */}
                 {mentor?.observations && mentor.observations.length > 0 && (
