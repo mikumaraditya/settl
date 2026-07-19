@@ -128,17 +128,23 @@ Real observations: ${JSON.stringify(enrichedObservations)}`;
 
   const callGemini = async (model) => {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": process.env.GEMINI_API_KEY,
+        },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: { temperature: 0.2, maxOutputTokens: 2048, responseMimeType: "application/json" },
         }),
       },
     );
-    if (!response.ok) throw new Error(`Gemini request failed with ${response.status}`);
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`Gemini request failed with ${response.status}: ${errorBody}`);
+    }
 
     const payload = await response.json();
     const raw = payload?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
