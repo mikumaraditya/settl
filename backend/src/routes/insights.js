@@ -115,8 +115,11 @@ export async function getTrustScoreForUser(userId) {
   }
 
   const [expenses, settlements, rejections] = await Promise.all([
-    Expense.find({ group: { $in: groupIds }, "splits.user": userId })
-      .select("description amount category group splits splitType createdAt")
+    Expense.find({
+      group: { $in: groupIds },
+      $or: [ { "splits.user": userId }, { paidBy: userId } ]
+    })
+      .select("description amount category group splits splitType paidBy createdAt")
       .lean(),
     Settlement.find({ group: { $in: groupIds }, from: userId })
       .select("status amount group createdAt updatedAt")
@@ -129,8 +132,13 @@ export async function getTrustScoreForUser(userId) {
   const groupNames = new Map(groups.map((group) => [group._id.toString(), group.name]));
   const personalExpenses = expenses.map((expense) => {
     const share = expense.splits.find((split) => split.user.toString() === userId);
-    return { ...expense, personalShare: Number(share?.amount || 0), groupName: groupNames.get(expense.group.toString()) || "a group" };
-  }).filter((expense) => expense.personalShare > 0);
+    return {
+      ...expense,
+      personalShare: Number(share?.amount || 0),
+      isPaidByUser: expense.paidBy ? expense.paidBy.toString() === userId : false,
+      groupName: groupNames.get(expense.group.toString()) || "a group"
+    };
+  }).filter((expense) => expense.personalShare > 0 || expense.isPaidByUser);
 
   const activeMonths = new Set(personalExpenses.map((expense) => expense.createdAt.toISOString().slice(0, 7)));
   if (personalExpenses.length < 3 || activeMonths.size < 2) {
@@ -185,8 +193,11 @@ router.get("/mentor", protect, requireVerified, async (req, res) => {
     }
 
     const [expenses, settlements, rejections] = await Promise.all([
-      Expense.find({ group: { $in: groupIds }, "splits.user": req.user.id })
-        .select("description amount category group splits splitType createdAt")
+      Expense.find({
+        group: { $in: groupIds },
+        $or: [ { "splits.user": req.user.id }, { paidBy: req.user.id } ]
+      })
+        .select("description amount category group splits splitType paidBy createdAt")
         .lean(),
       Settlement.find({ group: { $in: groupIds }, from: req.user.id })
         .select("status amount group createdAt updatedAt")
@@ -199,8 +210,13 @@ router.get("/mentor", protect, requireVerified, async (req, res) => {
     const groupNames = new Map(groups.map((group) => [group._id.toString(), group.name]));
     const personalExpenses = expenses.map((expense) => {
       const share = expense.splits.find((split) => split.user.toString() === req.user.id);
-      return { ...expense, personalShare: Number(share?.amount || 0), groupName: groupNames.get(expense.group.toString()) || "a group" };
-    }).filter((expense) => expense.personalShare > 0);
+      return {
+        ...expense,
+        personalShare: Number(share?.amount || 0),
+        isPaidByUser: expense.paidBy ? expense.paidBy.toString() === req.user.id : false,
+        groupName: groupNames.get(expense.group.toString()) || "a group"
+      };
+    }).filter((expense) => expense.personalShare > 0 || expense.isPaidByUser);
 
     const activeMonths = new Set(personalExpenses.map((expense) => expense.createdAt.toISOString().slice(0, 7)));
     if (personalExpenses.length < 3 || activeMonths.size < 2) {

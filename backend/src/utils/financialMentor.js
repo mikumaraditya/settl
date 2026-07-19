@@ -141,6 +141,9 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
   let unequalSplitCount = 0;
 
   personalExpenses.forEach((expense) => {
+    // Only count expenses where user has a personal split share for consistency variance
+    if (expense.personalShare <= 0) return;
+
     const month = new Date(expense.createdAt).toISOString().slice(0, 7);
     const isEqual = !expense.splitType || expense.splitType === "equal";
     
@@ -193,6 +196,30 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
     : 1.0;
   consistency = clamp(consistency * confidenceMultiplier, 0, 100);
 
+  // 4b. Upfront Contribution Score: recency-weighted upfront payment ratio
+  let weightedPaidSum = 0;
+  let weightedTotalInvolvedSum = 0;
+
+  personalExpenses.forEach((expense) => {
+    const ageDays = Math.max(0, (refDate - new Date(expense.createdAt)) / 864e5);
+    let weight = 1.0;
+    if (ageDays > 90) {
+      weight = 0.2;
+    } else if (ageDays > 30) {
+      weight = 0.5;
+    }
+
+    weightedTotalInvolvedSum += weight;
+    if (expense.isPaidByUser) {
+      weightedPaidSum += weight;
+    }
+  });
+
+  const contributionScore = weightedTotalInvolvedSum > 0
+    ? (weightedPaidSum / weightedTotalInvolvedSum) * 100
+    : 0;
+  const contribution = clamp(contributionScore, 0, 100);
+
   // 5. Reliability Incidents (rejection penalty by receivers)
   // Recency weighted: rejections from <= 30 days have weight 1.0, 30-90 days weight 0.5, >90 days weight 0.2.
   let weightedRejectionsCount = 0;
@@ -212,13 +239,18 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
   const reliabilityScore = Math.max(0, 100 - penaltyPoints);
 
   // Rebalanced score formula (total = 1.0):
-  // - Settlement Follow-Through (reliability): 40% (direct reliability/honesty behavior)
-  // - Settlement Initiative (proactiveness): 40% (direct action-based behavior)
-  // - Spending Consistency (predictability): 20% (budget-predictability only; weighted lower)
-  // Applied rejections penalty (diminishing return) after the three-signal calculation.
+  // - With settlements:
+  //   - Settlement Follow-Through (reliability): 30% (direct reliability/honesty behavior)
+  //   - Settlement Initiative (proactiveness): 30% (direct action-based behavior)
+  //   - Upfront Contribution (generosity/fronting): 25% (new signal!)
+  //   - Spending Consistency (predictability): 15% (budget-predictability only; weighted lower)
+  // - Without settlements:
+  //   - Upfront Contribution (generosity/fronting): 70% (primary trust-generating activity)
+  //   - Spending Consistency (predictability): 30% (secondary indicator)
+  // Applied rejections penalty (diminishing return) after the calculation.
   let score = hasSettlements
-    ? Math.round(0.40 * followThrough + 0.40 * settlementInitiative + 0.20 * consistency)
-    : Math.round(consistency);
+    ? Math.round(0.30 * followThrough + 0.30 * settlementInitiative + 0.25 * contribution + 0.15 * consistency)
+    : Math.round(0.70 * contribution + 0.30 * consistency);
 
   if (hasSettlements) {
     score = Math.max(0, score - penaltyPoints);
@@ -268,6 +300,12 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
         description: consistencyDescription
       },
       {
+        key: "contribution",
+        label: "Contribution",
+        value: Math.round(contribution),
+        description: "How often you pay for shared expenses upfront."
+      },
+      {
         key: "reliabilityIncidents",
         label: "Reliability Incidents",
         value: Math.round(reliabilityScore),
@@ -276,6 +314,12 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
     ];
   } else {
     signalBreakdown = [
+      {
+        key: "contribution",
+        label: "Contribution",
+        value: Math.round(contribution),
+        description: "How often you pay for shared expenses upfront."
+      },
       {
         key: "consistency",
         label: "Spending Consistency",
@@ -301,6 +345,7 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
       averageInitiativeHours: Math.round(averageInitiativeHours * 100) / 100,
       settlementInitiative: Math.round(settlementInitiative),
       consistency: Math.round(consistency),
+      contribution: Math.round(contribution),
       reliabilityIncidents: Math.round(reliabilityScore),
       confirmedSettlements: hasSettlements ? settlements.filter((s) => !s.status || s.status === "confirmed").length : 0,
       totalSettlements: settlements.length,
