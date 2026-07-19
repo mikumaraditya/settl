@@ -56,7 +56,7 @@ export default function UPIPaymentModal({ transaction, onClose, onPaymentInitiat
 
   return (
     <div
-      className="modal-overlay z-50 bg-black/70 flex items-end md:items-center justify-center p-4 animate-in fade-in duration-300"
+      className="modal-overlay z-50 bg-black/50 backdrop-blur-sm flex items-end md:items-center justify-center p-4 animate-in fade-in duration-300"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       <div className="upi-payment-modal glass-card relative w-full max-w-sm rounded-t-3xl md:rounded-3xl border border-white/10 flex flex-col gap-5 p-6 animate-in slide-in-from-bottom md:zoom-in-95 duration-250 max-h-[90vh] overflow-y-auto overflow-x-hidden custom-scrollbar !bg-[#0b1222] text-white">

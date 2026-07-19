@@ -2,17 +2,16 @@ import { useEffect, useRef, useState } from 'react'
 import axios from '../api/axios'
 
 export default function GoogleLoginButton({ onLoginSuccess, onError }) {
-  const [buttonNode, setButtonNode] = useState(null)
+  const buttonRef = useRef(null)
   const containerRef = useRef(null)
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
   const [scriptLoaded, setScriptLoaded] = useState(!!window.google?.accounts?.id)
   const [scriptFailed, setScriptFailed] = useState(false)
   const [containerWidth, setContainerWidth] = useState(320)
+  const [retryTrigger, setRetryTrigger] = useState(0)
 
   const handleCredentialResponse = async (response) => {
     try {
-      setLoading(true)
       setError('')
       const { data } = await axios.post('/auth/google', {
         token: response.credential,
@@ -26,29 +25,6 @@ export default function GoogleLoginButton({ onLoginSuccess, onError }) {
       if (onError) {
         onError(errMsg)
       }
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleMockLogin = async () => {
-    try {
-      setLoading(true)
-      setError('')
-      const { data } = await axios.post('/auth/google', {
-        token: 'mock-google-token',
-      })
-      if (onLoginSuccess) {
-        onLoginSuccess(data)
-      }
-    } catch (err) {
-      const errMsg = err.response?.data?.message || 'Google Login failed'
-      setError(errMsg)
-      if (onError) {
-        onError(errMsg)
-      }
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -83,16 +59,16 @@ export default function GoogleLoginButton({ onLoginSuccess, onError }) {
     const timeout = setTimeout(() => {
       if (!window.google?.accounts?.id) {
         clearInterval(checkGoogleScript)
-        console.warn('Google Sign-In script failed to load. Falling back to Demo mode.')
+        console.warn('Google Sign-In script failed to load.')
         setScriptFailed(true)
       }
-    }, 3000)
+    }, 5000)
 
     return () => {
       clearInterval(checkGoogleScript)
       clearTimeout(timeout)
     }
-  }, [isConfigured])
+  }, [isConfigured, retryTrigger])
 
   // Hook 2: Dynamic parent container width measurement to handle responsiveness
   useEffect(() => {
@@ -116,6 +92,7 @@ export default function GoogleLoginButton({ onLoginSuccess, onError }) {
 
   // Hook 3: Initialize Google Sign-In and render the official button once DOM element is mounted
   useEffect(() => {
+    const buttonNode = buttonRef.current
     if (!isConfigured || !scriptLoaded || !buttonNode || !window.google?.accounts?.id) return
 
     // Clamp width to Google API guidelines: [200px, 400px]
@@ -133,7 +110,7 @@ export default function GoogleLoginButton({ onLoginSuccess, onError }) {
       window.google.accounts.id.renderButton(
         buttonNode,
         {
-          theme: 'outline', // Subtler outlined button that integrates cleanly with our premium dark card layout
+          theme: 'outline', // Subtler outlined button that integrates cleanly with our premium dark layout
           size: 'large',
           text: 'signin_with',
           shape: 'pill',
@@ -143,12 +120,11 @@ export default function GoogleLoginButton({ onLoginSuccess, onError }) {
       )
     } catch (err) {
       console.error('Google Sign-In initialization failed:', err)
-      setTimeout(() => setScriptFailed(true), 0)
+      setTimeout(() => setError('Google Sign-In initialization failed'), 0)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scriptLoaded, isConfigured, clientId, containerWidth, buttonNode])
+  }, [scriptLoaded, isConfigured, clientId, containerWidth, retryTrigger])
 
-  const showMockButton = !isConfigured || scriptFailed
   const clampedWidth = Math.max(200, Math.min(400, containerWidth - 32))
 
   return (
@@ -187,40 +163,35 @@ export default function GoogleLoginButton({ onLoginSuccess, onError }) {
         {/* Soft Neon Glow Sphere Accent */}
         <div className="absolute -inset-24 bg-gradient-to-tr from-secondary/5 via-blue-500/5 to-transparent rounded-full blur-3xl opacity-30 group-hover:opacity-100 group-hover:scale-110 transition-all duration-700 pointer-events-none -z-10" />
 
-        {showMockButton ? (
-          /* Custom Fallback Button matching Settl's signature purple-blue gradient */
-          <button
-            type="button"
-            onClick={handleMockLogin}
-            disabled={loading}
-            style={{ maxWidth: `${clampedWidth}px` }}
-            className="w-full h-10 bg-gradient-to-r from-secondary to-blue-600 hover:brightness-110 active:brightness-95 text-white rounded-full font-semibold text-xs flex items-center justify-center gap-3 transition-all cursor-pointer shadow-lg shadow-secondary/15 hover:shadow-secondary/25 hover:scale-[1.01] active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
-          >
-            {loading ? (
-              <span className="material-symbols-outlined text-[16px] animate-spin">sync</span>
-            ) : (
-              <svg className="w-4 h-4 flex-shrink-0 bg-white p-0.5 rounded-full" viewBox="0 0 24 24">
-                <path
-                  fill="#EA4335"
-                  d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.67 1.54 14.98 1 12 1 7.35 1 3.37 3.67 1.39 7.56l3.89 3.02C6.22 7.59 8.87 5.04 12 5.04z"
-                />
-                <path
-                  fill="#4285F4"
-                  d="M23.49 12.27c0-.81-.07-1.59-.2-2.36H12v4.51h6.46c-.29 1.48-1.14 2.73-2.4 3.58l3.73 2.89c2.18-2.01 3.7-4.97 3.7-8.62z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.28 14.42c-.25-.76-.39-1.57-.39-2.42s.14-1.66.39-2.42L1.39 6.56C.5 8.2 .02 10.04 .02 12s.48 3.8 1.37 5.44l3.89-3.02z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 23c3.24 0 5.97-1.07 7.96-2.91l-3.73-2.89c-1.04.7-2.37 1.11-4.23 1.11-3.13 0-5.78-2.55-6.72-5.54L1.39 15.79C3.37 19.68 7.35 23 12 23z"
-                />
-              </svg>
-            )}
-            <span>{loading ? 'Signing In...' : 'Sign in with Google'}</span>
-          </button>
-        ) : isConfigured && !scriptLoaded ? (
+        {!isConfigured ? (
+          /* Error State: Google Sign-In not configured */
+          <div className="w-full py-3.5 px-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-center flex flex-col items-center justify-center gap-2 select-text">
+            <span className="material-symbols-outlined text-rose-400 text-2xl">error</span>
+            <p className="text-white text-xs font-bold uppercase tracking-wider">Google Sign-In is not configured</p>
+            <p className="text-[10px] text-on-surface-variant/85 max-w-[280px] leading-relaxed">
+              Google Client ID is missing. Please set VITE_GOOGLE_CLIENT_ID in your environment variables.
+            </p>
+          </div>
+        ) : scriptFailed ? (
+          /* Error State: Google Script failed to load */
+          <div className="w-full py-3.5 px-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-center flex flex-col items-center justify-center gap-2">
+            <span className="material-symbols-outlined text-rose-400 text-2xl">error_outline</span>
+            <p className="text-white text-xs font-bold uppercase tracking-wider">Failed to load Google Service</p>
+            <p className="text-[10px] text-on-surface-variant/85 max-w-[280px] leading-relaxed">
+              Unable to load the Google Identity Sign-In script. Please check your connection.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setScriptFailed(false)
+                setRetryTrigger(prev => prev + 1)
+              }}
+              className="mt-1 px-3 py-1.5 bg-white/5 border border-white/10 hover:bg-white/10 active:scale-95 transition-all text-white rounded-lg text-[10px] font-bold uppercase tracking-wider cursor-pointer"
+            >
+              Retry
+            </button>
+          </div>
+        ) : !scriptLoaded ? (
           /* Premium Shimmer Skeleton Loader */
           <div 
             style={{ maxWidth: `${clampedWidth}px` }} 
@@ -232,17 +203,8 @@ export default function GoogleLoginButton({ onLoginSuccess, onError }) {
         ) : (
           /* Official Google SDK IFrame container */
           <div className="w-full flex justify-center min-h-[40px] transition-all duration-300">
-            <div ref={setButtonNode} className="w-full flex justify-center" style={{ maxWidth: `${clampedWidth}px` }} />
+            <div ref={buttonRef} className="w-full flex justify-center" style={{ maxWidth: `${clampedWidth}px` }} />
           </div>
-        )}
-
-        {/* Demo Indicator Footnote */}
-        {showMockButton && (
-          <span className="text-[9px] text-on-surface-variant/40 font-medium tracking-wide text-center leading-normal">
-            {!isConfigured 
-              ? "Local Demo Mode Active (Bypass Enabled)" 
-              : "Google service offline. Fallback bypass active."}
-          </span>
         )}
 
         {error && (

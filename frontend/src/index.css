@@ -263,14 +263,11 @@ button, input, select, textarea, a {
   -webkit-backdrop-filter: blur(16px);
 }
 
-/* Dialog backdrops should dim the page without softening or clipping it. */
 .modal-overlay {
   position: fixed;
   inset: 0;
   width: 100vw;
   min-height: 100dvh;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
 }
 
 /* Keep the UPI safety confirmation fully opaque and readable in light mode. */
@@ -502,8 +499,9 @@ button, input, select, textarea, a {
   box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 
-.glow-green {
-  box-shadow: 0 0 25px -5px rgba(74, 222, 128, 0.15), 0 0 10px -2px rgba(74, 222, 128, 0.05);
+.glow-green,
+.glow-emerald {
+  box-shadow: 0 0 25px -5px rgba(52, 211, 153, 0.15), 0 0 10px -2px rgba(52, 211, 153, 0.05);
 }
 
 .glow-red {

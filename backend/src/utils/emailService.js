@@ -26,6 +26,8 @@ export const sendVerificationEmail = async (
   const safeName = escapeHtml(toName);
   const safeVerificationUrl = escapeHtml(verificationUrl);
 
+  console.log(`[EmailService] Verification URL for ${toEmail}: ${verificationUrl}`);
+
   if (toEmail.endsWith("@example.com") || toEmail.endsWith("@test.com")) {
     console.log(`[EmailService] Skipped sending email (mock/test domain): ${toEmail}`);
     return;
@@ -255,7 +257,11 @@ export const sendVerificationEmail = async (
     });
     console.log(`[EmailService] Verification email sent successfully to ${toEmail}. Message ID: ${info.messageId}`);
   } catch (error) {
-    console.error(`[EmailService] Failed to send verification email to ${toEmail}:`, error);
+    console.error(`[EmailService] Failed to send verification email to ${toEmail}:`, error.message);
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`[EmailService] Development fallback active. Verification URL: ${verificationUrl}`);
+      return;
+    }
     throw error;
   }
 };

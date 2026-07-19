@@ -36,6 +36,8 @@ const formatTimeAgo = (date) => {
   return new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
+const generateOptimisticId = () => `optimistic-${Date.now()}`;
+
 export default function GroupDetail() {
   const { id } = useParams()
   const { user } = useAuth()
@@ -90,7 +92,7 @@ export default function GroupDetail() {
       const compareDate = new Date(logDate);
       compareDate.setHours(0, 0, 0, 0);
 
-      let label = '';
+      let label;
       if (compareDate.getTime() === today.getTime()) {
         label = 'Today';
       } else if (compareDate.getTime() === yesterday.getTime()) {
@@ -142,8 +144,66 @@ export default function GroupDetail() {
   const [splitPercentages, setSplitPercentages] = useState({})
   const [exactAmounts, setExactAmounts] = useState({})
 
+  const handleExactAmountChange = (userId, value) => {
+    setExactAmounts(prev => {
+      const next = { ...prev, [userId]: value }
+      
+      if (group?.members && group.members.length > 0) {
+        const lastMemberId = group.members[group.members.length - 1].user?._id
+        
+        if (userId !== lastMemberId) {
+          const totalAmount = parseFloat(expenseForm.amount) || 0
+          if (totalAmount > 0) {
+            let sumOthers = 0
+            group.members.slice(0, -1).forEach(m => {
+              const mId = m.user?._id
+              const val = mId === userId ? parseFloat(value) : parseFloat(prev[mId])
+              sumOthers += val || 0
+            })
+            const remaining = totalAmount - sumOthers
+            next[lastMemberId] = remaining >= 0 ? remaining.toFixed(2) : '0.00'
+          } else {
+            next[lastMemberId] = ''
+          }
+        }
+      }
+      return next
+    })
+  }
+
   useEffect(() => {
-    if (showAddExpense && group?.members?.length > 0) {
+    if (expenseForm.splitType !== 'exact' || !group?.members || group.members.length === 0) return
+
+    const totalAmount = parseFloat(expenseForm.amount) || 0
+    const lastMemberId = group.members[group.members.length - 1].user?._id
+
+    if (totalAmount <= 0) {
+      setTimeout(() => {
+        setExactAmounts(prev => {
+          if (prev[lastMemberId] === '') return prev
+          return { ...prev, [lastMemberId]: '' }
+        })
+      }, 0)
+      return
+    }
+
+    setTimeout(() => {
+      setExactAmounts(prev => {
+        let sumOthers = 0
+        group.members.slice(0, -1).forEach(m => {
+          sumOthers += parseFloat(prev[m.user?._id]) || 0
+        })
+        const remaining = totalAmount - sumOthers
+        const autoFilledVal = remaining >= 0 ? remaining.toFixed(2) : '0.00'
+
+        if (prev[lastMemberId] === autoFilledVal) return prev
+        return { ...prev, [lastMemberId]: autoFilledVal }
+      })
+    }, 0)
+  }, [expenseForm.amount, expenseForm.splitType, group?.members])
+
+  const openAddExpenseModal = () => {
+    if (group?.members?.length > 0) {
       const equalShare = 100 / group.members.length;
       const initial = {};
       const initialExact = {};
@@ -154,7 +214,8 @@ export default function GroupDetail() {
       setSplitPercentages(initial);
       setExactAmounts(initialExact);
     }
-  }, [showAddExpense, group]);
+    setShowAddExpense(true);
+  };
 
   const handleSliderChange = (changedUserId, newValue) => {
     setSplitPercentages(prev => {
@@ -194,11 +255,6 @@ export default function GroupDetail() {
   const [loadingSettlements, setLoadingSettlements] = useState(true)
   const [memberScores, setMemberScores]             = useState({})
 
-  // Clear memberScores when settlements/transactions are updated to force re-fetch
-  useEffect(() => {
-    setMemberScores({});
-  }, [transactions, confirmedSettlements]);
-
   // Fetch trust scores for group members in parallel
   useEffect(() => {
     if (!group?.members) return;
@@ -211,7 +267,7 @@ export default function GroupDetail() {
           try {
             const { data } = await axios.get(`/insights/trust-score/${id}`);
             return { id, data };
-          } catch (err) {
+          } catch {
             return { id, data: { status: "error", scoreBand: "N/A", score: null } };
           }
         });
@@ -286,6 +342,7 @@ export default function GroupDetail() {
       const { data } = await axios.get(`/settlements/simplify/${id}`)
       setTransactions(data.transactions || [])
       setConfirmedSettlements(data.confirmedSettlements || [])
+      setMemberScores({})
     } catch (err) {
       console.error(err)
     } finally {
@@ -315,7 +372,7 @@ export default function GroupDetail() {
     const text = messageText.trim();
     if (!text) return;
 
-    const tempId = `optimistic-${Date.now()}`;
+    const tempId = generateOptimisticId();
     const optimisticMsg = {
       _id: tempId,
       content: text,
@@ -335,6 +392,7 @@ export default function GroupDetail() {
     }
 
     try {
+      setSendingMessage(true);
       const { data } = await axios.post('/messages', { groupId: id, content: text });
       setMessages(prev => {
         const idx = prev.findIndex(m => m._id === tempId);
@@ -356,6 +414,8 @@ export default function GroupDetail() {
         }
         return prev;
       });
+    } finally {
+      setSendingMessage(false);
     }
   };
 
@@ -364,7 +424,7 @@ export default function GroupDetail() {
 
     setMessages(prev => prev.filter(m => m._id !== failedMsg._id));
 
-    const tempId = `optimistic-${Date.now()}`;
+    const tempId = generateOptimisticId();
     const optimisticMsg = {
       _id: tempId,
       content: text,
@@ -379,6 +439,7 @@ export default function GroupDetail() {
     setMessages(prev => [...prev, optimisticMsg]);
 
     try {
+      setSendingMessage(true);
       const { data } = await axios.post('/messages', { groupId: id, content: text });
       setMessages(prev => {
         const idx = prev.findIndex(m => m._id === tempId);
@@ -400,6 +461,8 @@ export default function GroupDetail() {
         }
         return prev;
       });
+    } finally {
+      setSendingMessage(false);
     }
   };
 
@@ -796,7 +859,7 @@ export default function GroupDetail() {
 
             <div className="grid grid-cols-2 gap-3 self-stretch md:flex md:self-auto justify-end">
               <button
-                onClick={() => setShowAddExpense(true)}
+                onClick={openAddExpenseModal}
                 className="bg-gradient-to-r from-secondary to-blue-600 text-white px-4 sm:px-5 py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-wider shadow-lg shadow-secondary/25 hover:brightness-110 active:scale-95 transition-all cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-secondary"
               >
                 <span className="material-symbols-outlined text-[18px] font-bold">add</span> Add Expense
@@ -888,14 +951,17 @@ export default function GroupDetail() {
               <div className="flex flex-col gap-6 animate-in fade-in duration-200">
 
                 {expenses.length === 0 ? (
-                  <div className="text-center py-16 border-2 border-dashed border-outline-variant/20 rounded-2xl bg-white/5 flex flex-col items-center">
-                    <span className="material-symbols-outlined text-4xl text-outline-variant/40 mb-3">payments</span>
-                    <p className="text-on-surface-variant text-sm font-semibold">No expenses logged yet</p>
+                  <div className="flex flex-col items-center justify-center border-2 border-dashed border-outline-variant/20 rounded-2xl p-12 bg-white/5 text-center animate-in fade-in duration-200">
+                    <span className="material-symbols-outlined text-4xl text-on-surface-variant/40 mb-3">payments</span>
+                    <h4 className="text-sm font-bold text-white mb-1">No expenses yet</h4>
+                    <p className="text-xs text-on-surface-variant text-center max-w-[240px] leading-relaxed mb-4">
+                      Add an expense to start splitting bills with the group.
+                    </p>
                     <button
-                      onClick={() => setShowAddExpense(true)}
-                      className="mt-3 text-secondary text-xs font-bold uppercase tracking-wider hover:underline cursor-pointer"
+                      onClick={openAddExpenseModal}
+                      className="px-4 py-2 border border-outline-variant/30 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-white/5 transition-colors cursor-pointer"
                     >
-                      Add the first expense
+                      Add Expense
                     </button>
                   </div>
                 ) : (
@@ -959,7 +1025,7 @@ export default function GroupDetail() {
                                       {myShare && (
                                         <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md inline-block mt-2 border ${
                                           iPaid
-                                            ? 'bg-green-500/10 text-green-400 border-green-500/25'
+                                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25'
                                             : 'bg-red-500/10 text-[#f87171] border-red-500/25'
                                         }`}>
                                           {iPaid
@@ -978,19 +1044,19 @@ export default function GroupDetail() {
                                         const isPayer = split.user?._id === expense.paidBy?._id
                                         return (
                                           <div key={split._id} className={`border rounded-xl px-2.5 py-1.5 flex items-center gap-2 text-xs ${
-                                            isPayer ? 'bg-green-500/5 border-green-500/20 text-green-400' : 'bg-white/5 border-white/5 text-on-surface-variant'
+                                            isPayer ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400' : 'bg-white/5 border-white/5 text-on-surface-variant'
                                           }`}>
                                             <div className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[9px] ${
-                                              isPayer ? 'bg-green-500 text-white' : 'bg-primary-container text-white'
+                                              isPayer ? 'bg-emerald-500 text-white' : 'bg-primary-container text-white'
                                             }`}>
                                               {split.user?.name?.charAt(0).toUpperCase()}
                                             </div>
                                             <span className="text-[11px] font-medium">
-                                              <span className={isPayer ? 'text-green-400 font-bold' : 'text-on-surface-variant'}>
+                                              <span className={isPayer ? 'text-emerald-400 font-bold' : 'text-on-surface-variant'}>
                                                 {split.user?._id === user._id ? 'You' : split.user?.name}
                                               </span>
-                                              {isPayer && <span className="text-green-400 text-[8px] ml-1 font-bold uppercase tracking-wider">(paid)</span>}:
-                                              {' '}<span className={`font-bold ${isPayer ? 'text-green-400' : 'text-white'}`}>₹{split.amount}</span>
+                                              {isPayer && <span className="text-emerald-400 text-[8px] ml-1 font-bold uppercase tracking-wider">(paid)</span>}:
+                                              {' '}<span className={`font-bold ${isPayer ? 'text-emerald-400' : 'text-white'}`}>₹{split.amount.toLocaleString('en-IN')}</span>
                                             </span>
                                           </div>
                                         )
@@ -1134,10 +1200,12 @@ export default function GroupDetail() {
                       ))}
                     </div>
                   ) : activityLogs.length === 0 ? (
-                    <div className="text-center py-16 border-2 border-dashed border-outline-variant/20 rounded-2xl bg-white/5 flex flex-col items-center">
-                      <span className="material-symbols-outlined text-4xl text-outline-variant/40 mb-3">history</span>
-                      <p className="text-on-surface-variant text-sm font-semibold">No activity yet</p>
-                      <p className="text-xs text-on-surface-variant/60 mt-1">Events will appear here as the group is used</p>
+                    <div className="flex flex-col items-center justify-center border-2 border-dashed border-outline-variant/20 rounded-2xl p-12 bg-white/5 text-center animate-in fade-in duration-200">
+                      <span className="material-symbols-outlined text-4xl text-on-surface-variant/40 mb-3">history</span>
+                      <h4 className="text-sm font-bold text-white mb-1">No activity yet</h4>
+                      <p className="text-xs text-on-surface-variant text-center max-w-[240px] leading-relaxed">
+                        Events will appear here as the group is used.
+                      </p>
                     </div>
                   ) : (
                     <>
@@ -1347,7 +1415,7 @@ export default function GroupDetail() {
                       const mine = message.sender?._id === user._id
                       const isConsecutive = i > 0 && 
                         messages[i-1].sender?._id === message.sender?._id &&
-                        Math.abs(new Date(message.createdAt || Date.now()) - new Date(messages[i-1].createdAt || Date.now())) < 5 * 60 * 1000
+                        Math.abs(new Date(message.createdAt || 0) - new Date(messages[i-1].createdAt || 0)) < 5 * 60 * 1000
 
                       const senderName = mine ? 'You' : message.sender?.name || 'Member'
                       const initials = (message.sender?.name || 'M').charAt(0).toUpperCase()
@@ -1425,12 +1493,10 @@ export default function GroupDetail() {
             {activeTab === 'history' && (
               <div className="flex flex-col gap-6 animate-in fade-in duration-200">
                 {confirmedSettlements.length === 0 ? (
-                  <div className="text-center py-16 glass-card rounded-3xl border border-white/5 flex flex-col items-center">
-                    <div className="h-16 w-16 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center text-3xl mb-4 shadow-lg shadow-emerald-500/10">
-                      <span className="material-symbols-outlined text-[32px]" style={{ fontVariationSettings: "'FILL' 0" }}>history_edu</span>
-                    </div>
-                    <p className="text-white font-extrabold text-lg uppercase tracking-wider">No history yet</p>
-                    <p className="text-on-surface-variant text-xs mt-2 max-w-sm leading-relaxed font-semibold">
+                  <div className="flex flex-col items-center justify-center border-2 border-dashed border-outline-variant/20 rounded-2xl p-12 bg-white/5 text-center animate-in fade-in duration-200">
+                    <span className="material-symbols-outlined text-4xl text-on-surface-variant/40 mb-3">history_edu</span>
+                    <h4 className="text-sm font-bold text-white mb-1">No history yet</h4>
+                    <p className="text-xs text-on-surface-variant text-center max-w-[240px] leading-relaxed">
                       When members confirm settlements via the Settle Up page, they will show up here.
                     </p>
                   </div>
@@ -1646,7 +1712,7 @@ export default function GroupDetail() {
                   const isAdmin = currentUserRole === 'admin'
                   const isSelf  = m.user?._id === user._id
                   return (
-                    <div key={m.user?._id} className="flex items-center justify-between text-xs p-2 rounded-2xl bg-white/[0.01] hover:bg-white/[0.03] border border-transparent hover:border-white/5 transition-all">
+                    <div key={m.user?._id} className="flex items-center justify-between text-xs p-2 pb-3 rounded-2xl bg-white/[0.01] hover:bg-white/[0.03] border border-transparent hover:border-white/5 transition-all">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-zinc-700 to-zinc-600 text-white flex items-center justify-center font-bold text-xs flex-shrink-0 shadow-sm">
                           {m.user?.name?.charAt(0).toUpperCase()}
@@ -1656,12 +1722,12 @@ export default function GroupDetail() {
                             {isSelf ? `${m.user?.name} (You)` : m.user?.name}
                           </span>
                           <span className="text-[10px] text-on-surface-variant/70 block truncate mb-1">{m.user?.email}</span>
-                          <div>
+                          <div className="mt-1.5">
                             {(() => {
                               const scoreData = memberScores[m.user?._id];
                               if (scoreData && (scoreData.status === "ready" || scoreData.status === "new")) {
                                 return (
-                                  <span className={`inline-flex items-center text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-lg border ${
+                                  <span className={`inline-flex items-center text-[9px] font-extrabold uppercase tracking-wider px-2 py-1 rounded-lg border whitespace-nowrap ${
                                     scoreData.scoreBand === 'Excellent' || scoreData.scoreBand === 'Good'
                                       ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
                                       : scoreData.scoreBand === 'New'
@@ -1670,19 +1736,19 @@ export default function GroupDetail() {
                                       ? 'bg-amber-500/10 border-amber-500/20 text-amber-400'
                                       : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
                                   }`} title="Trust Score">
-                                    {scoreData.scoreBand === 'New' ? 'Trust: New Member' : `Trust: ${scoreData.score} (${scoreData.scoreBand})`}
+                                    {scoreData.scoreBand === 'New' ? 'Trust Score: New Member' : `Trust Score: ${scoreData.score} (${scoreData.scoreBand})`}
                                   </span>
                                 );
                               } else if (scoreData && scoreData.status === "not_enough_data") {
                                 return (
-                                  <span className="inline-flex items-center text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-lg border bg-white/5 border-white/10 text-slate-400" title="Not enough activity to compute score">
-                                    Trust: N/A
+                                  <span className="inline-flex items-center text-[9px] font-extrabold uppercase tracking-wider px-2 py-1 rounded-lg border bg-white/5 border-white/10 text-slate-400 whitespace-nowrap" title="Not enough activity to compute score">
+                                    Trust Score: N/A
                                   </span>
                                 );
                               } else {
                                 return (
-                                  <span className="inline-flex items-center text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-lg border bg-white/5 border-white/10 text-slate-500 animate-pulse">
-                                    Trust: --
+                                  <span className="inline-flex items-center text-[9px] font-extrabold uppercase tracking-wider px-2 py-1 rounded-lg border bg-white/5 border-white/10 text-slate-500 animate-pulse whitespace-nowrap">
+                                    Trust Score: --
                                   </span>
                                 );
                               }
@@ -1754,7 +1820,7 @@ export default function GroupDetail() {
       {expenseToDelete && (() => {
         const { canDelete, label } = getTimeStatus(expenseToDelete.createdAt)
         return (
-          <div className="modal-overlay bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="modal-overlay bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
             <div className="glass-card rounded-3xl max-w-sm w-full border border-rose-500/20 shadow-2xl p-6 animate-in zoom-in-95 duration-200 relative overflow-hidden">
               <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-rose-500/5 blur-xl pointer-events-none" />
               
@@ -1812,7 +1878,7 @@ export default function GroupDetail() {
 
       {/* ── Add Expense Modal ─────────────────────────────────────────────────── */}
       {showAddExpense && (
-        <div className="modal-overlay bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="modal-overlay bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={(e) => { if (e.target === e.currentTarget) setShowAddExpense(false) }}>
           <div className="glass-modal rounded-3xl max-w-2xl w-full border border-white/10 shadow-2xl overflow-y-auto md:overflow-hidden max-h-[90vh] md:max-h-[none] flex flex-col md:flex-row animate-in zoom-in-95 duration-200 hide-scrollbar">
             {/* Left section: Category and Amount */}
             <div className="md:w-5/12 bg-white/[0.02] border-b md:border-b-0 md:border-r border-white/5 p-6 flex flex-col justify-between relative overflow-hidden">
@@ -1934,9 +2000,29 @@ export default function GroupDetail() {
                   <button type="button" onClick={() => setExpenseForm({...expenseForm, splitType: 'exact'})} className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${expenseForm.splitType === 'exact' ? 'bg-white/10 text-white border border-white/5 shadow-sm' : 'text-white/50 hover:text-white/80'}`}>Exact Amount</button>
                 </div>
                 
-                <p className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest mb-3">Split with group members</p>
+                <div className="flex justify-between items-center mb-3">
+                  <p className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Split with group members</p>
+                  {(() => {
+                    if (expenseForm.splitType !== 'exact' || !group?.members || group.members.length === 0) return null;
+                    const total = parseFloat(expenseForm.amount) || 0;
+                    let sumOthers = 0;
+                    group.members.slice(0, -1).forEach(m => {
+                      sumOthers += parseFloat(exactAmounts[m.user?._id]) || 0;
+                    });
+                    if (sumOthers > total) {
+                      const diff = sumOthers - total;
+                      return (
+                        <span className="text-[9px] text-rose-400 font-bold flex items-center gap-1 animate-in fade-in duration-200 uppercase tracking-wide">
+                          <span className="material-symbols-outlined text-[12px] flex-shrink-0">warning</span>
+                          Exceeds total by ₹{diff.toLocaleString('en-IN')}
+                        </span>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
                 <div className="space-y-2 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
-                  {group?.members.map((m) => {
+                  {group?.members.map((m, index) => {
                     const pct = splitPercentages[m.user?._id] || 0;
                     const amount = expenseForm.amount ? parseFloat(expenseForm.amount) : 0;
                     const calculatedShare = expenseForm.splitType === 'percentage' 
@@ -1944,6 +2030,7 @@ export default function GroupDetail() {
                       : expenseForm.splitType === 'exact'
                         ? (parseFloat(exactAmounts[m.user?._id]) || 0)
                         : (amount / group.members.length);
+                    const isLastMember = index === group.members.length - 1;
                       
                     return (
                     <div key={m.user?._id} className="p-3 bg-white/[0.01] hover:bg-white/[0.03] border border-white/5 rounded-2xl flex flex-col gap-2 text-xs transition-all">
@@ -1976,16 +2063,25 @@ export default function GroupDetail() {
                       )}
                       
                       {expenseForm.splitType === 'exact' && (
-                        <div className="flex items-center gap-3 mt-1">
+                        <div className="flex items-center gap-3 mt-1 relative">
                           <span className="text-[12px] font-bold text-white/50">₹</span>
                           <input 
                             type="number" 
                             min="0" step="0.01"
                             value={exactAmounts[m.user?._id] || ''}
-                            onChange={(e) => setExactAmounts(prev => ({ ...prev, [m.user?._id]: e.target.value }))}
-                            className="flex-1 bg-transparent border-b border-white/10 focus:border-blue-500 focus:ring-0 text-white font-bold text-xs p-1 outline-none transition-all"
+                            onChange={(e) => handleExactAmountChange(m.user?._id, e.target.value)}
+                            className={`flex-1 bg-transparent border-b focus:border-blue-500 focus:ring-0 font-bold text-xs p-1 outline-none transition-all ${
+                              isLastMember && expenseForm.amount && parseFloat(expenseForm.amount) > 0
+                                ? 'text-cyan-400 border-cyan-400/20' 
+                                : 'text-white border-white/10'
+                            }`}
                             placeholder="0.00"
                           />
+                          {isLastMember && expenseForm.amount && parseFloat(expenseForm.amount) > 0 && (
+                            <span className="absolute right-1 top-1.5 text-[8px] font-bold uppercase tracking-wider bg-cyan-400/10 text-cyan-300 border border-cyan-400/25 px-1.5 py-0.5 rounded-md pointer-events-none select-none">
+                              auto
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -2012,7 +2108,7 @@ export default function GroupDetail() {
 
       {/* ── Add Member Modal ──────────────────────────────────────────────────── */}
       {showAddMember && (
-        <div className="modal-overlay bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="modal-overlay bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={(e) => { if (e.target === e.currentTarget) { setShowAddMember(false); setAddMemberError(''); setMemberEmail('') } }}>
           <div className="glass-card rounded-3xl max-w-md w-full border border-white/10 shadow-2xl p-6 animate-in zoom-in-95 duration-200 relative overflow-hidden">
             <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-blue-500/5 blur-xl pointer-events-none" />
             
@@ -2062,7 +2158,7 @@ export default function GroupDetail() {
 
       {/* ── Leave Group Modal ─────────────────────────────────────────────────── */}
       {showLeaveGroup && (
-        <div className="modal-overlay bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="modal-overlay bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="glass-card rounded-3xl max-w-sm w-full border border-amber-500/20 shadow-2xl p-6 animate-in zoom-in-95 duration-200 relative overflow-hidden">
             <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-amber-500/5 blur-xl pointer-events-none" />
             
@@ -2094,7 +2190,7 @@ export default function GroupDetail() {
 
       {/* ── Delete Group Modal ────────────────────────────────────────────────── */}
       {showDeleteGroup && (
-        <div className="modal-overlay bg-black/60 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="modal-overlay bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="glass-card rounded-3xl max-w-sm w-full border border-rose-500/20 shadow-2xl p-6 animate-in zoom-in-95 duration-200 relative overflow-hidden">
             <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-rose-500/5 blur-xl pointer-events-none" />
             

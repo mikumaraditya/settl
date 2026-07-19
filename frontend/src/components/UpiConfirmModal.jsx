@@ -1,20 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 export default function UpiConfirmModal({ open, upiId, onConfirm, onCancel }) {
   const [checked, setChecked] = useState(false)
 
-  // Reset checkmark state every time the modal opens
-  useEffect(() => {
+  const [prevOpen, setPrevOpen] = useState(open)
+
+  if (open !== prevOpen) {
+    setPrevOpen(open)
     if (open) {
       setChecked(false)
     }
-  }, [open])
+  }
 
   if (!open) return null
 
   return (
     <div
-      className="modal-overlay z-50 bg-black/75 flex items-center justify-center p-4 animate-in fade-in duration-200"
+      className="modal-overlay z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
       onClick={(e) => { if (e.target === e.currentTarget) onCancel() }}
     >
       <div className="upi-confirm-modal glass-card relative w-full max-w-md md:max-w-2xl rounded-3xl border border-white/10 flex flex-col gap-6 p-6 md:p-8 animate-in zoom-in-95 duration-200 bg-[#0b1222] text-white shadow-2xl overflow-hidden">

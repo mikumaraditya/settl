@@ -26,7 +26,7 @@ export default function ConfirmPaymentPopup({ transaction, groupId, onConfirm, o
   }
 
   return (
-    <div className="modal-overlay z-60 bg-black/60 flex items-center justify-center p-4 animate-in fade-in duration-200">
+    <div className="modal-overlay z-60 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
       <div className="glass-card w-full max-w-sm rounded-3xl border border-white/10 flex flex-col gap-5 p-6 animate-in zoom-in-95 duration-200 relative overflow-hidden">
         {/* Background gradient orb */}
         <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-blue-500/5 blur-xl pointer-events-none" />

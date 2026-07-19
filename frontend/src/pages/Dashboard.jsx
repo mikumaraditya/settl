@@ -340,7 +340,7 @@ export default function Dashboard() {
         {/* Overall Balance Hero Card */}
         <section className={`rounded-3xl p-5 sm:p-6 md:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden transition-all duration-300 border animate-in fade-in slide-in-from-top-4 duration-300 ${
           overallBalance > 0 
-            ? 'bg-gradient-to-br from-green-500/10 to-green-500/5 border-green-500/20 glow-green' 
+            ? 'bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border-emerald-500/20 glow-emerald' 
             : overallBalance < 0 
               ? 'bg-gradient-to-br from-red-500/10 to-red-500/5 border-red-500/20 glow-red' 
               : 'glass-card'
@@ -357,7 +357,7 @@ export default function Dashboard() {
             ) : (
               <>
                 <h2 className={`text-3xl font-black tracking-tight ${
-                  overallBalance > 0 ? 'text-green-400' : overallBalance < 0 ? 'text-[#f87171]' : 'text-white'
+                  overallBalance > 0 ? 'text-emerald-400' : overallBalance < 0 ? 'text-[#f87171]' : 'text-white'
                 }`}>
                   {overallBalance > 0 ? '+' : ''}₹{overallBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                 </h2>
@@ -400,7 +400,7 @@ export default function Dashboard() {
           
           {/* Active Groups (8 columns) */}
           <div className="col-span-12 lg:col-span-8 flex flex-col gap-4">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant px-1">Active Groups</h3>
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant px-1">Active Groups</h3>
             
             {loading ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -409,14 +409,17 @@ export default function Dashboard() {
                 ))}
               </div>
             ) : groups.length === 0 ? (
-              <div className="flex flex-col items-center justify-center border-2 border-dashed border-outline-variant/30 rounded-2xl p-12 bg-white/5">
-                <span className="material-symbols-outlined text-4xl text-outline-variant/40 mb-3">group</span>
-                <p className="text-on-surface-variant text-sm font-semibold">No groups created yet</p>
+              <div className="flex flex-col items-center justify-center border-2 border-dashed border-outline-variant/30 rounded-2xl p-12 bg-white/5 text-center animate-in fade-in duration-200">
+                <span className="material-symbols-outlined text-4xl text-on-surface-variant/40 mb-3">group</span>
+                <h4 className="text-sm font-bold text-white mb-1">No groups yet</h4>
+                <p className="text-xs text-on-surface-variant text-center max-w-[240px] leading-relaxed mb-4">
+                  Create a group to start splitting bills with friends.
+                </p>
                 <button
                   onClick={() => setShowCreate(true)}
-                  className="mt-3 text-secondary text-xs font-bold uppercase tracking-wider hover:underline cursor-pointer"
+                  className="px-4 py-2 border border-outline-variant/30 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-white/5 transition-colors cursor-pointer"
                 >
-                  Create your first group
+                  Create Group
                 </button>
               </div>
             ) : (
@@ -432,7 +435,7 @@ export default function Dashboard() {
                       onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') navigate(`/group/${group._id}`) }}
                       role="button"
                       tabIndex={0}
-                      className="glass-card p-5 sm:p-6 rounded-3xl shadow-lg hover:shadow-xl hover:scale-[1.01] hover:border-secondary/30 focus-visible:border-secondary focus-visible:outline-none transition-all duration-200 group cursor-pointer relative flex flex-col justify-between h-48 animate-in fade-in zoom-in-95 duration-200"
+                      className="glass-card p-5 sm:p-6 rounded-2xl shadow-lg hover:shadow-xl hover:scale-[1.01] hover:border-secondary/30 focus-visible:border-secondary focus-visible:outline-none transition-all duration-200 group cursor-pointer relative flex flex-col justify-between h-48 animate-in fade-in zoom-in-95 duration-200"
                     >
                       <div className="flex justify-between items-start">
                         <div className={`h-11 w-11 rounded-xl flex items-center justify-center shadow-md transition-transform group-hover:scale-105 duration-200 ${
@@ -472,7 +475,7 @@ export default function Dashboard() {
                         ) : (
                           <span className={`text-[11px] font-bold uppercase tracking-wider ${
                             gBal.status === 'owed' 
-                              ? 'text-green-400' 
+                              ? 'text-emerald-400' 
                               : gBal.status === 'owe' 
                                 ? 'text-[#f87171]' 
                                 : 'text-on-surface-variant'
@@ -510,7 +513,7 @@ export default function Dashboard() {
 
           {/* Recent Activity (4 columns) */}
           <div className="col-span-12 lg:col-span-4 flex flex-col gap-4">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant px-1">Recent Activity</h3>
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant px-1">Recent Activity</h3>
             
               <div className="glass-card rounded-3xl p-5 sm:p-6 shadow-lg flex flex-col gap-5">
               {loadingStats ? (
@@ -650,7 +653,7 @@ export default function Dashboard() {
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div className={`h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 border ${
-                        b.status === 'owed' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-red-500/10 text-[#f87171] border-red-500/20'
+                        b.status === 'owed' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-[#f87171] border-red-500/20'
                       }`}>
                         <span className="material-symbols-outlined text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>payments</span>
                       </div>
@@ -660,8 +663,8 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0 ml-3">
-                      <span className={`font-black text-sm block ${
-                        b.status === 'owed' ? 'text-green-400' : 'text-[#f87171]'
+                       <span className={`font-black text-sm block ${
+                        b.status === 'owed' ? 'text-emerald-400' : 'text-[#f87171]'
                       }`}>
                         {b.status === 'owed' ? '+' : '-'}₹{Math.abs(b.balance).toLocaleString('en-IN')}
                       </span>

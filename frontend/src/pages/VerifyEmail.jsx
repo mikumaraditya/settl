@@ -89,8 +89,8 @@ export default function VerifyEmail() {
           {/* SUCCESS */}
           {status === 'success' && (
             <div className="flex flex-col items-center gap-5 text-center animate-in zoom-in-95 duration-200">
-              <div className="w-16 h-16 rounded-2xl bg-green-500/10 flex items-center justify-center border border-green-500/20">
-                <span className="material-symbols-outlined text-green-400 text-[36px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+              <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
+                <span className="material-symbols-outlined text-emerald-400 text-[36px]" style={{ fontVariationSettings: "'FILL' 1" }}>
                   check_circle
                 </span>
               </div>
@@ -100,8 +100,8 @@ export default function VerifyEmail() {
                   Your email has been successfully verified. You're all set to use Settl without any restrictions.
                 </p>
               </div>
-              <div className="w-full bg-green-500/5 border border-green-500/15 rounded-xl px-4 py-3 mt-1">
-                <p className="text-[11px] text-green-400 font-bold uppercase tracking-wider">
+              <div className="w-full bg-emerald-500/5 border border-emerald-500/15 rounded-xl px-4 py-3 mt-1">
+                <p className="text-[11px] text-emerald-400 font-bold uppercase tracking-wider">
                   Redirecting to dashboard…
                 </p>
               </div>

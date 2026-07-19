@@ -255,7 +255,7 @@ All endpoints are prefixed with `/api` and require a JSON Web Token inside the `
 * **MongoDB** (Local instance or MongoDB Atlas URI)
 * A **Google AI Studio** Gemini API Key (optional for AI insights fallback)
 * A **Gmail** account with an **App Password** (for Nodemailer SMTP email verification)
-* **Google OAuth Client ID** credentials (optional for Google login)
+* **Google OAuth Client ID** credentials (required to use Google Sign-In)
 
 ### 1. Environment Variable Setup
 

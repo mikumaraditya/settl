@@ -335,11 +335,63 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
     s.isWeakest = s.value === minValue;
   });
 
+  // Compute biggest lever (primaryFocus)
+  let primaryFocus = "settlement_speed";
+  if (hasSettlements) {
+    const weights = {
+      followThrough: 0.30,
+      settlementInitiative: 0.30,
+      contribution: 0.25,
+      consistency: 0.15
+    };
+    let maxGain = -1;
+    let bestKey = "settlementInitiative";
+    
+    const gainFT = (100 - followThrough) * weights.followThrough;
+    if (gainFT > maxGain) {
+      maxGain = gainFT;
+      bestKey = "followThrough";
+    }
+    const gainSI = (100 - settlementInitiative) * weights.settlementInitiative;
+    if (gainSI > maxGain) {
+      maxGain = gainSI;
+      bestKey = "settlementInitiative";
+    }
+    const gainContrib = (100 - contribution) * weights.contribution;
+    if (gainContrib > maxGain) {
+      maxGain = gainContrib;
+      bestKey = "contribution";
+    }
+    const gainConst = (100 - consistency) * weights.consistency;
+    if (gainConst > maxGain) {
+      maxGain = gainConst;
+      bestKey = "consistency";
+    }
+    
+    if (bestKey === "settlementInitiative") primaryFocus = "settlement_speed";
+    else if (bestKey === "followThrough") primaryFocus = "settlement_follow_through";
+    else if (bestKey === "contribution") primaryFocus = "upfront_contribution";
+    else if (bestKey === "consistency") primaryFocus = "spending_consistency";
+  } else {
+    const weights = {
+      contribution: 0.70,
+      consistency: 0.30
+    };
+    const gainContrib = (100 - contribution) * weights.contribution;
+    const gainConst = (100 - consistency) * weights.consistency;
+    if (gainContrib >= gainConst) {
+      primaryFocus = "upfront_contribution";
+    } else {
+      primaryFocus = "spending_consistency";
+    }
+  }
+
   return {
     score,
     scoreBand,
     scoreBandSummary,
     signalBreakdown,
+    primaryFocus,
     signals: {
       followThrough: Math.round(followThrough),
       averageInitiativeHours: Math.round(averageInitiativeHours * 100) / 100,

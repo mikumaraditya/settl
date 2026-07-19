@@ -9,20 +9,16 @@ export default function FinancialMentorWidget() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [hasFetched, setHasFetched] = useState(false);
-  const [unseen, setUnseen] = useState(false);
+  const [unseen, setUnseen] = useState(() => {
+    try {
+      return !sessionStorage.getItem('settl_mentor_seen');
+    } catch {
+      return false;
+    }
+  });
 
   const panelRef = useRef(null);
   const buttonRef = useRef(null);
-
-  // Check sessionStorage for 'settl_mentor_seen'
-  useEffect(() => {
-    if (user) {
-      const seen = sessionStorage.getItem('settl_mentor_seen');
-      if (!seen) {
-        setUnseen(true);
-      }
-    }
-  }, [user]);
 
   // Click outside listener
   useEffect(() => {
@@ -339,7 +335,7 @@ export default function FinancialMentorWidget() {
                 {/* Footer */}
                 <div className="flex justify-between items-center text-[8px] text-on-surface-variant/70 font-bold uppercase tracking-wider border-t border-slate-200 dark:border-white/5 pt-3 mt-1">
                   <span>Cross-Group Analysis</span>
-                  <span>Generated {mentor?.generatedAt ? new Date(mentor.generatedAt).toLocaleDateString() : ''} {mentor?.generatedAt ? new Date(mentor.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                  <span>Generated {mentor?.generatedAt ? new Date(mentor.generatedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''} {mentor?.generatedAt ? new Date(mentor.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
                 </div>
               </div>
             )}
