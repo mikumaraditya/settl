@@ -154,6 +154,44 @@ export default function GroupDetail() {
   const [confirmedSettlements, setConfirmedSettlements] = useState([])
   const [now]                                       = useState(() => Date.now())
   const [loadingSettlements, setLoadingSettlements] = useState(true)
+  const [memberScores, setMemberScores]             = useState({})
+
+  // Clear memberScores when settlements/transactions are updated to force re-fetch
+  useEffect(() => {
+    setMemberScores({});
+  }, [transactions, confirmedSettlements]);
+
+  // Fetch trust scores for group members in parallel
+  useEffect(() => {
+    if (!group?.members) return;
+
+    const fetchScores = async () => {
+      const promises = group.members
+        .map(m => m.user?._id)
+        .filter(id => id && !memberScores[id])
+        .map(async (id) => {
+          try {
+            const { data } = await axios.get(`/insights/trust-score/${id}`);
+            return { id, data };
+          } catch (err) {
+            return { id, data: { status: "error", scoreBand: "N/A", score: null } };
+          }
+        });
+
+      if (promises.length === 0) return;
+
+      const results = await Promise.all(promises);
+      setMemberScores(prev => {
+        const next = { ...prev };
+        results.forEach(({ id, data }) => {
+          next[id] = data;
+        });
+        return next;
+      });
+    };
+
+    fetchScores();
+  }, [group?.members, memberScores]);
 
   // ── Socket ref ────────────────────────────────────────────────────────────────
   const socketRef = useRef(null)
@@ -1567,7 +1605,37 @@ export default function GroupDetail() {
                           <span className="font-bold text-white block truncate">
                             {isSelf ? `${m.user?.name} (You)` : m.user?.name}
                           </span>
-                          <span className="text-[10px] text-on-surface-variant/70 block truncate">{m.user?.email}</span>
+                          <span className="text-[10px] text-on-surface-variant/70 block truncate mb-1">{m.user?.email}</span>
+                          <div>
+                            {(() => {
+                              const scoreData = memberScores[m.user?._id];
+                              if (scoreData && scoreData.status === "ready") {
+                                return (
+                                  <span className={`inline-flex items-center text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-lg border ${
+                                    scoreData.scoreBand === 'Excellent' || scoreData.scoreBand === 'Good'
+                                      ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                                      : scoreData.scoreBand === 'Needs Attention'
+                                      ? 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                                      : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                                  }`} title="Financial Health / Trust Score">
+                                    Trust: {scoreData.score} ({scoreData.scoreBand})
+                                  </span>
+                                );
+                              } else if (scoreData && scoreData.status === "not_enough_data") {
+                                return (
+                                  <span className="inline-flex items-center text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-lg border bg-white/5 border-white/10 text-slate-400" title="Not enough activity to compute score">
+                                    Trust: N/A
+                                  </span>
+                                );
+                              } else {
+                                return (
+                                  <span className="inline-flex items-center text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-lg border bg-white/5 border-white/10 text-slate-500 animate-pulse">
+                                    Trust: --
+                                  </span>
+                                );
+                              }
+                            })()}
+                          </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">

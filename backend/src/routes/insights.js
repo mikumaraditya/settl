@@ -23,15 +23,15 @@ const fallbackMentorCopy = (score, scoreBand, signalBreakdown) => {
 
   const suggestions = [];
   const followThroughSig = signalBreakdown.find(s => s.key === "followThrough");
-  const promptnessSig = signalBreakdown.find(s => s.key === "promptness");
+  const settlementInitiativeSig = signalBreakdown.find(s => s.key === "settlementInitiative");
   const consistencySig = signalBreakdown.find(s => s.key === "consistency");
 
   if (followThroughSig && followThroughSig.value < 80) {
     suggestions.push("Settle outstanding balances promptly so that your group accounts remain transparent and accurate, helping everyone plan their budgets better.");
-  } else if (promptnessSig && promptnessSig.value < 80) {
-    suggestions.push("Confirm payments more quickly to build trust with group members and ensure shared debts are resolved without delay.");
+  } else if (settlementInitiativeSig && settlementInitiativeSig.value < 80) {
+    suggestions.push("Proactively request settlements closer to when expenses are incurred, ensuring you don't let debts linger.");
   } else {
-    suggestions.push("Keep confirming settlements promptly to maintain clean balances and a high level of trust within your group.");
+    suggestions.push("Keep taking the initiative to clear outstanding balances quickly to maintain a high level of trust.");
   }
 
   if (consistencySig && consistencySig.value < 60) {
@@ -56,7 +56,7 @@ Give one or two suggestions.
 
 In your response:
 1. Explain what the score and the score band mean in plain terms (e.g. why a score of ${score} puts them in the '${scoreBand}' band).
-2. Name the weakest signal(s) from the breakdown by name, and explain why it matters to the user's financial health.
+2. Name the weakest signal(s) from the breakdown by name, and explain why it matters to the user's financial health/trust reliability. Note: "Settlement Initiative" measures how quickly the user requests settlements after group expenses are created. If this is the weakest signal, suggest the user proactively settle up after shared spending instead of letting debts linger.
 3. Every suggestion MUST state a concrete benefit (payoff) for the user, not just a generic action.
 
 Financial Health Score: ${score}/100
@@ -104,6 +104,67 @@ Real observations: ${JSON.stringify(observations)}`;
     return fallback;
   }
 };
+
+export async function getTrustScoreForUser(userId) {
+  const groups = await Group.find({ "members.user": userId }).select("name").lean();
+  const groupIds = groups.map((group) => group._id);
+  if (groupIds.length === 0) {
+    return { status: "not_enough_data", score: null, scoreBand: "N/A" };
+  }
+
+  const [expenses, settlements] = await Promise.all([
+    Expense.find({ group: { $in: groupIds }, "splits.user": userId })
+      .select("description amount category group splits createdAt")
+      .lean(),
+    Settlement.find({ group: { $in: groupIds }, from: userId })
+      .select("status amount group createdAt updatedAt")
+      .lean(),
+  ]);
+
+  const groupNames = new Map(groups.map((group) => [group._id.toString(), group.name]));
+  const personalExpenses = expenses.map((expense) => {
+    const share = expense.splits.find((split) => split.user.toString() === userId);
+    return { ...expense, personalShare: Number(share?.amount || 0), groupName: groupNames.get(expense.group.toString()) || "a group" };
+  }).filter((expense) => expense.personalShare > 0);
+
+  const activeMonths = new Set(personalExpenses.map((expense) => expense.createdAt.toISOString().slice(0, 7)));
+  if (personalExpenses.length < 3 || activeMonths.size < 2) {
+    return {
+      status: "not_enough_data",
+      score: null,
+      scoreBand: "N/A",
+      activity: { expenses: personalExpenses.length, activeMonths: activeMonths.size, settlements: settlements.length, groups: groups.length },
+    };
+  }
+
+  const report = computeMentorReport(settlements, personalExpenses);
+  return {
+    status: "ready",
+    score: report.score,
+    scoreBand: report.scoreBand
+  };
+}
+
+router.get("/trust-score/:userId", protect, requireVerified, async (req, res) => {
+  try {
+    const targetUserId = req.params.userId;
+    if (targetUserId !== req.user.id) {
+      const sharedGroup = await Group.findOne({
+        "members.user": { $all: [req.user.id, targetUserId] }
+      });
+      if (!sharedGroup) {
+        return res.status(403).json({ message: "You do not share any groups with this user." });
+      }
+    }
+
+    const result = await getTrustScoreForUser(targetUserId);
+    return res.json(result);
+  } catch (error) {
+    console.error("Error fetching user trust score:", error);
+    return res.status(500).json({ message: "Unable to load trust score." });
+  }
+});
+
 
 router.get("/mentor", protect, requireVerified, async (req, res) => {
   try {
