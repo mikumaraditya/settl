@@ -309,7 +309,58 @@ export default function FinancialMentorWidget() {
                   </div>
                 </div>
 
+                {/* Why Section */}
+                {mentor?.whyFacts && mentor.whyFacts.length > 0 && (
+                  <div className="flex flex-col gap-2.5">
+                    <h4 className="text-[10px] font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-500 to-slate-600 dark:from-slate-300 dark:to-slate-400 uppercase tracking-widest ml-1 flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-[13px] text-slate-400">info</span>
+                      Why this score
+                    </h4>
+                    <div className="flex flex-col gap-1.5">
+                      {mentor.whyFacts.map((fact, idx) => (
+                        <div
+                          key={idx}
+                          className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border text-[11px] font-medium ${
+                            fact.sentiment === 'good'
+                              ? 'bg-emerald-500/8 border-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                              : fact.sentiment === 'warning'
+                              ? 'bg-amber-500/8 border-amber-500/20 text-amber-700 dark:text-amber-300'
+                              : 'bg-slate-100/60 dark:bg-white/[0.04] border-slate-200 dark:border-white/8 text-slate-600 dark:text-slate-400'
+                          }`}
+                        >
+                          <span className={`material-symbols-outlined text-[15px] flex-shrink-0 ${
+                            fact.sentiment === 'good'
+                              ? 'text-emerald-500'
+                              : fact.sentiment === 'warning'
+                              ? 'text-amber-500'
+                              : 'text-slate-400 dark:text-slate-500'
+                          }`}>{fact.icon}</span>
+                          <span className="leading-snug">{fact.text}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
+                {/* To Reach Section */}
+                {mentor?.nextTarget && mentor.nextTarget.actions?.length > 0 && (
+                  <div className="flex flex-col gap-2.5">
+                    <h4 className="text-[10px] font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-purple-500 uppercase tracking-widest ml-1 flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-[13px] text-indigo-400">flag</span>
+                      To reach {mentor.nextTarget.targetScore}
+                    </h4>
+                    <div className="flex flex-col gap-1.5">
+                      {mentor.nextTarget.actions.map((action, idx) => (
+                        <div key={idx} className="flex items-start gap-2.5 px-3 py-2 rounded-xl border border-indigo-500/15 bg-indigo-500/5 dark:bg-indigo-500/8">
+                          <span className="material-symbols-outlined text-[15px] flex-shrink-0 mt-0.5 text-indigo-400 dark:text-indigo-300">
+                            radio_button_unchecked
+                          </span>
+                          <span className="text-[11px] font-medium text-indigo-800 dark:text-indigo-200 leading-snug">{action}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Behavioral Observations */}
                 {mentor?.observations && mentor.observations.length > 0 && (

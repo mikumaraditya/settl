@@ -11,8 +11,26 @@ import mongoose from "mongoose";
 import rateLimit from "express-rate-limit";
 
 const router = express.Router();
+
+// ── Mentor cache (4 h, full AI report) ───────────────────────────────────────
 const MENTOR_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
 const mentorCache = new Map();
+
+// ── Trust-score cache (20 min, lightweight score/band per user) ───────────────
+// Keyed on targetUserId — score is viewer-independent, so one cached entry
+// correctly serves every group member viewing the same user simultaneously.
+const TRUST_SCORE_CACHE_TTL_MS = 20 * 60 * 1000;
+const trustScoreCache = new Map();
+
+/**
+ * Evict a user's cached trust score immediately.
+ * Call this whenever a settlement or expense affecting the user is
+ * created/confirmed so the group list reflects the change without
+ * waiting for the 20-minute TTL to expire.
+ */
+export function clearTrustScoreCache(userId) {
+  trustScoreCache.delete(String(userId));
+}
 
 const round = (value) => Math.round(value * 100) / 100;
 const median = (values) => {
@@ -224,9 +242,22 @@ export async function getTrustScoreForUser(userId) {
   };
 }
 
-router.get("/trust-score/:userId", protect, requireVerified, async (req, res) => {
+// Rate limiter for trust-score — much higher than /mentor (no Gemini cost),
+// generous enough for groups with many members all loaded simultaneously.
+const trustScoreRateLimiter = rateLimit({
+  windowMs: 60 * 1000,         // 1 minute window
+  max: 60,                     // 60 req/min per requesting user
+  keyGenerator: (req) => req.user.id,
+  message: { message: "Too many requests, please slow down." },
+});
+
+router.get("/trust-score/:userId", protect, requireVerified, trustScoreRateLimiter, async (req, res) => {
   try {
     const targetUserId = req.params.userId;
+
+    // Access-control runs on every request, even cache hits.
+    // This ensures a user who leaves a shared group loses access immediately
+    // rather than seeing stale cached data for up to 20 minutes.
     if (targetUserId !== req.user.id) {
       const sharedGroup = await Group.findOne({
         "members.user": { $all: [req.user.id, targetUserId] }
@@ -236,7 +267,19 @@ router.get("/trust-score/:userId", protect, requireVerified, async (req, res) =>
       }
     }
 
+    // Serve from cache if still fresh
+    const cacheKey = String(targetUserId);
+    const cached = trustScoreCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return res.json(cached.data);
+    }
+
+    // Compute fresh and cache
     const result = await getTrustScoreForUser(targetUserId);
+    trustScoreCache.set(cacheKey, {
+      data: result,
+      expiresAt: Date.now() + TRUST_SCORE_CACHE_TTL_MS,
+    });
     return res.json(result);
   } catch (error) {
     console.error("Error fetching user trust score:", error);
@@ -378,6 +421,95 @@ router.get("/mentor", protect, requireVerified, mentorRateLimiter, async (req, r
       ? computeWhatIfProjection(settlements, personalExpenses, rejections, weakestEntry.key, report.score)
       : null;
 
+    // --- Why Facts ---
+    // Plain-language facts derived from observation data, suitable for display in the widget.
+    // Only include a fact when it's actually informative (skip zero-pending, skip if no settlements).
+    const pendingSettlementsCount = settlements.filter(s => s.status === "pending").length;
+    const confirmedSettlementsCount = settlements.filter(s => !s.status || s.status === "confirmed").length;
+    const totalSettlementsForWhy = settlements.length;
+    const onTimePercent = totalSettlementsForWhy > 0
+      ? Math.round((confirmedSettlementsCount / totalSettlementsForWhy) * 100)
+      : null;
+    const activeMonthsCountForWhy = new Set(personalExpenses.map(e => e.createdAt.toISOString().slice(0, 7))).size;
+    const paidByUserCount = personalExpenses.filter(e => e.isPaidByUser).length;
+    const contributionRatio = personalExpenses.length > 0
+      ? Math.round((paidByUserCount / personalExpenses.length) * 100)
+      : 0;
+    const rejectionsCountForWhy = rejections.length;
+
+    const whyFacts = [];
+    // Pending settlements — only show if > 0 (a zero is not a meaningful fact)
+    if (pendingSettlementsCount > 0) {
+      whyFacts.push({
+        icon: "pending",
+        sentiment: "warning",
+        text: `${pendingSettlementsCount} pending payment${pendingSettlementsCount !== 1 ? 's' : ''} still to be confirmed`,
+      });
+    }
+    // On-time repayments — show if we have settlement history
+    if (onTimePercent !== null && totalSettlementsForWhy >= 2) {
+      whyFacts.push({
+        icon: onTimePercent >= 80 ? "check_circle" : "warning",
+        sentiment: onTimePercent >= 80 ? "good" : "warning",
+        text: `${onTimePercent}% of your payments were confirmed on time`,
+      });
+    }
+    // Upfront contribution — show if >= 3 expenses
+    if (personalExpenses.length >= 3) {
+      whyFacts.push({
+        icon: contributionRatio >= 30 ? "payments" : "account_balance_wallet",
+        sentiment: contributionRatio >= 30 ? "good" : "neutral",
+        text: `You paid upfront for ${contributionRatio}% of shared expenses`,
+      });
+    }
+    // Rejections — only show if any exist
+    if (rejectionsCountForWhy > 0) {
+      whyFacts.push({
+        icon: "cancel",
+        sentiment: "warning",
+        text: `${rejectionsCountForWhy} payment${rejectionsCountForWhy !== 1 ? 's' : ''} you claimed ${rejectionsCountForWhy !== 1 ? 'were' : 'was'} disputed by the receiver`,
+      });
+    }
+    // Activity duration
+    if (activeMonthsCountForWhy >= 1) {
+      whyFacts.push({
+        icon: "calendar_month",
+        sentiment: "neutral",
+        text: `Active in ${activeMonthsCountForWhy} month${activeMonthsCountForWhy !== 1 ? 's' : ''} of group expenses`,
+      });
+    }
+
+    // --- Next Target ---
+    // Target score: whichever is closer — +20 from current, or the next score-band boundary.
+    // Score bands: <40 At Risk, 40-59 Needs Attention, 60-79 Good, 80-99 Excellent, 100 perfect.
+    // "Next boundary" is the lowest band threshold strictly above the current score.
+    const BAND_THRESHOLDS = [40, 60, 80, 100]; // the score you need to reach each next band
+    const currentScoreForTarget = report.score;
+    const nextBoundary = BAND_THRESHOLDS.find(t => t > currentScoreForTarget) ?? 100;
+    const plusTwenty = Math.min(100, currentScoreForTarget + 20);
+    // Pick whichever target is lower (closer / more achievable), but never below current
+    const targetScore = Math.min(nextBoundary, plusTwenty);
+
+    const nextTargetActions = [];
+    if (currentScoreForTarget < 100) {
+      // Action 1: clear pending payments (only if there are some)
+      if (pendingSettlementsCount > 0) {
+        nextTargetActions.push(`Pay back your ${pendingSettlementsCount} pending debt${pendingSettlementsCount !== 1 ? 's' : ''}`);
+      }
+      // Action 2: improve on-time rate (only if it's below 100%)
+      if (onTimePercent !== null && onTimePercent < 100) {
+        nextTargetActions.push("Keep your payments confirmed on time going forward");
+      }
+      // Action 3: front more group costs (only if contribution ratio is below 40%)
+      if (personalExpenses.length >= 3 && contributionRatio < 40) {
+        nextTargetActions.push("Pay upfront for a few more shared group costs");
+      }
+    }
+
+    const nextTarget = nextTargetActions.length > 0 && currentScoreForTarget < 100
+      ? { targetScore, actions: nextTargetActions.slice(0, 3) }
+      : null; // hide entirely if no meaningful actions or already at 100
+
     const mentor = await getMentorCopy(
       report.score, report.scoreBand, report.signalBreakdown,
       observations, report.signals, report.primaryFocus,
@@ -393,6 +525,8 @@ router.get("/mentor", protect, requireVerified, mentorRateLimiter, async (req, r
       ...mentor,
       scoreTrend,
       whatIf,
+      whyFacts,
+      nextTarget,
       settlementNote: settlements.length === 0 ? "Settlement-based insights will improve once you've completed a payment." : null,
       generatedAt: new Date().toISOString(),
       cached: false,

@@ -5,6 +5,7 @@ import ActivityLog from '../models/ActivityLog.js';
 import protect from '../middleware/auth.js';
 import requireVerified from '../middleware/requireVerified.js';
 import { io } from '../../server.js';
+import { clearTrustScoreCache } from './insights.js';
 
 const router = express.Router();
 
@@ -168,6 +169,10 @@ router.post("/", protect, async (req, res) => {
     });
 
     res.status(201).json(populated);
+
+    // Bust the trust-score cache for the expense payer — their contribution
+    // ratio and spending consistency may have changed.
+    clearTrustScoreCache(paidBy);
   } catch (error) {
     console.error("Error creating expense:", error);
     res.status(500).json({ message: "Internal server error" });
