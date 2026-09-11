@@ -5,7 +5,7 @@ import ActivityLog from '../models/ActivityLog.js';
 import protect from '../middleware/auth.js';
 import requireVerified from '../middleware/requireVerified.js';
 import { io } from '../../server.js';
-import { clearTrustScoreCache } from './insights.js';
+import { clearInsightCaches } from './insights.js';
 
 const router = express.Router();
 
@@ -172,7 +172,7 @@ router.post("/", protect, async (req, res) => {
 
     // Bust the trust-score cache for the expense payer — their contribution
     // ratio and spending consistency may have changed.
-    clearTrustScoreCache(paidBy);
+    clearInsightCaches([paidBy, ...finalSplits.map((split) => split.user)]);
   } catch (error) {
     console.error("Error creating expense:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -302,6 +302,8 @@ router.delete("/:id", protect, async (req, res) => {
 
     // Emit real-time event
     io.to(expense.group.toString()).emit('expense_deleted', { expenseId: req.params.id });
+
+    clearInsightCaches([expense.paidBy, ...expense.splits.map((split) => split.user)]);
 
     res.json({ message: "Expense deleted" });
   } catch (error) {

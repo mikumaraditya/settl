@@ -8,7 +8,7 @@ import protect from '../middleware/auth.js';
 import requireVerified from '../middleware/requireVerified.js';
 import simplifyDebts, { computeBalances } from '../utils/debtSimplify.js';
 import { io } from '../../server.js';
-import { clearTrustScoreCache } from './insights.js';
+import { clearInsightCaches } from './insights.js';
 
 const router = express.Router();
 
@@ -199,7 +199,7 @@ router.post("/settle", protect, async (req, res) => {
 
     // Bust the payer's cached trust score — a new pending settlement
     // changes their repayment-reliability picture immediately.
-    clearTrustScoreCache(req.user.id);
+    clearInsightCaches([req.user.id]);
   } catch (error) {
     console.error("Error creating settlement request:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -252,7 +252,7 @@ router.post("/confirm", protect, async (req, res) => {
 
     // Bust the payer's cached score — confirmation changes their
     // confirmed-on-time rate, which feeds repayment reliability.
-    clearTrustScoreCache(fromUserId);
+    clearInsightCaches([fromUserId]);
   } catch (error) {
     console.error("Error confirming settlement:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -286,6 +286,8 @@ router.delete("/settle", protect, async (req, res) => {
       fromId: req.user.id,
       toId: toUserId,
     });
+
+    clearInsightCaches([req.user.id]);
 
     res.json({ message: "Settlement request cancelled" });
   } catch (error) {
@@ -334,7 +336,7 @@ router.post("/reject", protect, async (req, res) => {
 
     // Bust the payer's cached score — a rejection applies an immediate
     // penalty to their trust score.
-    clearTrustScoreCache(fromUserId);
+    clearInsightCaches([fromUserId]);
   } catch (error) {
     console.error("Error rejecting settlement request:", error);
   }

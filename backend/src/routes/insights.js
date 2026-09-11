@@ -32,6 +32,17 @@ export function clearTrustScoreCache(userId) {
   trustScoreCache.delete(String(userId));
 }
 
+export function clearMentorCache(userId) {
+  mentorCache.delete(String(userId));
+}
+
+export function clearInsightCaches(userIds) {
+  for (const userId of new Set(userIds.filter(Boolean).map(String))) {
+    clearTrustScoreCache(userId);
+    clearMentorCache(userId);
+  }
+}
+
 const round = (value) => Math.round(value * 100) / 100;
 const median = (values) => {
   const sorted = [...values].sort((a, b) => a - b);

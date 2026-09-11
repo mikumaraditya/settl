@@ -73,29 +73,11 @@ export default function FinancialMentorWidget() {
   };
 
   const fetchMentor = async (force = false) => {
-    if (!force && user) {
-      const cachedStr = localStorage.getItem(`mentor_cache_${user._id}`);
-      if (cachedStr) {
-        try {
-          const parsed = JSON.parse(cachedStr);
-          setMentor(parsed);
-          setHasFetched(true);
-          return;
-        } catch (e) {
-          console.error('Failed to parse mentor cache', e);
-        }
-      }
-    }
-
     setLoading(true);
     setError('');
     try {
       const url = force ? '/insights/mentor?bypassCache=true' : '/insights/mentor';
       const { data } = await axios.get(url);
-      
-      if (user && data && data.status !== 'not_enough_data') {
-        localStorage.setItem(`mentor_cache_${user._id}`, JSON.stringify(data));
-      }
       
       setMentor(data);
       setHasFetched(true);
@@ -198,7 +180,7 @@ export default function FinancialMentorWidget() {
                       <span className="text-slate-850 dark:text-white text-xs font-black mt-1">{mentor.activity.activeMonths} / 2</span>
                     </div>
                     <div className="bg-slate-100 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-2.5 rounded-xl flex flex-col items-center justify-center col-span-2">
-                      <span className="text-[9px] text-on-surface-variant">Completed Settlements</span>
+                      <span className="text-[9px] text-on-surface-variant">Payment activity</span>
                       <span className="text-slate-850 dark:text-white text-xs font-black mt-1">{mentor.activity.settlements} / 2</span>
                     </div>
                   </div>
@@ -308,6 +290,38 @@ export default function FinancialMentorWidget() {
                     </p>
                   </div>
                 </div>
+
+                {/* Score components make the calculation understandable and actionable. */}
+                {mentor?.signalBreakdown?.some((item) => item.key !== 'reliabilityIncidents') && (
+                  <div className="flex flex-col gap-2.5">
+                    <div className="flex items-center justify-between px-1">
+                      <h4 className="text-[10px] font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-purple-500 uppercase tracking-widest flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-[13px] text-indigo-400">donut_small</span>
+                        Score breakdown
+                      </h4>
+                      <span className="text-[9px] text-on-surface-variant">Updates after each activity</span>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {mentor.signalBreakdown.filter((item) => item.key !== 'reliabilityIncidents').map((item) => (
+                        <div key={item.key} className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/[0.03] p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-[11px] font-bold text-slate-800 dark:text-slate-100">{item.label}</p>
+                                {item.isWeakest && <span className="text-[8px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded-md">Best next step</span>}
+                              </div>
+                              <p className="text-[9px] leading-snug text-on-surface-variant mt-1">{item.description}</p>
+                            </div>
+                            <span className="text-sm font-black text-indigo-600 dark:text-indigo-300">{item.value}</span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden mt-2.5" aria-label={`${item.label}: ${item.value} out of 100`}>
+                            <div className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-700" style={{ width: `${item.value}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Why Section */}
                 {mentor?.whyFacts && mentor.whyFacts.length > 0 && (
