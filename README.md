@@ -2,7 +2,7 @@
 
 Settl is a premium, modern MERN-stack bill-sharing, expense-splitting, and debt-simplification application designed for friends, flatmates, and travel groups. It simplifies the process of tracking group expenses, managing shared bills, and settling balances directly using Indian UPI IDs, dynamic QR codes, mobile payment deep links, and Google Gemini AI insights.
 
----
+--- 
 
 ## 🏛️ High-Level System Architecture
 
