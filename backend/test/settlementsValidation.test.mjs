@@ -5,18 +5,34 @@ dotenv.config();
 import Expense from "../src/models/Expense.js";
 import simplifyDebts from "../src/utils/debtSimplify.js";
 
+import { getTestDbConfig } from "./testDbHelper.mjs";
+
 async function runTests() {
-  await mongoose.connect(process.env.MONGO_URI);
+  const { testUri, testDbName } = getTestDbConfig();
+  await mongoose.connect(testUri);
   console.log("==================================================");
   console.log("SETTLEMENT VALIDATION TEST SUITE");
+  console.log(`Target Database: ${testDbName}`);
   console.log("==================================================");
 
-  const GROUP_ID = "6a1bc65ab1993e4aa42b7564"; // Roomies group
-  const DEBTOR_ID = "6a16b69f2b9bfe6ba7a2bf1b"; // Debtor test member
-  const CREDITOR_ID = "6a16c0f22b9bfe6ba7a2bfde"; // Creditor test member
+  // Generate synthetic test fixture ObjectIds
+  const GROUP_ID = new mongoose.Types.ObjectId().toString();
+  const DEBTOR_ID = new mongoose.Types.ObjectId().toString();
+  const CREDITOR_ID = new mongoose.Types.ObjectId().toString();
 
-  // Fetch expenses and confirmed settlements excluding reversed settlements to test true raw state
-  const expenses = await Expense.find({ group: GROUP_ID });
+  // Synthetic expense fixture: Creditor paid ₹2400, split equally (Debtor owes Creditor ₹1200)
+  const expenses = [
+    {
+      group: GROUP_ID,
+      paidBy: CREDITOR_ID,
+      amount: 2400,
+      splits: [
+        { user: CREDITOR_ID, amount: 1200 },
+        { user: DEBTOR_ID, amount: 1200 },
+      ],
+    },
+  ];
+
   // Raw expenses only (without reversed settlements)
   const rawSimplified = simplifyDebts(expenses, []);
 

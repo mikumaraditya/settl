@@ -6,17 +6,19 @@ import User from "../src/models/User.js";
 import UserFinancialProfile from "../src/models/UserFinancialProfile.js";
 import { executeMentorTool, MENTOR_TOOLS_REGISTRY } from "../src/services/mentorTools.js";
 import { sanitizePromptText } from "../src/utils/sanitizeInput.js";
+import { getTestDbConfig } from "./testDbHelper.mjs";
 
 async function runSlice1ToolTests() {
-  const testUri = process.env.MONGO_URI_TEST || "mongodb+srv://settl-admin:settl1234@cluster0.yzuy5hv.mongodb.net/settl_test?retryWrites=true&w=majority";
+  const { testUri, testDbName } = getTestDbConfig();
   await mongoose.connect(testUri);
   console.log("==================================================");
   console.log("SLICE 1 MENTOR TOOLS UNIT & EDGE CASE TESTS");
+  console.log(`Target Database: ${testDbName}`);
   console.log("==================================================");
 
   const testUser = await User.create({
     name: "Slice1 Tool User",
-    email: `slice1_tool_${Date.now()}@test.com`,
+    email: `user1_${Date.now()}@example.com`,
     password: "password123",
     isEmailVerified: true,
   });

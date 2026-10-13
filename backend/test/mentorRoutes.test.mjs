@@ -21,17 +21,19 @@ llmService.chat = async () => ({
   callDurationMs: 2,
 });
 
+import { getTestDbConfig } from "./testDbHelper.mjs";
+
 describe("Mentor Routes Supertest Suite", () => {
   let testUser;
   let authToken;
 
   before(async () => {
-    const testUri = process.env.MONGO_URI_TEST || "mongodb+srv://settl-admin:settl1234@cluster0.yzuy5hv.mongodb.net/settl_test?retryWrites=true&w=majority";
+    const { testUri } = getTestDbConfig();
     await mongoose.connect(testUri);
 
     testUser = await User.create({
       name: "Route Test User",
-      email: `route_test_${Date.now()}@test.com`,
+      email: `user1_${Date.now()}@example.com`,
       password: "password123",
       isEmailVerified: true,
     });

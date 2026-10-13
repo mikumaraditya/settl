@@ -8,19 +8,21 @@ import Expense from "../src/models/Expense.js";
 import UserFinancialProfile from "../src/models/UserFinancialProfile.js";
 import { runMentorAgent } from "../src/services/mentorAgent.js";
 import { MENTOR_NAME } from "../src/constants/mentor.js";
+import { getTestDbConfig } from "./testDbHelper.mjs";
 
 async function runPersonalizationTests() {
-  const testUri = process.env.MONGO_URI_TEST || "mongodb+srv://settl-admin:settl1234@cluster0.yzuy5hv.mongodb.net/settl_test?retryWrites=true&w=majority";
+  const { testUri, testDbName } = getTestDbConfig();
   await mongoose.connect(testUri);
 
   console.log("==================================================");
   console.log(`${MENTOR_NAME.toUpperCase()} PERSONALIZATION INTEGRATION TEST SUITE`);
+  console.log(`Target Database: ${testDbName}`);
   console.log("==================================================\n");
 
   // Create isolated test user
   const user = await User.create({
     name: "Mentor Test User",
-    email: `mentor_test_${Date.now()}@test.com`,
+    email: `user1_${Date.now()}@example.com`,
     password: "password123",
     isEmailVerified: true,
   });
@@ -255,8 +257,8 @@ async function runPersonalizationTests() {
     async () => {
       // Setup group data where user owes ₹1,500
       const roommate = await User.create({
-        name: "Roommate Rahul",
-        email: `rahul_${Date.now()}@test.com`,
+        name: "Roommate User 2",
+        email: `user2_${Date.now()}@example.com`,
         password: "password123",
         isEmailVerified: true,
       });

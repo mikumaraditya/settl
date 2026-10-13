@@ -23,14 +23,10 @@ function generateToken(user) {
   return jwt.sign({ id: user._id.toString(), email: user.email }, JWT_SECRET, { expiresIn: "1h" });
 }
 
-async function runRouteTests() {
-  const devUri = process.env.MONGO_URI;
-  const testUri = process.env.MONGO_URI_TEST || "mongodb+srv://settl-admin:settl1234@cluster0.yzuy5hv.mongodb.net/settl_test?retryWrites=true&w=majority";
+import { getTestDbConfig } from "./testDbHelper.mjs";
 
-  // SAFETY CHECK: Refuse to run tests against the dev database
-  if (testUri === devUri || testUri.includes("/settl?") || testUri.endsWith("/settl")) {
-    throw new Error("SAFETY CHECK FAILED: Refusing to run tests against the dev database ('settl')! MONGO_URI_TEST must point to a separate test database (e.g. 'settl_test').");
-  }
+async function runRouteTests() {
+  const { testUri, testDbName } = getTestDbConfig();
 
   await mongoose.connect(testUri);
   // Ensure schema indexes (including partial unique index) exist in test database
@@ -38,13 +34,13 @@ async function runRouteTests() {
 
   console.log("==================================================");
   console.log("SUPERTEST SETTLEMENT ROUTE INTEGRATION TESTS");
-  console.log(`Target Database: ${mongoose.connection.name} (${testUri})`);
+  console.log(`Target Database: ${testDbName}`);
   console.log("==================================================");
 
   // Setup isolated test users in test database
-  const userA = await User.create({ name: "Route Test User A", email: `usera_test_${Date.now()}@test.com`, password: "password123", isEmailVerified: true });
-  const userB = await User.create({ name: "Route Test User B", email: `userb_test_${Date.now()}@test.com`, password: "password123", isEmailVerified: true });
-  const userC = await User.create({ name: "Route Test User C", email: `userc_test_${Date.now()}@test.com`, password: "password123", isEmailVerified: true });
+  const userA = await User.create({ name: "Route Test User A", email: `user1_${Date.now()}@example.com`, password: "password123", isEmailVerified: true });
+  const userB = await User.create({ name: "Route Test User B", email: `user2_${Date.now()}@example.com`, password: "password123", isEmailVerified: true });
+  const userC = await User.create({ name: "Route Test User C", email: `user3_${Date.now()}@example.com`, password: "password123", isEmailVerified: true });
 
   const tokenA = generateToken(userA);
   const tokenB = generateToken(userB);

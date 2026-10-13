@@ -400,10 +400,15 @@ Run commands from their respective directory (`backend` or `frontend`):
 | `frontend` | `npm run check` | Runs `npm run lint && npm run build` |
 
 ### Test Database Safety Check
-Route integration tests use `MONGO_URI_TEST` to connect to an isolated database. A hardcoded safety guard in [backend/test/settlementsRoutes.test.mjs](backend/test/settlementsRoutes.test.mjs) blocks tests from executing against the development database:
+Route integration and unit tests use `MONGO_URI_TEST` to connect to an isolated database. A strict safety guard in [backend/test/testDbHelper.mjs](backend/test/testDbHelper.mjs) parses URIs with the standard `URL` class and refuses to run unless the test database name differs from the development database and ends with `_test`:
 ```javascript
-if (testUri === devUri || testUri.includes("/settl?") || testUri.endsWith("/settl")) {
-  throw new Error("SAFETY CHECK FAILED: Refusing to run tests against the dev database ('settl')!");
+const parsedTest = new URL(testUri);
+const testDbName = parsedTest.pathname.replace(/^\//, "");
+if (!testDbName || !testDbName.endsWith("_test")) {
+  throw new Error("SAFETY CHECK FAILED: Test database name must end with '_test'");
+}
+if (devDbName && testDbName === devDbName) {
+  throw new Error("SAFETY CHECK FAILED: Refusing to run tests against the dev database!");
 }
 ```
 

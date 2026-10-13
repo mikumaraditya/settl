@@ -5,11 +5,15 @@ frontend/node_modules/
 
 # Local Environment Files (contain API keys and credentials)
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 *.local
 backend/.env
+backend/.env.*
+!backend/.env.example
 frontend/.env
+frontend/.env.*
+!frontend/.env.example
 
 # User Uploads (Screenshots and Receipts)
 uploads/
