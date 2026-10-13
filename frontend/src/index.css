@@ -132,6 +132,21 @@
   --on-tertiary: #ffffff;
   --on-tertiary-fixed-variant: #004395;
   --on-secondary-fixed-variant: #2563eb;
+
+  /* Finn AI Mentor Theme Tokens (Indigo/Violet Accent - No Pink) */
+  --mentor-accent-from: #4f46e5;
+  --mentor-accent-to: #7c3aed;
+  --mentor-bg: #ffffff;
+  --mentor-bg-glass: rgba(255, 255, 255, 0.95);
+  --mentor-bg-fallback: #f8fafc;
+  --mentor-text: #0f172a;
+  --mentor-text-muted: #64748b;
+  --mentor-border: rgba(226, 232, 240, 0.9);
+  --mentor-user-bubble-from: #4f46e5;
+  --mentor-user-bubble-to: #7c3aed;
+  --mentor-assistant-bubble: #f1f5f9;
+  --mentor-chip-bg: rgba(99, 102, 241, 0.1);
+  --mentor-chip-text: #4338ca;
 }
 
 .dark {
@@ -183,6 +198,54 @@
   --on-tertiary: #60130d;
   --on-tertiary-fixed-variant: #7f2a21;
   --on-secondary-fixed-variant: #2563eb;
+
+  /* Finn AI Mentor Dark Tokens */
+  --mentor-accent-from: #6366f1;
+  --mentor-accent-to: #8b5cf6;
+  --mentor-bg: #0f172a;
+  --mentor-bg-glass: rgba(15, 23, 42, 0.95);
+  --mentor-bg-fallback: #0f172a;
+  --mentor-text: #f8fafc;
+  --mentor-text-muted: #94a3b8;
+  --mentor-border: rgba(255, 255, 255, 0.1);
+  --mentor-user-bubble-from: #4338ca;
+  --mentor-user-bubble-to: #6d28d9;
+  --mentor-assistant-bubble: #1e293b;
+  --mentor-chip-bg: rgba(124, 58, 237, 0.15);
+  --mentor-chip-text: #c084fc;
+}
+
+/* Fallback for browsers without backdrop-filter support */
+@supports not (backdrop-filter: blur(1px)) {
+  .glass-card, .glass-modal, .mentor-glass-panel {
+    background-color: var(--mentor-bg-fallback) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+/* Pulse animation that stops after initial loop */
+@keyframes slowPulseRing {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.15); opacity: 0.3; }
+  100% { transform: scale(1.25); opacity: 0; }
+}
+
+.animate-pulse-ring {
+  animation: slowPulseRing 2s ease-out 2;
+}
+
+/* Reduced Motion Override */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-ring,
+  .animate-pulse-glow,
+  .animate-float,
+  .animate-float-slow,
+  .animate-float-fast,
+  .animate-flow-bg {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
 /* Custom styling from design */
@@ -211,6 +274,28 @@ button, input, select, textarea, a {
   outline: 2px solid var(--secondary);
   outline-offset: 3px;
 }
+
+/* Scoped styling for Finn AI Mentor Chat textarea to prevent blue focus rectangle */
+.finn-chat-textarea {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+  -webkit-tap-highlight-color: transparent;
+}
+.finn-chat-textarea:focus,
+.finn-chat-textarea:focus-visible,
+.finn-chat-textarea:focus-within {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+.finn-chat-textarea::placeholder {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
 
 .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.32); border-radius: 999px; }

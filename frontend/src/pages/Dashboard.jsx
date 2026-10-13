@@ -82,40 +82,17 @@ export default function Dashboard() {
       } catch { /* fall through */ }
     }
 
-    // Call Gemini
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY
-    const prompt = `You are a financial educator for young Indians aged 18-25. Generate exactly 10 unique, powerful financial tips. Use exactly 2 tips from each: BUDGETING, INVESTING, DEBT, INDIA FINANCE, GROUP HABITS. Use India context: ₹, SIP, PPF, UPI, 80C, CIBIL. Headline max 5 words. Explanation exactly 2 lines. Shuffle categories randomly. Return ONLY a raw JSON array, no markdown, no backticks: [{"category":"BUDGETING","emoji":"💡","headline":"...","explanation":"...","didYouKnow":"..."}]`
-    
-    const callGemini = async (model) => {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.9, maxOutputTokens: 2048 } }),
-      })
-      if (!res.ok) {
-        const errBody = await res.text()
-        throw new Error(`Model ${model} failed with status ${res.status}: ${errBody}`)
-      }
-      return res
-    }
-
     try {
-      let res
-      try {
-        res = await callGemini('gemini-2.5-flash')
-      } catch (err) {
-        console.warn('gemini-2.5-flash failed, falling back to gemini-3.5-flash:', err.message)
-        res = await callGemini('gemini-3.5-flash')
-      }
-      const json = await res.json()
-      let raw    = json?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
-      raw = raw.replace(/```json/gi, '').replace(/```/g, '').trim()
-      const arr  = JSON.parse(raw)
+      const { data } = await axios.get('/insights/tips')
+      const arr = Array.isArray(data) ? data : (data?.tips || [])
       if (Array.isArray(arr) && arr.length > 0) {
         sessionStorage.setItem('settl_tips', JSON.stringify(arr))
         setTip(arr[next] ?? arr[0])
-      } else throw new Error('empty')
-    } catch {
+      } else {
+        throw new Error('Invalid tips structure')
+      }
+    } catch (err) {
+      console.warn('Backend tips request failed, using local fallback:', err.message)
       setTip(FALLBACK_TIPS[next])
     } finally {
       setTipLoading(false)
@@ -586,10 +563,10 @@ export default function Dashboard() {
                   {/* Label row */}
                   <div className="flex items-center justify-between">
                     <p className="text-[9px] font-bold uppercase tracking-widest text-white/40">
-                      Settl Tips
+                      Settl Tips {tip.isGeneric ? "(Educational)" : ""}
                     </p>
                     <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-white/5 text-white/60 border border-white/10">
-                      {tip.emoji} {tip.category}
+                      {tip.emoji} {tip.category ? tip.category.replace(/_/g, ' ') : ''}
                     </span>
                   </div>
 
@@ -603,12 +580,19 @@ export default function Dashboard() {
                     {tip.explanation}
                   </p>
 
-                  {/* Did You Know */}
-                  {tip.didYouKnow && (
+                  {/* Fact Text */}
+                  {tip.factText && (
                     <div className="rounded-xl px-3.5 py-2.5 mt-2 bg-white/5 border border-white/5">
-                      <p className="text-[9px] font-bold uppercase tracking-widest mb-0.5 text-white/40">💡 Did you know?</p>
-                      <p className="text-[11px] leading-relaxed text-white/50">{tip.didYouKnow}</p>
+                      <p className="text-[9px] font-bold uppercase tracking-widest mb-0.5 text-white/40">💡 Verified Fact</p>
+                      <p className="text-[11px] leading-relaxed text-white/50">{tip.factText}</p>
                     </div>
+                  )}
+
+                  {/* Disclaimer */}
+                  {tip.disclaimer && (
+                    <p className="text-[9.5px] text-amber-400/80 mt-1 font-medium italic">
+                      {tip.disclaimer}
+                    </p>
                   )}
                 </div>
               ) : null}

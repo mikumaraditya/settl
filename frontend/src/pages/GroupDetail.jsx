@@ -1688,7 +1688,7 @@ export default function GroupDetail() {
               <div className="flex justify-between items-center">
                 <h4 className="font-extrabold text-sm text-white flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-blue-400 text-lg">group</span>
-                  Group Members
+                  Trust Leaderboard
                 </h4>
                 <div className="flex items-center gap-2">
                   {group?.members.find(m => m.user?._id === user._id)?.role === 'admin' && (
@@ -1706,16 +1706,28 @@ export default function GroupDetail() {
                 </div>
               </div>
               
+              <p className="-mt-2 text-[10px] text-on-surface-variant">Scores use each member's activity across every group. New members are not ranked until there is enough history.</p>
               <div className="flex flex-col gap-3 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
-                {group?.members.map((m) => {
+                {[...(group?.members || [])].sort((a, b) => {
+                  const aScore = memberScores[a.user?._id]?.status === 'ready' ? memberScores[a.user?._id].score : -1
+                  const bScore = memberScores[b.user?._id]?.status === 'ready' ? memberScores[b.user?._id].score : -1
+                  return bScore - aScore
+                }).map((m) => {
                   const currentUserRole = group.members.find(me => me.user?._id === user._id)?.role
                   const isAdmin = currentUserRole === 'admin'
                   const isSelf  = m.user?._id === user._id
+                  const scoreData = memberScores[m.user?._id]
+                  const rankedMembers = group.members
+                    .filter(member => memberScores[member.user?._id]?.status === 'ready')
+                    .sort((a, b) => memberScores[b.user?._id].score - memberScores[a.user?._id].score)
+                  const trustRank = scoreData?.status === 'ready'
+                    ? rankedMembers.findIndex(member => member.user?._id === m.user?._id) + 1
+                    : null
                   return (
                     <div key={m.user?._id} className="flex items-center justify-between text-xs p-2 pb-3 rounded-2xl bg-white/[0.01] hover:bg-white/[0.03] border border-transparent hover:border-white/5 transition-all">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-zinc-700 to-zinc-600 text-white flex items-center justify-center font-bold text-xs flex-shrink-0 shadow-sm">
-                          {m.user?.name?.charAt(0).toUpperCase()}
+                          {trustRank && trustRank <= 3 ? trustRank : m.user?.name?.charAt(0).toUpperCase()}
                         </div>
                         <div className="min-w-0">
                           <span className="font-bold text-white block truncate">
@@ -1724,7 +1736,6 @@ export default function GroupDetail() {
                           <span className="text-[10px] text-on-surface-variant/70 block truncate mb-1">{m.user?.email}</span>
                           <div className="mt-1.5">
                             {(() => {
-                              const scoreData = memberScores[m.user?._id];
                               if (scoreData && (scoreData.status === "ready" || scoreData.status === "new")) {
                                 return (
                                   <span className={`inline-flex items-center text-[9px] font-extrabold uppercase tracking-wider px-2 py-1 rounded-lg border whitespace-nowrap ${
@@ -1736,7 +1747,7 @@ export default function GroupDetail() {
                                       ? 'bg-amber-500/10 border-amber-500/20 text-amber-400'
                                       : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
                                   }`} title="Trust Score">
-                                    {scoreData.scoreBand === 'New' ? 'Trust Score: New Member' : `Trust Score: ${scoreData.score} (${scoreData.scoreBand})`}
+                                    {scoreData.scoreBand === 'New' ? 'Trust Score: Building history' : `#${trustRank} · ${scoreData.score} (${scoreData.scoreBand})`}
                                   </span>
                                 );
                               } else if (scoreData && scoreData.status === "not_enough_data") {

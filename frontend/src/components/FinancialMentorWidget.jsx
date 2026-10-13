@@ -1,17 +1,25 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from '../api/axios';
 import { useAuth } from '../context/AuthContext';
+import { MENTOR_NAME } from '../constants/mentor';
+import MentorChat from './MentorChat';
+import MentorOnboardingModal from './MentorOnboardingModal';
 
 export default function FinancialMentorWidget() {
   const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('chat'); // 'chat' or 'report'
   const [mentor, setMentor] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [hasFetched, setHasFetched] = useState(false);
-  const [unseen, setUnseen] = useState(() => {
+  const [isMobile, setIsMobile] = useState(false);
+  const [isTablet, setIsTablet] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(() => {
     try {
-      return !sessionStorage.getItem('settl_mentor_seen');
+      return localStorage.getItem('settl_mentor_panel_expanded') === 'true';
     } catch {
       return false;
     }
@@ -19,11 +27,72 @@ export default function FinancialMentorWidget() {
 
   const panelRef = useRef(null);
   const buttonRef = useRef(null);
+  const menuRef = useRef(null);
+  const chatRef = useRef(null);
+  const previousFocusRef = useRef(null);
 
-  // Click outside listener
+  // Check window size for mobile sheet vs tablet vs desktop panel
+  useEffect(() => {
+    const checkViewport = () => {
+      const w = window.innerWidth;
+      setIsMobile(w < 768);
+      setIsTablet(w >= 768 && w < 1024);
+    };
+    checkViewport();
+    window.addEventListener('resize', checkViewport);
+    return () => window.removeEventListener('resize', checkViewport);
+  }, []);
+
+  // Handle body scroll lock & focus management for mobile modal sheet
+  useEffect(() => {
+    if (isOpen) {
+      previousFocusRef.current = document.activeElement;
+
+      if (isMobile) {
+        document.body.style.overflow = 'hidden';
+      }
+
+      const handleKeyDown = (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          setIsOpen(false);
+        } else if (e.key === 'Tab' && isMobile && panelRef.current) {
+          const focusables = panelRef.current.querySelectorAll(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          );
+          if (focusables.length === 0) return;
+          const first = focusables[0];
+          const last = focusables[focusables.length - 1];
+
+          if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      };
+
+      document.addEventListener('keydown', handleKeyDown);
+
+      return () => {
+        document.removeEventListener('keydown', handleKeyDown);
+        if (isMobile) {
+          document.body.style.overflow = '';
+        }
+        if (previousFocusRef.current && typeof previousFocusRef.current.focus === 'function') {
+          previousFocusRef.current.focus();
+        }
+      };
+    }
+  }, [isOpen, isMobile]);
+
+  // Click outside listener for desktop non-modal panel
   useEffect(() => {
     function handleClickOutside(event) {
       if (
+        !isMobile &&
         panelRef.current &&
         !panelRef.current.contains(event.target) &&
         buttonRef.current &&
@@ -33,42 +102,49 @@ export default function FinancialMentorWidget() {
       }
     }
 
-    if (isOpen) {
+    if (isOpen && !isMobile) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isOpen]);
+  }, [isOpen, isMobile]);
 
-  // Escape key listener
+  // Click outside listener for overflow menu
   useEffect(() => {
-    function handleKeyDown(event) {
-      if (event.key === 'Escape') {
-        setIsOpen(false);
+    function handleClickOutside(event) {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setShowMenu(false);
       }
     }
-
-    if (isOpen) {
-      document.addEventListener('keydown', handleKeyDown);
+    if (showMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
     }
     return () => {
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isOpen]);
+  }, [showMenu]);
 
   const toggleOpen = () => {
-    if (!isOpen) {
-      setIsOpen(true);
-      setUnseen(false);
-      sessionStorage.setItem('settl_mentor_seen', 'true');
-      
-      // Fetch data only if not fetched yet
-      if (!hasFetched) {
-        fetchMentor();
+    setIsOpen((prev) => !prev);
+  };
+
+  const toggleExpand = () => {
+    setIsExpanded((prev) => {
+      const nextState = !prev;
+      try {
+        localStorage.setItem('settl_mentor_panel_expanded', String(nextState));
+      } catch {
+        // ignore localStorage write errors
       }
-    } else {
-      setIsOpen(false);
+      return nextState;
+    });
+  };
+
+  const handleSwitchTab = (tab) => {
+    setActiveTab(tab);
+    if (tab === 'report' && !hasFetched) {
+      fetchMentor();
     }
   };
 
@@ -78,7 +154,7 @@ export default function FinancialMentorWidget() {
     try {
       const url = force ? '/insights/mentor?bypassCache=true' : '/insights/mentor';
       const { data } = await axios.get(url);
-      
+
       setMentor(data);
       setHasFetched(true);
     } catch (err) {
@@ -90,340 +166,256 @@ export default function FinancialMentorWidget() {
 
   if (!user) return null;
 
+  // Determine panel width variable based on breakpoint and expansion state
+  const panelWidth = isMobile
+    ? '100%'
+    : isExpanded
+    ? '640px'
+    : isTablet
+    ? '420px'
+    : '460px';
+
   return (
     <>
       {/* Floating Action Button (FAB) */}
       <button
         ref={buttonRef}
         onClick={toggleOpen}
-        className="fixed bottom-20 md:bottom-8 right-4 md:right-8 w-14 h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 text-white flex items-center justify-center shadow-[0_0_30px_rgba(168,85,247,0.5)] hover:shadow-[0_0_45px_rgba(168,85,247,0.8)] hover:scale-110 active:scale-95 transition-all duration-300 cursor-pointer z-50 focus:outline-none ring-4 ring-purple-500/20 hover:ring-purple-500/40 group"
-        aria-label="AI Financial Mentor"
+        className="fixed bottom-20 md:bottom-8 right-4 md:right-8 w-14 h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 text-white flex items-center justify-center shadow-[0_0_30px_rgba(99,102,241,0.4)] hover:shadow-[0_0_45px_rgba(124,58,237,0.7)] hover:scale-105 active:scale-95 transition-all duration-300 cursor-pointer z-50 focus:outline-none ring-4 ring-indigo-500/20 hover:ring-indigo-500/40 group"
+        aria-label={`Open ${MENTOR_NAME} AI Financial Mentor`}
+        title={`Ask ${MENTOR_NAME}`}
       >
+        <span className="absolute inset-0 rounded-full bg-indigo-500/30 animate-pulse-ring pointer-events-none" />
+
         {isOpen ? (
           <span className="material-symbols-outlined text-[24px] md:text-[28px]">close</span>
         ) : (
-          <span className="material-symbols-outlined text-[24px] md:text-[28px] group-hover:rotate-12 group-hover:scale-110 transition-transform duration-300">auto_awesome</span>
-        )}
-
-        {/* Pulse Dot */}
-        {unseen && (
-          <span className="absolute top-0.5 right-0.5 flex h-3 w-3">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500 border border-white dark:border-[#0a0f1d]"></span>
+          <span className="text-xl md:text-2xl font-black font-sans tracking-tight group-hover:scale-110 transition-transform">
+            F
           </span>
         )}
+
+        <span className="hidden md:group-hover:block absolute right-20 bg-slate-900 text-white text-xs font-semibold px-2.5 py-1 rounded-lg shadow-md whitespace-nowrap pointer-events-none border border-white/10 animate-in fade-in duration-150">
+          Ask {MENTOR_NAME}
+        </span>
       </button>
 
-      {/* Floating Panel */}
+      {/* Floating Panel (Desktop/Tablet Panel or Mobile Bottom Sheet) */}
       {isOpen && (
         <div
           ref={panelRef}
-          className="fixed bottom-36 md:bottom-24 left-4 right-4 md:left-auto md:right-8 md:w-[380px] max-h-[60vh] md:max-h-[70vh] bg-white dark:bg-[#182237] rounded-3xl border border-slate-200 dark:border-white/10 shadow-2xl shadow-slate-350/20 dark:shadow-black/60 overflow-hidden flex flex-col z-50 animate-in fade-in slide-in-from-bottom-4 duration-200"
+          role={isMobile ? 'dialog' : undefined}
+          aria-modal={isMobile ? 'true' : undefined}
+          aria-labelledby="mentor-widget-title"
+          style={{
+            '--mentor-panel-width': panelWidth,
+            width: isMobile ? '100%' : 'var(--mentor-panel-width)',
+            maxWidth: isMobile ? '100%' : 'calc(100vw - 48px)',
+            height: isMobile ? 'calc(100% - 48px)' : '600px',
+            maxHeight: isMobile ? 'calc(100% - 48px)' : 'calc(100vh - 120px)',
+          }}
+          className={`fixed z-50 mentor-glass-panel bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-white/10 shadow-2xl shadow-slate-900/20 dark:shadow-black/70 overflow-hidden flex flex-col transition-[width,height,max-width,max-height,inset] duration-300 ease-in-out ${
+            isMobile
+              ? 'inset-x-0 bottom-0 top-12 rounded-t-3xl border-b-0'
+              : 'bottom-24 right-4 md:right-8 rounded-3xl'
+          }`}
         >
-          {/* Header */}
-          <div className="px-5 py-4 border-b border-slate-200 dark:border-white/10 flex items-center justify-between bg-slate-50 dark:bg-white/[0.01]">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-purple-500/20 flex items-center justify-center shadow-[0_0_15px_rgba(168,85,247,0.15)]">
-                <span className="material-symbols-outlined text-[18px] text-purple-500 dark:text-purple-400 font-bold">auto_awesome</span>
-              </div>
-              <div>
-                <h2 className="text-sm font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-pink-500">AI Financial Mentor</h2>
-                <p className="text-[9px] text-on-surface-variant font-bold uppercase tracking-wider mt-0.5">Personalized Insights</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => fetchMentor(true)}
-                disabled={loading}
-                className="text-[10px] font-bold text-purple-600 dark:text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer"
-                title="Generate new insights"
-              >
-                <span className={`material-symbols-outlined text-[14px] ${loading ? 'animate-spin' : ''}`}>sync</span>
-                Rethink
-              </button>
-              <button
-                onClick={() => setIsOpen(false)}
-                className="text-on-surface-variant hover:text-slate-800 dark:hover:text-white transition-colors cursor-pointer w-6 h-6 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-white/5"
-              >
-                <span className="material-symbols-outlined text-[16px]">close</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Content */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-5 flex flex-col gap-5">
-            {loading ? (
-              <div className="flex flex-col items-center justify-center py-12 gap-3">
-                <span className="material-symbols-outlined text-[32px] text-indigo-400 animate-spin">sync</span>
-                <p className="text-xs text-on-surface-variant font-semibold">Analyzing your cross-group activity...</p>
-              </div>
-            ) : error ? (
-              <div className="flex items-start gap-2.5 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-2xl px-4 py-3 text-xs font-semibold">
-                <span className="material-symbols-outlined text-[16px] flex-shrink-0 mt-0.5">error</span>
-                <span className="leading-relaxed">{error}</span>
-              </div>
-            ) : mentor?.status === 'not_enough_data' ? (
-              <div className="flex flex-col items-center text-center py-4 px-2 gap-3 bg-slate-50 dark:bg-white/[0.01] rounded-2xl border border-slate-200 dark:border-white/5">
-                <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 dark:text-amber-400">
-                  <span className="material-symbols-outlined text-[24px]">analytics</span>
+          {/* Single Consolidated Header Bar */}
+          <div className="px-4 pt-3.5 pb-3 border-b border-slate-200 dark:border-white/10 bg-slate-50/90 dark:bg-[#0f172a]/90 backdrop-blur-md flex flex-col gap-3">
+            {/* Row 1: Title, Avatar, Expand Toggle, Overflow Menu, Single Close Button */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="relative">
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-600 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 font-black text-sm">
+                    F
+                  </div>
+                  <span
+                    className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-[#0f172a] bg-emerald-500"
+                    title="Live Financial Guidance"
+                  />
                 </div>
-                <h3 className="text-xs font-extrabold text-slate-800 dark:text-white uppercase tracking-wider">Not Enough Activity Yet</h3>
-                <p className="text-xs text-on-surface-variant leading-relaxed">{mentor.reason}</p>
-                {mentor.activity && (
-                  <div className="grid grid-cols-2 gap-3 mt-3 text-[9px] font-bold text-on-surface-variant uppercase tracking-wider w-full">
-                    <div className="bg-slate-100 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-2.5 rounded-xl flex flex-col items-center justify-center">
-                      <span className="text-[9px] text-on-surface-variant">Expenses</span>
-                      <span className="text-slate-850 dark:text-white text-xs font-black mt-1">{mentor.activity.expenses} / 3</span>
-                    </div>
-                    <div className="bg-slate-100 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-2.5 rounded-xl flex flex-col items-center justify-center">
-                      <span className="text-[9px] text-on-surface-variant">Months Active</span>
-                      <span className="text-slate-850 dark:text-white text-xs font-black mt-1">{mentor.activity.activeMonths} / 2</span>
-                    </div>
-                    <div className="bg-slate-100 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-2.5 rounded-xl flex flex-col items-center justify-center col-span-2">
-                      <span className="text-[9px] text-on-surface-variant">Payment activity</span>
-                      <span className="text-slate-850 dark:text-white text-xs font-black mt-1">{mentor.activity.settlements} / 2</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="flex flex-col gap-5">
-                {/* Score Section */}
-                {/* Score & Summary Section */}
-                <div className="flex flex-col gap-4 bg-gradient-to-br from-indigo-500/5 via-purple-500/5 to-pink-500/5 dark:from-indigo-500/10 dark:via-purple-500/10 dark:to-pink-500/5 border border-purple-500/20 p-5 rounded-3xl shadow-[inset_0_1px_1px_rgba(168,85,247,0.15)] relative">
-                  {/* Subtle background glow */}
-                  <div className="absolute inset-0 overflow-hidden rounded-3xl pointer-events-none">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl" />
-                  </div>
-                  
-                  <div className="flex items-center gap-4 relative z-20">
-                    {/* Circular Score */}
-                    <div className="relative flex-shrink-0 flex items-center justify-center w-16 h-16 rounded-full bg-white dark:bg-slate-900 shadow-inner border border-purple-500/20">
-                      <svg className="absolute inset-0 -rotate-90 w-full h-full p-0.5 drop-shadow-md" viewBox="0 0 36 36">
-                        <path
-                          className="text-slate-100 dark:text-slate-800"
-                          strokeWidth="3"
-                          stroke="currentColor"
-                          fill="none"
-                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                        />
-                        <path
-                          className="text-purple-500 transition-all duration-1000 ease-out"
-                          strokeDasharray={`${mentor?.score || 0}, 100`}
-                          strokeWidth="3"
-                          strokeLinecap="round"
-                          stroke="currentColor"
-                          fill="none"
-                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                        />
-                      </svg>
-                      <div className="flex flex-col items-center">
-                        <span className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400">{mentor?.score}</span>
-                      </div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <div className="flex items-center gap-1">
-                          <h3 className="text-xs font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400">Trust Score</h3>
-                          <div className="relative group inline-block">
-                            <span
-                              className="material-symbols-outlined text-[11px] text-on-surface-variant/60 cursor-help select-none hover:text-purple-500 transition-colors focus:outline-none"
-                              tabIndex="0"
-                              aria-label="Trust Score Information"
-                            >
-                              info
-                            </span>
-                            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 p-3 bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-md border border-slate-700/50 dark:border-white/10 rounded-xl text-[10px] text-slate-200 font-medium leading-normal shadow-xl pointer-events-none transition-all duration-200 ease-out origin-top scale-95 opacity-0 invisible group-hover:visible group-hover:opacity-100 group-hover:scale-100 z-50">
-                              Trust Score reflects how reliably you handle shared money — how consistently you pay back what you owe, how often you front costs for the group, and how steady your spending is over time. It's reduced if any payment you claimed to make was disputed. The score updates automatically as you're more active.
-                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-slate-900/95 dark:border-b-slate-950/95"></div>
-                            </div>
-                          </div>
-                        </div>
-                        {mentor?.scoreBand && (
-                          <span className={`text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border shadow-sm ${
-                            mentor.scoreBand === 'Excellent' || mentor.scoreBand === 'Good'
-                              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
-                              : mentor.scoreBand === 'New'
-                              ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-600 dark:text-indigo-400'
-                              : mentor.scoreBand === 'Needs Attention'
-                              ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400'
-                              : 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400'
-                          }`}>
-                            {mentor.scoreBand}
-                          </span>
-                        )}
-                      </div>
-                      
-                      {/* Score Trend Badge */}
-                      {mentor?.scoreTrend && mentor.scoreTrend.delta !== 0 && (
-                        <div className={`inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-lg border mt-1.5 ${
-                          mentor.scoreTrend.delta > 0
-                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
-                            : 'bg-rose-500/10 border-rose-500/20 text-rose-500 dark:text-rose-400'
-                        }`}>
-                          <span className="material-symbols-outlined text-[11px]">
-                            {mentor.scoreTrend.delta > 0 ? 'trending_up' : 'trending_down'}
-                          </span>
-                          {mentor.scoreTrend.delta > 0 ? '↑' : '↓'} {Math.abs(mentor.scoreTrend.delta)} pts
-                          {mentor.scoreTrend.daysAgo > 0 && (
-                            <span className="opacity-60 font-normal"> · {mentor.scoreTrend.daysAgo}d ago</span>
-                          )}
-                        </div>
-                      )}
-
-                      {mentor?.settlementNote && (
-                        <div className="inline-flex items-center gap-1.5 text-[8px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-lg mt-2">
-                          <span className="material-symbols-outlined text-[11px]">info</span>
-                          {mentor.settlementNote}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* AI Explanation Box */}
-                  <div className="relative mt-2 pt-5 border-t border-purple-500/20 z-10">
-                    <span className="absolute -top-3 left-2 bg-slate-50 dark:bg-[#182237] px-2 text-[9px] font-black tracking-widest uppercase text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-pink-500 flex items-center gap-1">
-                      <span className="material-symbols-outlined text-[12px] text-purple-500">auto_awesome</span> AI Insight
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <h2 id="mentor-widget-title" className="text-xs font-black text-slate-900 dark:text-white tracking-tight">
+                      {MENTOR_NAME}
+                    </h2>
+                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 uppercase tracking-wider">
+                      AI Mentor
                     </span>
-                    <p className="text-[11.5px] text-slate-700 dark:text-slate-300 font-medium leading-relaxed italic">
-                      "{mentor?.explanation}"
-                    </p>
                   </div>
-                </div>
-
-                {/* Score components make the calculation understandable and actionable. */}
-                {mentor?.signalBreakdown?.some((item) => item.key !== 'reliabilityIncidents') && (
-                  <div className="flex flex-col gap-2.5">
-                    <div className="flex items-center justify-between px-1">
-                      <h4 className="text-[10px] font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-purple-500 uppercase tracking-widest flex items-center gap-1.5">
-                        <span className="material-symbols-outlined text-[13px] text-indigo-400">donut_small</span>
-                        Score breakdown
-                      </h4>
-                      <span className="text-[9px] text-on-surface-variant">Updates after each activity</span>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      {mentor.signalBreakdown.filter((item) => item.key !== 'reliabilityIncidents').map((item) => (
-                        <div key={item.key} className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-white/[0.03] p-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <p className="text-[11px] font-bold text-slate-800 dark:text-slate-100">{item.label}</p>
-                                {item.isWeakest && <span className="text-[8px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded-md">Best next step</span>}
-                              </div>
-                              <p className="text-[9px] leading-snug text-on-surface-variant mt-1">{item.description}</p>
-                            </div>
-                            <span className="text-sm font-black text-indigo-600 dark:text-indigo-300">{item.value}</span>
-                          </div>
-                          <div className="h-1.5 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden mt-2.5" aria-label={`${item.label}: ${item.value} out of 100`}>
-                            <div className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-700" style={{ width: `${item.value}%` }} />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Why Section */}
-                {mentor?.whyFacts && mentor.whyFacts.length > 0 && (
-                  <div className="flex flex-col gap-2.5">
-                    <h4 className="text-[10px] font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-500 to-slate-600 dark:from-slate-300 dark:to-slate-400 uppercase tracking-widest ml-1 flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-[13px] text-slate-400">info</span>
-                      Why this score
-                    </h4>
-                    <div className="flex flex-col gap-1.5">
-                      {mentor.whyFacts.map((fact, idx) => (
-                        <div
-                          key={idx}
-                          className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border text-[11px] font-medium ${
-                            fact.sentiment === 'good'
-                              ? 'bg-emerald-500/8 border-emerald-500/20 text-emerald-700 dark:text-emerald-300'
-                              : fact.sentiment === 'warning'
-                              ? 'bg-amber-500/8 border-amber-500/20 text-amber-700 dark:text-amber-300'
-                              : 'bg-slate-100/60 dark:bg-white/[0.04] border-slate-200 dark:border-white/8 text-slate-600 dark:text-slate-400'
-                          }`}
-                        >
-                          <span className={`material-symbols-outlined text-[15px] flex-shrink-0 ${
-                            fact.sentiment === 'good'
-                              ? 'text-emerald-500'
-                              : fact.sentiment === 'warning'
-                              ? 'text-amber-500'
-                              : 'text-slate-400 dark:text-slate-500'
-                          }`}>{fact.icon}</span>
-                          <span className="leading-snug">{fact.text}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* To Reach Section */}
-                {mentor?.nextTarget && mentor.nextTarget.actions?.length > 0 && (
-                  <div className="flex flex-col gap-2.5">
-                    <h4 className="text-[10px] font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-purple-500 uppercase tracking-widest ml-1 flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-[13px] text-indigo-400">flag</span>
-                      To reach {mentor.nextTarget.targetScore}
-                    </h4>
-                    <div className="flex flex-col gap-1.5">
-                      {mentor.nextTarget.actions.map((action, idx) => (
-                        <div key={idx} className="flex items-start gap-2.5 px-3 py-2 rounded-xl border border-indigo-500/15 bg-indigo-500/5 dark:bg-indigo-500/8">
-                          <span className="material-symbols-outlined text-[15px] flex-shrink-0 mt-0.5 text-indigo-400 dark:text-indigo-300">
-                            radio_button_unchecked
-                          </span>
-                          <span className="text-[11px] font-medium text-indigo-800 dark:text-indigo-200 leading-snug">{action}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Behavioral Observations */}
-                {mentor?.observations && mentor.observations.length > 0 && (
-                  <div className="flex flex-col gap-3 mt-1">
-                    <h4 className="text-[10px] font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-blue-500 uppercase tracking-widest ml-1 flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-[14px] text-indigo-500">visibility</span> Behavioral Observations
-                    </h4>
-                    <div className="flex flex-col gap-2.5">
-                      {mentor.observations.map((obs, idx) => (
-                        <div key={idx} className="group flex gap-3 bg-gradient-to-br from-slate-50 to-white dark:from-white/[0.03] dark:to-white/[0.01] border border-slate-200 dark:border-white/10 p-3.5 rounded-2xl items-start shadow-sm hover:shadow-md hover:border-indigo-500/30 transition-all duration-300">
-                          <div className="w-7 h-7 rounded-full bg-indigo-500/10 flex items-center justify-center flex-shrink-0 group-hover:scale-110 group-hover:bg-indigo-500/20 transition-transform duration-300 border border-indigo-500/20">
-                            <span className="material-symbols-outlined text-[14px] text-indigo-500 dark:text-indigo-400">analytics</span>
-                          </div>
-                          <p className="text-[11.5px] text-slate-700 dark:text-slate-300 font-medium leading-relaxed mt-0.5">{obs}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Actionable Suggestions */}
-                {mentor?.suggestions && mentor.suggestions.length > 0 && (
-                  <div className="flex flex-col gap-3 mt-1">
-                    <h4 className="text-[10px] font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-teal-500 uppercase tracking-widest ml-1 flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-[14px] text-emerald-500">lightbulb</span> Actionable Suggestions
-                    </h4>
-                    <div className="flex flex-col gap-2.5">
-                      {mentor.suggestions.map((sug, idx) => (
-                        <div key={idx} className="group flex gap-3 bg-gradient-to-br from-emerald-50/50 to-emerald-50/10 dark:from-emerald-500/10 dark:to-emerald-500/[0.02] border border-emerald-500/30 p-3.5 rounded-2xl items-start shadow-sm hover:shadow-md hover:border-emerald-500/50 hover:shadow-emerald-500/20 transition-all duration-300">
-                          <div className="w-7 h-7 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0 group-hover:scale-110 group-hover:bg-emerald-500/30 transition-transform duration-300 border border-emerald-500/20">
-                            <span className="material-symbols-outlined text-[14px] text-emerald-600 dark:text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]">lightbulb</span>
-                          </div>
-                          <p className="text-[11.5px] text-emerald-900 dark:text-emerald-100 font-medium leading-relaxed mt-0.5">{sug}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Footer */}
-                <div className="flex justify-between items-center text-[8px] text-on-surface-variant/70 font-bold uppercase tracking-wider border-t border-slate-200 dark:border-white/5 pt-3 mt-1">
-                  <span>Cross-Group Analysis</span>
-                  <span>Generated {mentor?.generatedAt ? new Date(mentor.generatedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''} {mentor?.generatedAt ? new Date(mentor.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                  <p className="text-[9.5px] text-slate-500 dark:text-slate-400 font-medium">
+                    Live Financial Guidance
+                  </p>
                 </div>
               </div>
-            )}
+
+              <div className="flex items-center gap-1 relative" ref={menuRef}>
+                {/* Desktop-only Expand/Collapse Button */}
+                <button
+                  onClick={toggleExpand}
+                  className="hidden md:flex p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer items-center justify-center"
+                  title={isExpanded ? 'Collapse panel' : 'Expand panel'}
+                  aria-label={isExpanded ? 'Collapse mentor panel' : 'Expand mentor panel'}
+                >
+                  <span className="material-symbols-outlined text-[18px]">
+                    {isExpanded ? 'close_fullscreen' : 'open_in_full'}
+                  </span>
+                </button>
+
+                {/* 3-dots Overflow Menu */}
+                <button
+                  onClick={() => setShowMenu((prev) => !prev)}
+                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer flex items-center justify-center"
+                  title="Menu Options"
+                  aria-label="Mentor options menu"
+                >
+                  <span className="material-symbols-outlined text-[18px]">more_vert</span>
+                </button>
+
+                {/* Single Close Button */}
+                <button
+                  onClick={() => setIsOpen(false)}
+                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer flex items-center justify-center"
+                  aria-label="Close mentor panel"
+                  title="Close"
+                >
+                  <span className="material-symbols-outlined text-[18px]">close</span>
+                </button>
+
+                {/* Dropdown Menu Items */}
+                {showMenu && (
+                  <div className="absolute right-0 top-10 z-50 w-56 rounded-2xl bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-white/10 shadow-xl py-1.5 text-xs animate-in fade-in duration-150">
+                    <button
+                      onClick={() => {
+                        setShowMenu(false);
+                        setShowOnboarding(true);
+                      }}
+                      className="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-indigo-500/10 text-slate-800 dark:text-slate-200 font-medium transition-colors cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[16px] text-indigo-500">tune</span>
+                      Personalize {MENTOR_NAME}
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setShowMenu(false);
+                        chatRef.current?.handleClearHistory();
+                      }}
+                      className="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-rose-500/10 text-slate-800 dark:text-slate-200 font-medium transition-colors cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[16px] text-rose-500">delete_sweep</span>
+                      Clear History
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Row 2: Tabs in a row under the Finn title */}
+            <div className="flex items-center bg-slate-200/60 dark:bg-white/5 p-1 rounded-xl border border-slate-300/40 dark:border-white/5 text-[11px] font-semibold">
+              <button
+                onClick={() => handleSwitchTab('chat')}
+                className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  activeTab === 'chat'
+                    ? 'bg-white dark:bg-[#1e293b] text-indigo-600 dark:text-indigo-400 shadow-xs font-bold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[14px]">chat</span>
+                Chat
+              </button>
+              <button
+                onClick={() => handleSwitchTab('report')}
+                className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  activeTab === 'report'
+                    ? 'bg-white dark:bg-[#1e293b] text-indigo-600 dark:text-indigo-400 shadow-xs font-bold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[14px]">analytics</span>
+                Trust Score
+              </button>
+            </div>
           </div>
+
+          {/* TAB 1: Chat Panel */}
+          {activeTab === 'chat' ? (
+            <div className="flex-1 overflow-hidden flex flex-col">
+              <MentorChat
+                ref={chatRef}
+                isMobileSheet={isMobile}
+                onClosePanel={() => setIsOpen(false)}
+              />
+            </div>
+          ) : (
+            /* TAB 2: Trust Score Report */
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-5 flex flex-col gap-5">
+              <div
+                onClick={() => handleSwitchTab('chat')}
+                className="group cursor-pointer bg-gradient-to-r from-indigo-500/10 to-violet-500/10 hover:from-indigo-500/20 hover:to-violet-500/20 border border-indigo-500/25 p-3 rounded-2xl flex items-center justify-between transition-all duration-200"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-[13px] font-black">
+                    F
+                  </div>
+                  <div>
+                    <h4 className="text-[11px] font-black text-slate-900 dark:text-white">Ask {MENTOR_NAME} anything</h4>
+                    <p className="text-[9px] text-slate-500 dark:text-slate-400">Discuss your score, SIPs, debts, &amp; advice</p>
+                  </div>
+                </div>
+                <span className="material-symbols-outlined text-[16px] text-indigo-500 group-hover:translate-x-0.5 transition-transform">
+                  arrow_forward
+                </span>
+              </div>
+
+              {loading ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-3">
+                  <span className="material-symbols-outlined text-[32px] text-indigo-400 animate-spin">sync</span>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">Analyzing your cross-group activity...</p>
+                </div>
+              ) : error ? (
+                <div className="flex items-start gap-2.5 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-2xl px-4 py-3 text-xs font-semibold">
+                  <span className="material-symbols-outlined text-[16px] flex-shrink-0 mt-0.5">error</span>
+                  <span className="leading-relaxed">{error}</span>
+                </div>
+              ) : mentor?.status === 'not_enough_data' || mentor?.status === 'new' ? (
+                <div className="flex flex-col items-center text-center py-4 px-2 gap-3 bg-slate-50 dark:bg-white/[0.01] rounded-2xl border border-slate-200 dark:border-white/5">
+                  <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 dark:text-amber-400">
+                    <span className="material-symbols-outlined text-[24px]">analytics</span>
+                  </div>
+                  <h3 className="text-xs font-extrabold text-slate-800 dark:text-white uppercase tracking-wider">
+                    {mentor?.status === 'new' ? 'Building Your Trust Score' : 'Not Enough Activity Yet'}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{mentor.reason || mentor.explanation}</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-5">
+                  <div className="flex flex-col gap-4 bg-gradient-to-br from-indigo-500/10 via-violet-500/10 to-indigo-500/5 border border-indigo-500/20 p-5 rounded-3xl relative">
+                    <div className="flex items-center gap-4 relative z-20">
+                      <div className="relative flex-shrink-0 flex items-center justify-center w-16 h-16 rounded-full bg-white dark:bg-slate-900 shadow-inner border border-indigo-500/20">
+                        <span className="text-lg font-black text-indigo-600 dark:text-indigo-400">
+                          {mentor?.score}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-xs font-extrabold text-indigo-600 dark:text-indigo-400">
+                          Trust Score ({mentor?.scoreBand})
+                        </h3>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">{mentor?.explanation}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
+
+      <MentorOnboardingModal
+        isOpen={showOnboarding}
+        onClose={() => setShowOnboarding(false)}
+      />
     </>
   );
 }

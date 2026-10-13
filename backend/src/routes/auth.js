@@ -223,9 +223,6 @@ router.get("/verify-email", async (req, res) => {
     });
 
     if (!user) {
-      // Check if already verified with this token (idempotent — don't fail on second click)
-      const alreadyVerified = await User.findOne({ isEmailVerified: true, emailVerificationToken: null })
-      // We can't match by token since it's cleared — just return a clean error
       return res.status(400).json({ message: "Invalid or expired verification link" });
     }
 

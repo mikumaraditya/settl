@@ -6,13 +6,55 @@ import User from '../models/User.js';
 import ActivityLog from '../models/ActivityLog.js';
 import protect from '../middleware/auth.js';
 import requireVerified from '../middleware/requireVerified.js';
-import simplifyDebts, { computeBalances } from '../utils/debtSimplify.js';
-import { io } from '../../server.js';
+import simplifyDebts from '../utils/debtSimplify.js';
+import { getIO } from '../socket.js';
+const safeEmit = (room, event, payload) => { try { getIO()?.to(room)?.emit(event, payload); } catch { /* ignore */ } };
 import { clearInsightCaches } from './insights.js';
 
 const router = express.Router();
 
 router.use(protect, requireVerified);
+
+export async function autoExpirePendingSettlements(groupId = null) {
+  try {
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+    const thresholdDate = new Date(Date.now() - SEVEN_DAYS_MS);
+
+    const query = {
+      status: "pending",
+      createdAt: { $lt: thresholdDate },
+    };
+    if (groupId) {
+      query.group = groupId;
+    }
+
+    const expiredItems = await Settlement.find(query);
+    if (expiredItems.length === 0) return 0;
+
+    for (const item of expiredItems) {
+      item.status = "expired";
+      await item.save();
+
+      await ActivityLog.create({
+        group: item.group,
+        actor: item.from,
+        type: "settlement_expired",
+        meta: {
+          amount: item.amount,
+          fromId: item.from,
+          toId: item.to,
+          reason: "Auto-expired after 7 days",
+        },
+      });
+
+      clearInsightCaches([item.from?.toString(), item.to?.toString()]);
+    }
+    return expiredItems.length;
+  } catch (err) {
+    console.error("Error auto-expiring pending settlements:", err);
+    return 0;
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
@@ -20,6 +62,8 @@ router.use(protect, requireVerified);
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/simplify/:groupId", protect, async (req, res) => {
   try {
+    await autoExpirePendingSettlements(req.params.groupId);
+
     const group = await Group.findById(req.params.groupId);
     if (!group) {
       return res.status(404).json({ message: "Group not found" });
@@ -111,6 +155,8 @@ router.get("/simplify/:groupId", protect, async (req, res) => {
 router.post("/settle", protect, async (req, res) => {
   try {
     const { groupId, toUserId } = req.body;
+    await autoExpirePendingSettlements(groupId);
+
     const amount = Math.round(Number(req.body.amount) * 100) / 100;
 
     if (!groupId || !toUserId || req.body.amount === undefined) {
@@ -132,30 +178,37 @@ router.post("/settle", protect, async (req, res) => {
       return res.status(400).json({ message: 'Settlement recipient must be a member of this group' });
     }
 
-    // A settlement must cover an outstanding net debt between these members
-    // using raw group balances (independent of greedy simplification path changes).
-    const [expenses, confirmedSettlements, pendingBetweenUs] = await Promise.all([
+    // Require a simplified-debt edge from req.user.id to toUserId
+    const [expenses, allSettlements] = await Promise.all([
       Expense.find({ group: groupId }),
-      Settlement.find({ group: groupId, $or: [{ status: 'confirmed' }, { status: { $exists: false } }] }),
-      Settlement.find({ group: groupId, from: req.user.id, to: toUserId, status: 'pending' }),
+      Settlement.find({ group: groupId }),
     ]);
 
-    const balances = computeBalances(expenses, confirmedSettlements);
-    const payerBalance = balances[req.user.id] || 0;
-    const receiverBalance = balances[toUserId] || 0;
+    const confirmedSettlements = allSettlements.filter(s => !s.status || s.status === 'confirmed');
+    const pendingBetweenUs = allSettlements.filter(
+      s => s.status === 'pending' && s.from?.toString() === req.user.id && s.to?.toString() === toUserId
+    );
 
-    const rawPayerDebt = -payerBalance;
-    const rawReceiverCredit = receiverBalance;
+    const simplified = simplifyDebts(expenses, confirmedSettlements);
+    const debtEdge = simplified.find(t => t.from === req.user.id && t.to === toUserId);
 
-    // Prevent double-counting already-in-flight pending settlements between these two members
+    if (!debtEdge || debtEdge.amount <= 0) {
+      const myEdge = simplified.find(t => t.from === req.user.id && t.amount > 0);
+      if (myEdge) {
+        const intendedUser = group.members.find(m => m.user.toString() === myEdge.to);
+        const intendedUserObj = intendedUser ? await User.findById(myEdge.to).select("name").lean() : null;
+        const recipientName = intendedUserObj?.name || "another member";
+        return res.status(400).json({ message: `Invalid settlement recipient: simplified debts require you to pay ${recipientName} (₹${myEdge.amount}) instead of this member` });
+      }
+      return res.status(400).json({ message: 'Invalid settlement direction: you do not owe money in this group' });
+    }
+
     const otherPendingSum = pendingBetweenUs.reduce((sum, s) => sum + Math.round(s.amount * 100), 0);
-
-    const maxDebtPayer = rawPayerDebt - otherPendingSum;
-    const maxCreditReceiver = rawReceiverCredit - otherPendingSum;
-    const maxAllowedPaise = Math.min(maxDebtPayer, maxCreditReceiver);
-
+    const edgeAmountPaise = Math.round(debtEdge.amount * 100);
+    const maxAllowedPaise = edgeAmountPaise - otherPendingSum;
     const amountInPaise = Math.round(amount * 100);
-    if (rawPayerDebt <= 0 || rawReceiverCredit <= 0 || amountInPaise > maxAllowedPaise) {
+
+    if (amountInPaise > maxAllowedPaise || maxAllowedPaise <= 0) {
       return res.status(400).json({ message: 'Settlement amount exceeds the outstanding debt to this member' });
     }
 
@@ -185,7 +238,7 @@ router.post("/settle", protect, async (req, res) => {
       .populate("from", "name email upiId")
       .populate("to", "name email upiId");
 
-    io.to(groupId).emit('settlement_requested', populated);
+    safeEmit(groupId, 'settlement_requested', populated);
 
     // Log activity
     await ActivityLog.create({
@@ -213,15 +266,20 @@ router.post("/confirm", protect, async (req, res) => {
   try {
     const { groupId, fromUserId } = req.body;
 
-    const settlement = await Settlement.findOne({
-      group: groupId,
-      from: fromUserId,
-      to: req.user.id,   // only the receiver can confirm
-      status: "pending",
-    });
+    // Atomic update from pending -> confirmed
+    const settlement = await Settlement.findOneAndUpdate(
+      {
+        group: groupId,
+        from: fromUserId,
+        to: req.user.id,   // only receiver can confirm
+        status: "pending",
+      },
+      { $set: { status: "confirmed" } },
+      { new: true }
+    );
 
     if (!settlement) {
-      return res.status(404).json({ message: "No pending settlement request found" });
+      return res.status(404).json({ message: "No pending settlement request found or already confirmed" });
     }
 
     const group = await Group.findById(groupId);
@@ -231,14 +289,11 @@ router.post("/confirm", protect, async (req, res) => {
       return res.status(400).json({ message: "Both users must still be members of this group" });
     }
 
-    settlement.status = "confirmed";
-    await settlement.save();
-
     const populated = await Settlement.findById(settlement._id)
       .populate("from", "name email upiId")
       .populate("to", "name email upiId");
 
-    io.to(groupId).emit('settlement_done', populated);
+    safeEmit(groupId, 'settlement_done', populated);
 
     // Log activity
     await ActivityLog.create({
@@ -262,9 +317,10 @@ router.post("/confirm", protect, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // CANCEL / UNDO SETTLEMENT REQUEST (payer only, only while still pending)
 // ─────────────────────────────────────────────────────────────────────────────
-router.delete("/settle", protect, async (req, res) => {
+const handlePayerCancel = async (req, res) => {
   try {
     const { groupId, toUserId } = req.body;
+    await autoExpirePendingSettlements(groupId);
 
     const settlement = await Settlement.findOne({
       group: groupId,
@@ -279,22 +335,34 @@ router.delete("/settle", protect, async (req, res) => {
       });
     }
 
-    await settlement.deleteOne();
+    settlement.status = "cancelled";
+    await settlement.save();
+
+    // Log activity
+    await ActivityLog.create({
+      group: groupId,
+      actor: req.user.id,
+      type: "settlement_cancelled",
+      meta: { amount: settlement.amount, toId: toUserId },
+    });
 
     // Notify group
-    io.to(groupId).emit("settlement_undone", {
+    safeEmit(groupId, "settlement_undone", {
       fromId: req.user.id,
       toId: toUserId,
     });
 
     clearInsightCaches([req.user.id]);
 
-    res.json({ message: "Settlement request cancelled" });
+    res.json({ message: "Settlement request cancelled successfully", settlement });
   } catch (error) {
-    console.error("Error rejecting settlement:", error);
+    console.error("Error cancelling settlement request:", error);
     res.status(500).json({ message: "Internal server error" });
   }
-});
+};
+
+router.delete("/settle", protect, handlePayerCancel);
+router.post("/cancel", protect, handlePayerCancel);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // REJECT SETTLEMENT REQUEST (receiver only, only while still pending)
@@ -302,6 +370,7 @@ router.delete("/settle", protect, async (req, res) => {
 router.post("/reject", protect, async (req, res) => {
   try {
     const { groupId, fromUserId } = req.body;
+    await autoExpirePendingSettlements(groupId);
 
     const settlement = await Settlement.findOne({
       group: groupId,
@@ -319,7 +388,7 @@ router.post("/reject", protect, async (req, res) => {
     await settlement.deleteOne();
 
     // Notify group
-    io.to(groupId).emit("settlement_undone", {
+    safeEmit(groupId, "settlement_undone", {
       fromId: fromUserId,
       toId: req.user.id,
     });

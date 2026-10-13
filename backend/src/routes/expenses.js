@@ -4,7 +4,7 @@ import Group from '../models/Group.js';
 import ActivityLog from '../models/ActivityLog.js';
 import protect from '../middleware/auth.js';
 import requireVerified from '../middleware/requireVerified.js';
-import { io } from '../../server.js';
+import { getIO } from '../socket.js';
 import { clearInsightCaches } from './insights.js';
 
 const router = express.Router();
@@ -153,7 +153,7 @@ router.post("/", protect, async (req, res) => {
       .populate("paidBy", "name email")
       .populate("splits.user", "name email upiId");
 
-    io.to(targetGroupId.toString()).emit('expense_added', populated);
+    try { getIO()?.to(targetGroupId.toString()).emit('expense_added', populated); } catch { console.warn("Socket emission warning"); }
 
     // Log activity
     await ActivityLog.create({
@@ -301,7 +301,7 @@ router.delete("/:id", protect, async (req, res) => {
     });
 
     // Emit real-time event
-    io.to(expense.group.toString()).emit('expense_deleted', { expenseId: req.params.id });
+    try { getIO()?.to(expense.group.toString()).emit('expense_deleted', { expenseId: req.params.id }); } catch { console.warn("Socket emission warning"); }
 
     clearInsightCaches([expense.paidBy, ...expense.splits.map((split) => split.user)]);
 

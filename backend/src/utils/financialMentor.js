@@ -65,7 +65,7 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
       // - Pending < 3 days: 100% credit (grace period, neutral)
       // - Pending 3-14 days: scales linearly from 100% down to 0% credit
       // - Pending > 14 days: 0% credit (full penalty)
-      let credit = 0.0;
+      let credit;
       const isConfirmed = !s.status || s.status === "confirmed";
       if (isConfirmed) {
         credit = 1.0;
@@ -273,20 +273,20 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
   score = clamp(Math.round(score), 0, 100);
 
   let scoreBand = "New";
-  let scoreBandSummary = "You're starting at a perfect trust score. It'll update automatically as you add expenses and settle up.";
+  let scoreBandSummary = "Build a history across shared expenses and payments to unlock a fair score.";
 
   if (qualifying.length > 0 || weightedRejectionsCount > 0) {
     scoreBand = "At Risk";
-    scoreBandSummary = "Several unresolved balances or delayed payment initiatives indicate low trust reliability.";
+    scoreBandSummary = "Recent payment activity needs attention before others can rely on it.";
     if (score >= 80) {
       scoreBand = "Excellent";
-      scoreBandSummary = "Highly reliable. You clear your debts instantly and follow through on payments with outstanding consistency.";
+      scoreBandSummary = "A strong record of reliable payments and healthy group activity.";
     } else if (score >= 60) {
       scoreBand = "Good";
-      scoreBandSummary = "Good trust record, but there is room to improve payment speed or consistency.";
+      scoreBandSummary = "A dependable record with one or two areas that can improve.";
     } else if (score >= 40) {
       scoreBand = "Needs Attention";
-      scoreBandSummary = "Some delays in taking initiative to pay back debts or inconsistent follow-through on payment requests.";
+      scoreBandSummary = "A few payment habits need improvement to build confidence with the group.";
     }
   }
 
@@ -304,10 +304,10 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
       const normWeight = DIMENSION_CONFIG.repaymentReliability.weight / totalQualifyingWeight;
       signalBreakdown.push({
         key: "repaymentReliability",
-        label: "Repayment Reliability",
+        label: "Kept payments",
         value: Math.round(dimensions.repaymentReliability),
         weight: Math.round(normWeight * 100) / 100,
-        description: "Composite score of follow-through and payment speed when you owe money."
+        description: "How reliably you pay people back and get your payments confirmed."
       });
     }
 
@@ -315,10 +315,10 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
       const normWeight = DIMENSION_CONFIG.contribution.weight / totalQualifyingWeight;
       signalBreakdown.push({
         key: "contribution",
-        label: "Contribution",
+        label: "Shared-cost support",
         value: Math.round(dimensions.contribution),
         weight: Math.round(normWeight * 100) / 100,
-        description: "How often you pay for shared expenses upfront."
+        description: "How often you help by paying a shared cost upfront."
       });
     }
 
@@ -326,7 +326,7 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
       const normWeight = DIMENSION_CONFIG.consistency.weight / totalQualifyingWeight;
       signalBreakdown.push({
         key: "consistency",
-        label: "Spending Consistency",
+        label: "Steady activity",
         value: Math.round(dimensions.consistency),
         weight: Math.round(normWeight * 100) / 100,
         description: consistencyDescription
@@ -343,10 +343,10 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
   // Add reliabilityIncidents as a separate clearly-flagged override entry (not blended into the same list/weakest calculation)
   signalBreakdown.push({
     key: "reliabilityIncidents",
-    label: "Reliability Incidents (Override Penalty)",
+    label: "Disputed payments",
     value: Math.round(reliabilityScore),
     penaltyApplied: penaltyPoints,
-    description: "Settlement claims that were rejected by the receiver as not actually received."
+    description: "Payments a receiver said they did not receive. These lower the score."
   });
 
   // Compute biggest lever (primaryFocus)

@@ -1,0 +1,100 @@
+[
+  {
+    "id": "fact_01",
+    "topic": "BUDGETING",
+    "text": "The 50/30/20 budget framework divides net income into 50% needs, 30% wants, and 20% savings.",
+    "source_note": "",
+    "verified_on": ""
+  },
+  {
+    "id": "fact_02",
+    "topic": "BUDGETING",
+    "text": "Setting up automated bank transfers on payday helps ensure saving occurs before discretionary spending.",
+    "source_note": "",
+    "verified_on": ""
+  },
+  {
+    "id": "fact_03",
+    "topic": "BUDGETING",
+    "text": "Emergency funds are typically sized at 3 to 6 months of essential living expenses.",
+    "source_note": "",
+    "verified_on": ""
+  },
+  {
+    "id": "fact_04",
+    "topic": "INVESTING",
+    "text": "A Systematic Investment Plan (SIP) allows fixed periodical investments into mutual funds.",
+    "source_note": "",
+    "verified_on": ""
+  },
+  {
+    "id": "fact_05",
+    "topic": "INVESTING",
+    "text": "Index funds track a market benchmark like the Nifty 50 to offer broad market diversification.",
+    "source_note": "",
+    "verified_on": ""
+  },
+  {
+    "id": "fact_06",
+    "topic": "INVESTING",
+    "text": "Compound growth earns returns on both initial principal and previously accumulated gains.",
+    "source_note": "",
+    "verified_on": ""
+  },
+  {
+    "id": "fact_07",
+    "topic": "DEBT",
+    "text": "Paying total credit balances in full every billing cycle avoids revolving interest charges.",
+    "source_note": "",
+    "verified_on": ""
+  },
+  {
+    "id": "fact_08",
+    "topic": "DEBT",
+    "text": "CIBIL credit scores range from 300 to 900, with scores above 750 considered favorable by lenders.",
+    "source_note": "",
+    "verified_on": ""
+  },
+  {
+    "id": "fact_09",
+    "topic": "DEBT",
+    "text": "Prioritizing high-interest debt payoff minimizes total interest expense over time.",
+    "source_note": "",
+    "verified_on": ""
+  },
+  {
+    "id": "fact_11",
+    "topic": "INDIA_FINANCE",
+    "text": "Public Provident Fund (PPF) is a 15-year government-backed long-term savings scheme in India.",
+    "source_note": "",
+    "verified_on": ""
+  },
+  {
+    "id": "fact_12",
+    "topic": "INDIA_FINANCE",
+    "text": "Unified Payments Interface (UPI) enables instant bank-to-bank transfers across India.",
+    "source_note": "",
+    "verified_on": ""
+  },
+  {
+    "id": "fact_14",
+    "topic": "GROUP_HABITS",
+    "text": "Settling group balances promptly helps maintain trust and financial transparency among peers.",
+    "source_note": "",
+    "verified_on": ""
+  },
+  {
+    "id": "fact_15",
+    "topic": "GROUP_HABITS",
+    "text": "Equal and exact expense splitting methods provide clarity on shared group liabilities.",
+    "source_note": "",
+    "verified_on": ""
+  },
+  {
+    "id": "fact_16",
+    "topic": "INVESTING",
+    "text": "Diversification across asset classes helps mitigate volatility in an investment portfolio.",
+    "source_note": "",
+    "verified_on": ""
+  }
+]

@@ -23,6 +23,7 @@ export default function SettleUp() {
   const [activeTransaction, setActiveTransaction] = useState(null)
   const [rejectingSettlement, setRejectingSettlement] = useState(null)
   const [settleAmounts, setSettleAmounts] = useState({})
+  const [previewSettlement, setPreviewSettlement] = useState(null)
 
   const socketRef = useRef(null)
 
@@ -481,6 +482,59 @@ export default function SettleUp() {
           </div>
         )}
       </main>
+
+
+      {/* Settlement Preview Modal */}
+      {previewSettlement && (
+        <div className="modal-overlay z-60 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="glass-card w-full max-w-sm rounded-3xl border border-blue-500/20 flex flex-col gap-5 p-6 animate-in zoom-in-95 duration-200 relative overflow-hidden">
+            <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-blue-500/5 blur-xl pointer-events-none" />
+            
+            <div className="flex flex-col items-center gap-3 text-center pt-2">
+              <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-2xl shadow-md shadow-blue-500/5">
+                <span className="material-symbols-outlined text-[28px] text-blue-400">payments</span>
+              </div>
+              <div>
+                <h2 className="text-base font-extrabold text-white">Confirm Settlement Request</h2>
+                <p className="text-xs mt-1 text-on-surface-variant font-semibold">
+                  You are sending a settlement request to clear your group debt.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block">Transfer Direction</span>
+                <span className="text-xs font-bold text-white mt-0.5 block">You &rarr; {previewSettlement.toUser?.name}</span>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block">Amount</span>
+                <span className="text-lg font-black text-emerald-400">₹{previewSettlement.amount?.toLocaleString('en-IN')}</span>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  const { toUser, amount } = previewSettlement;
+                  setPreviewSettlement(null);
+                  handleSettle(toUser, amount);
+                }}
+                className="w-full py-3.5 rounded-2xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer shadow-md bg-blue-500 text-white border border-blue-500/20 hover:brightness-110"
+              >
+                <span className="material-symbols-outlined text-[15px]">send</span>
+                Confirm &amp; Send Request
+              </button>
+              <button
+                onClick={() => setPreviewSettlement(null)}
+                className="w-full py-3 rounded-2xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 border border-white/10 text-white hover:bg-white/5 transition-all active:scale-95 cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modals */}
       {showPaymentModal && activeTransaction && (

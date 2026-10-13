@@ -34,3 +34,12 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+
+# Scratch files, maintenance scripts, and database dumps
+backend/scratch/
+backend/scripts/
+backend/test-mentor.mjs
+*.bak
+*.dump
+backup_*.json
+

@@ -3,7 +3,7 @@ import Group from "../models/Group.js";
 import Message from "../models/Message.js";
 import protect from "../middleware/auth.js";
 import requireVerified from "../middleware/requireVerified.js";
-import { io } from "../../server.js";
+import { getIO } from "../socket.js";
 
 const router = express.Router();
 
@@ -46,7 +46,7 @@ router.post("/", protect, async (req, res) => {
 
     const message = await Message.create({ group: access.group._id, sender: req.user.id, content: text });
     const populated = await Message.findById(message._id).populate("sender", "name");
-    io.to(access.group._id.toString()).emit("message_created", populated);
+    try { getIO()?.to(access.group._id.toString()).emit("message_created", populated); } catch { console.warn("Socket emission warning"); }
     res.status(201).json(populated);
   } catch (error) {
     console.error("Error creating message:", error);
