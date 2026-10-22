@@ -226,12 +226,14 @@ router.post("/settle", protect, async (req, res) => {
       });
     }
 
+    const defaultDueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     const settlement = await Settlement.create({
       group: groupId,
       from: req.user.id,
       to: toUserId,
       amount,
       status: "pending",
+      dueDate: defaultDueDate,
     });
 
     const populated = await Settlement.findById(settlement._id)
@@ -352,7 +354,7 @@ const handlePayerCancel = async (req, res) => {
       toId: toUserId,
     });
 
-    clearInsightCaches([req.user.id]);
+    clearInsightCaches([req.user.id, toUserId]);
 
     res.json({ message: "Settlement request cancelled successfully", settlement });
   } catch (error) {
@@ -369,7 +371,7 @@ router.post("/cancel", protect, handlePayerCancel);
 // ─────────────────────────────────────────────────────────────────────────────
 router.post("/reject", protect, async (req, res) => {
   try {
-    const { groupId, fromUserId } = req.body;
+    const { groupId, fromUserId, reason } = req.body;
     await autoExpirePendingSettlements(groupId);
 
     const settlement = await Settlement.findOne({
@@ -385,7 +387,10 @@ router.post("/reject", protect, async (req, res) => {
       });
     }
 
-    await settlement.deleteOne();
+    // Preserve the settlement record with status 'rejected' for audit integrity
+    settlement.status = "rejected";
+    settlement.rejectionReason = reason || "Payment not received or amount mismatch";
+    await settlement.save();
 
     // Notify group
     safeEmit(groupId, "settlement_undone", {
@@ -398,16 +403,21 @@ router.post("/reject", protect, async (req, res) => {
       group: groupId,
       actor: req.user.id,
       type: 'settlement_rejected',
-      meta: { amount: settlement.amount, fromId: fromUserId, fromName: settlement.from?.name },
+      meta: {
+        amount: settlement.amount,
+        fromId: fromUserId,
+        fromName: settlement.from?.name,
+        reason: settlement.rejectionReason,
+      },
     });
 
-    res.json({ message: "Settlement request rejected" });
+    res.json({ message: "Settlement request rejected", settlement });
 
-    // Bust the payer's cached score — a rejection applies an immediate
-    // penalty to their trust score.
-    clearInsightCaches([fromUserId]);
+    // Bust the payer and receiver cached scores immediately
+    clearInsightCaches([fromUserId, req.user.id]);
   } catch (error) {
     console.error("Error rejecting settlement request:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 

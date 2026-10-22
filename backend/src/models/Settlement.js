@@ -26,12 +26,20 @@ const settlementSchema = new mongoose.Schema(
     // "confirmed"  → receiver confirmed receipt, balance is cleared
     // "cancelled"  → payer cancelled request before receiver response
     // "expired"    → auto-expired after 7 days without receiver response
+    // "rejected"   → receiver rejected payment, preserved for audit trail
     status: {
       type: String,
-      enum: ["pending", "confirmed", "cancelled", "expired"],
+      enum: ["pending", "confirmed", "cancelled", "expired", "rejected"],
       default: "pending",
     },
-
+    dueDate: {
+      type: Date,
+      default: null,
+    },
+    rejectionReason: {
+      type: String,
+      default: null,
+    },
   },
   { timestamps: true },
 );

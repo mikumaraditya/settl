@@ -94,4 +94,4 @@ if (errors > 0) {
   process.exit(1);
 }
 
-console.log("✅ docsInSync: All 14 Finn tools and parameters in README match MENTOR_TOOLS_REGISTRY exactly.");
+console.log("✅ docsInSync: All 16 Finn tools and parameters in README match MENTOR_TOOLS_REGISTRY exactly.");

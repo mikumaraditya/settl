@@ -50,6 +50,8 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
     let weightedTotalSum = 0;
 
     settlements.forEach((s) => {
+      if (s.status === "cancelled" || s.status === "rejected") return;
+
       const ageDays = Math.max(0, (refDate - new Date(s.createdAt)) / 864e5);
       
       // A. Recency weight:

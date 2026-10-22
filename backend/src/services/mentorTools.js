@@ -26,6 +26,32 @@ export async function getConsentedProfile(userId) {
 }
 
 /**
+ * Shared helper to check if user has explicitly granted consent for AI financial mentoring.
+ */
+export async function checkDataConsent(userId) {
+  if (!userId) return false;
+  const profile = await UserFinancialProfile.findOne({ user: userId }).select("consentToUseForMentor").lean();
+  return Boolean(profile && profile.consentToUseForMentor === true);
+}
+
+export const CONSENT_REQUIRED_RESPONSE = {
+  consentGranted: false,
+  requiresConsent: true,
+  message: "Personalized Settl financial data is protected. The user has not enabled 'Profile & Data Mentoring Consent' in Settl. Explain politely that to analyze their Settl expenses, group balances, or settlements, they need to enable consent in their Financial Mentor settings. In the meantime, you can answer any general financial education questions or run financial calculations (like EMI, compound interest, SIP, budget rules).",
+};
+
+export const PRIVATE_SETTL_TOOLS = new Set([
+  "getUserFinancialSummary",
+  "getGroupBalances",
+  "getPendingSettlements",
+  "getExpenseBreakdown",
+  "getSpendingTrend",
+  "getTrustScoreDetails",
+  "getTrustScoreHistory",
+  "getSettlementHistory",
+]);
+
+/**
  * Single Unified Registry of all Mentor Tools
  * Generates both the Gemini schema declarations and the execution handlers.
  */
@@ -415,7 +441,7 @@ export const MENTOR_TOOLS_REGISTRY = [
         Settlement.find({ group: { $in: groupIds }, from: userId }).lean(),
         ActivityLog.find({
           type: "settlement_rejected",
-          "meta.fromId": new mongoose.Types.ObjectId(userId),
+          "meta.fromId": { $in: [String(userId), new mongoose.Types.ObjectId(userId)] },
           group: { $in: groupIds },
         }).lean(),
       ]);
@@ -479,6 +505,8 @@ export const MENTOR_TOOLS_REGISTRY = [
         historyCount: history.length,
         records: history.map((h) => ({
           score: h.score,
+          delta: h.delta || 0,
+          reason: h.reason || (h.delta > 0 ? "Score improvement" : "Baseline score snapshot"),
           date: h.createdAt,
         })),
       };
@@ -946,11 +974,172 @@ export const MENTOR_TOOLS_REGISTRY = [
       const clampedExpenses = Math.min(100000000, Math.max(1, Math.round(monthlyExp)));
       const emergencyPoolTarget = clampedExpenses * months;
 
-      return {
+        return {
         currency: "INR",
         monthlyExpensesUsed: round(clampedExpenses),
         targetMonths: months,
         recommendedEmergencyPool: round(emergencyPoolTarget),
+      };
+    },
+  },
+  {
+    name: "calculateLoanEMI",
+    description: "Calculate monthly Equated Monthly Installment (EMI), total interest, and total payment for a loan using deterministic formulas in JS. Handles zero-interest loans and standard loans.",
+    parameters: {
+      type: "object",
+      properties: {
+        principal: {
+          type: "number",
+          description: "Loan principal amount in INR (required, > 0 and <= 10 Cr)",
+        },
+        annualInterestRate: {
+          type: "number",
+          description: "Annual interest rate % (required, >= 0 and <= 50, e.g. 10.5 for 10.5%, 0 for interest-free loan)",
+        },
+        tenureMonths: {
+          type: "number",
+          description: "Loan tenure in months (required, >= 1 and <= 360, e.g. 60 for 5 years)",
+        },
+      },
+      required: ["principal", "annualInterestRate", "tenureMonths"],
+    },
+    handler: async (userId, args = {}) => {
+      const rawP = typeof args.principal === "boolean" ? NaN : Number(args.principal);
+      if (args.principal === undefined || args.principal === null || isNaN(rawP) || rawP <= 0) {
+        return { error: "principal is required and must be greater than 0" };
+      }
+      const rawRate = typeof args.annualInterestRate === "boolean" ? NaN : Number(args.annualInterestRate);
+      if (args.annualInterestRate === undefined || args.annualInterestRate === null || isNaN(rawRate) || rawRate < 0) {
+        return { error: "annualInterestRate is required and must be >= 0" };
+      }
+      const rawTenure = typeof args.tenureMonths === "boolean" ? NaN : Number(args.tenureMonths);
+      if (args.tenureMonths === undefined || args.tenureMonths === null || isNaN(rawTenure) || rawTenure <= 0) {
+        return { error: "tenureMonths is required and must be greater than 0" };
+      }
+
+      const principal = Math.min(100000000, Math.max(1, Math.round(rawP)));
+      const annualRate = Math.min(50, Math.max(0, rawRate));
+      const tenureMonths = Math.min(360, Math.max(1, Math.round(rawTenure)));
+
+      let monthlyEMI;
+      let totalInterestPayable;
+      let totalAmountPayable;
+
+      if (annualRate === 0) {
+        monthlyEMI = Math.round(principal / tenureMonths);
+        totalInterestPayable = 0;
+        totalAmountPayable = principal;
+      } else {
+        const r = (annualRate / 100) / 12;
+        const factor = Math.pow(1 + r, tenureMonths);
+        monthlyEMI = Math.round((principal * r * factor) / (factor - 1));
+        totalAmountPayable = Math.round(monthlyEMI * tenureMonths);
+        totalInterestPayable = Math.max(0, totalAmountPayable - principal);
+      }
+
+      const tenureYears = round(tenureMonths / 12);
+
+      let monthlyEMIShareOfIncomePercent = null;
+      let monthlyEMIShareOfIncomeUnit = null;
+      const profile = await getConsentedProfile(userId);
+      if (profile && profile.monthlyIncome && profile.monthlyIncome > 0) {
+        monthlyEMIShareOfIncomePercent = Math.round((monthlyEMI / profile.monthlyIncome) * 100 * 10) / 10;
+        monthlyEMIShareOfIncomeUnit = "percent";
+      }
+
+      return {
+        currency: "INR",
+        loanPrincipal: principal,
+        annualInterestRate: annualRate,
+        annualInterestRateUnit: "percent",
+        tenureMonths,
+        tenureYears,
+        monthlyEMI: round(monthlyEMI),
+        totalInterestPayable: round(totalInterestPayable),
+        totalAmountPayable: round(totalAmountPayable),
+        principalSharePercent: totalAmountPayable > 0 ? Math.round((principal / totalAmountPayable) * 100 * 10) / 10 : 100,
+        principalSharePercentUnit: "percent",
+        interestSharePercent: totalAmountPayable > 0 ? Math.round((totalInterestPayable / totalAmountPayable) * 100 * 10) / 10 : 0,
+        interestSharePercentUnit: "percent",
+        monthlyEMIShareOfIncomePercent,
+        monthlyEMIShareOfIncomeUnit,
+        formulaUsed: annualRate === 0 ? "Principal / tenureMonths (zero-interest loan)" : "P * r * (1+r)^n / ((1+r)^n - 1) in JS",
+        isZeroInterest: annualRate === 0,
+      };
+    },
+  },
+  {
+    name: "calculateCompoundInterest",
+    description: "Calculate future value of a lump-sum deposit or investment under compound interest using deterministic compounding formulas in JS.",
+    parameters: {
+      type: "object",
+      properties: {
+        principal: {
+          type: "number",
+          description: "Initial lump-sum principal in INR (required, > 0 and <= 10 Cr)",
+        },
+        annualInterestRate: {
+          type: "number",
+          description: "Annual interest rate % (required, >= 0 and <= 40, e.g. 7.1 for PPF, 7.0 for bank FD)",
+        },
+        timePeriodYears: {
+          type: "number",
+          description: "Investment tenure in years (required, >= 1 and <= 50)",
+        },
+        compoundingFrequencyPerYear: {
+          type: "number",
+          description: "Compounding frequency: 1 for annual, 2 for semi-annual, 4 for quarterly, 12 for monthly (optional, default 1)",
+        },
+      },
+      required: ["principal", "annualInterestRate", "timePeriodYears"],
+    },
+    handler: async (userId, args = {}) => {
+      const rawP = typeof args.principal === "boolean" ? NaN : Number(args.principal);
+      if (args.principal === undefined || args.principal === null || isNaN(rawP) || rawP <= 0) {
+        return { error: "principal is required and must be greater than 0" };
+      }
+      const rawRate = typeof args.annualInterestRate === "boolean" ? NaN : Number(args.annualInterestRate);
+      if (args.annualInterestRate === undefined || args.annualInterestRate === null || isNaN(rawRate) || rawRate < 0) {
+        return { error: "annualInterestRate is required and must be >= 0" };
+      }
+      const rawYears = typeof args.timePeriodYears === "boolean" ? NaN : Number(args.timePeriodYears);
+      if (args.timePeriodYears === undefined || args.timePeriodYears === null || isNaN(rawYears) || rawYears <= 0) {
+        return { error: "timePeriodYears is required and must be greater than 0" };
+      }
+
+      const principal = Math.min(100000000, Math.max(1, Math.round(rawP)));
+      const annualRate = Math.min(40, Math.max(0, rawRate));
+      const timePeriodYears = Math.min(50, Math.max(1, Math.round(rawYears)));
+      const freq = Math.min(12, Math.max(1, Math.round(Number(args.compoundingFrequencyPerYear || 1))));
+
+      let futureValue;
+      let totalInterest;
+
+      if (annualRate === 0) {
+        futureValue = principal;
+        totalInterest = 0;
+      } else {
+        const r = (annualRate / 100) / freq;
+        const totalPeriods = freq * timePeriodYears;
+        futureValue = Math.round(principal * Math.pow(1 + r, totalPeriods));
+        totalInterest = Math.max(0, futureValue - principal);
+      }
+
+      const ruleOf72DoublingYears = annualRate > 0 ? round(72 / annualRate) : null;
+
+      return {
+        currency: "INR",
+        initialPrincipal: principal,
+        annualInterestRate: annualRate,
+        annualInterestRateUnit: "percent",
+        timePeriodYears,
+        compoundingFrequencyPerYear: freq,
+        compoundingFrequencyLabel: freq === 1 ? "Annual" : freq === 4 ? "Quarterly" : freq === 12 ? "Monthly" : `${freq} times/year`,
+        totalInterestEarned: round(totalInterest),
+        futureMaturityValue: round(futureValue),
+        doublingYearsRuleOf72: ruleOf72DoublingYears,
+        formulaUsed: "A = P * (1 + r/n)^(n*t) in JS",
+        isIllustration: true,
       };
     },
   },
@@ -990,6 +1179,13 @@ export async function executeMentorTool(name, args = {}, userId) {
   const tool = MENTOR_TOOLS_REGISTRY.find((t) => t.name === name);
   if (!tool) {
     throw new Error(`Unknown or unallowed tool function: "${name}"`);
+  }
+
+  if (PRIVATE_SETTL_TOOLS.has(name)) {
+    const hasConsent = await checkDataConsent(userId);
+    if (!hasConsent) {
+      return CONSENT_REQUIRED_RESPONSE;
+    }
   }
 
   return await tool.handler(userId, args);

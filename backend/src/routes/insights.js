@@ -1,6 +1,7 @@
 import express from "express";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import Expense from "../models/Expense.js";
 import Group from "../models/Group.js";
 import Settlement from "../models/Settlement.js";
@@ -10,6 +11,7 @@ import { computeMentorReport, computeWhatIfProjection } from "../utils/financial
 import { getUserFinancialSummary } from "../services/mentorTools.js";
 import ActivityLog from "../models/ActivityLog.js";
 import ScoreHistory from "../models/ScoreHistory.js";
+import UserFinancialProfile from "../models/UserFinancialProfile.js";
 import mongoose from "mongoose";
 import rateLimit from "express-rate-limit";
 
@@ -118,7 +120,7 @@ export async function getTrustScoreForUser(userId) {
       .lean(),
     ActivityLog.find({
       type: "settlement_rejected",
-      "meta.fromId": new mongoose.Types.ObjectId(userId),
+      "meta.fromId": { $in: [String(userId), new mongoose.Types.ObjectId(userId)] },
       group: { $in: groupIds },
     })
       .select("createdAt")
@@ -205,8 +207,8 @@ router.get("/trust-score/:userId", protect, requireVerified, trustScoreRateLimit
 
 
 const mentorRateLimiter = rateLimit({
-  windowMs: 24 * 60 * 60 * 1000, // 24 hours
-  max: 5, // Limit each user to 5 requests per day
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 60, // Limit each user to 60 requests per 15 min
   keyGenerator: (req) => req.user.id,
   message: { message: "Daily limit reached for AI mentor. Please try again tomorrow." },
 });
@@ -224,7 +226,7 @@ router.get("/mentor", protect, requireVerified, mentorRateLimiter, async (req, r
       return res.json(data);
     }
 
-    const [expenses, settlements, rejections] = await Promise.all([
+    const [expenses, settlements, rejections, pendingCommitmentsRaw, historyRecords] = await Promise.all([
       Expense.find({
         group: { $in: groupIds },
         $or: [ { "splits.user": req.user.id }, { paidBy: req.user.id } ]
@@ -234,12 +236,53 @@ router.get("/mentor", protect, requireVerified, mentorRateLimiter, async (req, r
       Settlement.find({ group: { $in: groupIds }, from: req.user.id })
         .select("status amount group createdAt updatedAt")
         .lean(),
-      ActivityLog.find({ type: 'settlement_rejected', 'meta.fromId': new mongoose.Types.ObjectId(req.user.id), group: { $in: groupIds } })
+      ActivityLog.find({ type: 'settlement_rejected', 'meta.fromId': { $in: [String(req.user.id), new mongoose.Types.ObjectId(req.user.id)] }, group: { $in: groupIds } })
         .select("createdAt")
+        .lean(),
+      Settlement.find({
+        group: { $in: groupIds },
+        status: "pending",
+        $or: [{ from: req.user.id }, { to: req.user.id }],
+      })
+        .populate("from to", "name email upiId")
+        .populate("group", "name")
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean(),
+      ScoreHistory.find({ user: req.user.id })
+        .sort({ createdAt: -1 })
+        .limit(10)
         .lean(),
     ]);
 
     const groupNames = new Map(groups.map((group) => [group._id.toString(), group.name]));
+
+    const pendingCommitments = (pendingCommitmentsRaw || []).map((s) => {
+      const isPayer = s.from?._id?.toString() === req.user.id;
+      const counterpartName = isPayer ? (s.to?.name || "Member") : (s.from?.name || "Member");
+      const ageDays = Math.max(0, Math.round((Date.now() - new Date(s.createdAt).getTime()) / (1000 * 60 * 60 * 24)));
+      const isOverdue = ageDays >= 3;
+      return {
+        id: s._id.toString(),
+        amount: s.amount,
+        groupName: s.group?.name || "Group",
+        counterpartName,
+        direction: isPayer ? "outgoing" : "incoming",
+        status: s.status,
+        ageDays,
+        isOverdue,
+        dueDate: s.dueDate || new Date(new Date(s.createdAt).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        createdAt: s.createdAt,
+      };
+    });
+
+    const recentHistory = (historyRecords || []).map((h) => ({
+      id: h._id.toString(),
+      score: h.score,
+      delta: h.delta || 0,
+      reason: h.reason || (h.delta > 0 ? "Repayment confirmed on time" : h.delta < 0 ? "Pending payment delay" : "Baseline score snapshot"),
+      createdAt: h.createdAt,
+    }));
     const personalExpenses = expenses.map((expense) => {
       const share = expense.splits.find((split) => split.user.toString() === req.user.id);
       return {
@@ -264,7 +307,16 @@ router.get("/mentor", protect, requireVerified, mentorRateLimiter, async (req, r
         ],
         observations: [],
         signalBreakdown: [],
-        activity: { expenses: personalExpenses.length, activeMonths: activeMonths.size, settlements: settlements.length, groups: groups.length },
+        activity: {
+          expenses: personalExpenses.length,
+          activeMonths: activeMonths.size,
+          settlements: settlements.length,
+          groups: groups.length,
+          neededExpenses: Math.max(0, 3 - personalExpenses.length),
+          neededMonths: Math.max(0, 2 - activeMonths.size),
+        },
+        pendingCommitments,
+        recentHistory,
         generatedAt: new Date().toISOString(),
         cached: false,
       };
@@ -313,20 +365,57 @@ router.get("/mentor", protect, requireVerified, mentorRateLimiter, async (req, r
     // Save a new score entry (fire-and-forget; don't let DB errors break the response)
     let scoreTrend = null;
     try {
-      const newEntry = await ScoreHistory.create({ user: req.user.id, score: report.score });
-      // Fetch the single most-recent prior entry (before this one)
-      const priorEntry = await ScoreHistory.findOne(
-        { user: req.user.id, _id: { $ne: newEntry._id } },
-        { score: 1, createdAt: 1 },
-        { sort: { createdAt: -1 } }
-      );
-      if (priorEntry) {
-        const daysAgo = Math.round((newEntry.createdAt - priorEntry.createdAt) / (1000 * 60 * 60 * 24));
+      const latestEntry = historyRecords && historyRecords.length > 0 ? historyRecords[0] : null;
+      if (latestEntry) {
+        const daysAgo = Math.max(0, Math.round((Date.now() - new Date(latestEntry.createdAt).getTime()) / (1000 * 60 * 60 * 24)));
+        const delta = report.score - latestEntry.score;
         scoreTrend = {
-          delta: report.score - priorEntry.score,
-          previousScore: priorEntry.score,
-          daysAgo: Math.max(daysAgo, 0),
+          delta,
+          previousScore: latestEntry.score,
+          daysAgo,
         };
+
+        // Only insert if score changed or > 7 days passed since last checkpoint
+        if (latestEntry.score !== report.score || daysAgo >= 7) {
+          const reason = delta > 0
+            ? `Score improved by +${delta} pt${delta !== 1 ? 's' : ''} through verified on-time payments`
+            : delta < 0
+            ? `Score adjusted by ${delta} pt${delta !== -1 ? 's' : ''} due to pending delay or dispute`
+            : `Weekly health check verification`;
+
+          const newlyCreated = await ScoreHistory.create({
+            user: req.user.id,
+            score: report.score,
+            delta,
+            reason,
+            eventType: delta !== 0 ? "score_adjustment" : "weekly_snapshot",
+            createdAt: new Date(),
+          });
+
+          recentHistory.unshift({
+            id: newlyCreated._id.toString(),
+            score: newlyCreated.score,
+            delta: newlyCreated.delta,
+            reason: newlyCreated.reason,
+            createdAt: newlyCreated.createdAt,
+          });
+        }
+      } else {
+        const baseline = await ScoreHistory.create({
+          user: req.user.id,
+          score: report.score,
+          delta: 0,
+          reason: "Initial baseline score recorded",
+          eventType: "initial_baseline",
+          createdAt: new Date(),
+        });
+        recentHistory.unshift({
+          id: baseline._id.toString(),
+          score: baseline.score,
+          delta: 0,
+          reason: baseline.reason,
+          createdAt: baseline.createdAt,
+        });
       }
     } catch (histErr) {
       console.warn("ScoreHistory write failed (non-fatal):", histErr.message);
@@ -446,6 +535,8 @@ router.get("/mentor", protect, requireVerified, mentorRateLimiter, async (req, r
       whatIf,
       whyFacts,
       nextTarget,
+      pendingCommitments,
+      recentHistory: recentHistory.slice(0, 10),
       settlementNote: settlements.length === 0 ? "Settlement-based insights will improve once you've completed a payment." : null,
       generatedAt: new Date().toISOString(),
       cached: false,
@@ -464,10 +555,16 @@ const userTipsCache = new Map();
 // Load verified fact bank
 let rawFinanceFacts = [];
 try {
-  const factsPath = path.resolve(process.cwd(), "src/data/financeFacts.json");
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const factsPath = path.resolve(currentDir, "../data/financeFacts.json");
   rawFinanceFacts = JSON.parse(fs.readFileSync(factsPath, "utf-8"));
 } catch (e) {
-  console.warn("Could not load financeFacts.json:", e.message);
+  try {
+    const fallbackPath = path.resolve(process.cwd(), "src/data/financeFacts.json");
+    rawFinanceFacts = JSON.parse(fs.readFileSync(fallbackPath, "utf-8"));
+  } catch (_err2) {
+    console.warn("Could not load financeFacts.json:", e.message);
+  }
 }
 
 // Facts indexed by topic where verified_on is non-empty
@@ -595,6 +692,15 @@ router.get("/tips", protect, requireVerified, tipsRateLimiter, async (req, res) 
 
     if (cached && cached.expiresAt > Date.now() && (req.query.bypassCache !== "true" || !isDev)) {
       return res.json({ ...cached.data, cached: true });
+    }
+
+    const profile = await UserFinancialProfile.findOne({ user: req.user.id }).select("consentToUseForMentor").lean();
+    const consentGranted = Boolean(profile && profile.consentToUseForMentor === true);
+
+    if (!consentGranted) {
+      const payload = { tips: FALLBACK_FINANCIAL_TIPS, isGeneric: true, fallbackUsed: true, consentRequired: true };
+      userTipsCache.set(cacheKey, { data: payload, expiresAt: Date.now() + 60 * 60 * 1000 });
+      return res.json({ ...payload, cached: false });
     }
 
     const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
