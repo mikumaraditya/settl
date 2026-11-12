@@ -9,6 +9,7 @@ dotenv.config();
 import app from "../src/app.js";
 import User from "../src/models/User.js";
 import UserFinancialProfile from "../src/models/UserFinancialProfile.js";
+import MentorConversation from "../src/models/MentorConversation.js";
 import llmService from "../src/services/llmService.js";
 import { MENTOR_NAME } from "../src/constants/mentor.js";
 
@@ -47,6 +48,7 @@ describe("Mentor Routes Supertest Suite", () => {
   after(async () => {
     if (testUser) {
       await UserFinancialProfile.deleteMany({ user: testUser._id });
+      await MentorConversation.deleteMany({ user: testUser._id });
       await User.deleteMany({ _id: testUser._id });
     }
     await mongoose.disconnect();
@@ -84,6 +86,16 @@ describe("Mentor Routes Supertest Suite", () => {
       .send({ message: longMessage });
     assert.strictEqual(res.status, 400);
     assert.ok(res.body.message.includes("500 characters"));
+  });
+
+  it("POST /api/mentor/chat - rejects non-string message values", async () => {
+    for (const message of [123, { text: "hello" }, ["hello"]]) {
+      const res = await request(app)
+        .post("/api/mentor/chat")
+        .set("Authorization", `Bearer ${authToken}`)
+        .send({ message });
+      assert.strictEqual(res.status, 400);
+    }
   });
 
   it("POST /api/mentor/chat 200 with a valid message returns a reply", async () => {
@@ -140,6 +152,15 @@ describe("Mentor Routes Supertest Suite", () => {
     assert.strictEqual(res.body.monthlyIncome, 45000);
     assert.strictEqual(res.body.monthlySavingsTarget, 9000);
     assert.strictEqual(res.body.consentToUseForMentor, true);
+  });
+
+  it("PUT /api/mentor/profile - only boolean true enables data consent", async () => {
+    const res = await request(app)
+      .put("/api/mentor/profile")
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({ consentToUseForMentor: "false" });
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.consentToUseForMentor, false);
   });
 
   it("DELETE /api/mentor/profile - 200 deletes profile data", async () => {

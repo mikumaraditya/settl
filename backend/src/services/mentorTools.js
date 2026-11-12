@@ -49,6 +49,8 @@ export const PRIVATE_SETTL_TOOLS = new Set([
   "getTrustScoreDetails",
   "getTrustScoreHistory",
   "getSettlementHistory",
+  "getUserProfile",
+  "getGoalProgress",
 ]);
 
 /**
@@ -1162,31 +1164,49 @@ export const MENTOR_TOOLS_DEFINITIONS = MENTOR_TOOLS_SCHEMA;
  * Kept for older route imports and feature parity with the previous API.
  */
 export async function getUserFinancialSummary(userId) {
-  const tool = MENTOR_TOOLS_REGISTRY.find((t) => t.name === "getUserFinancialSummary");
-  if (!tool) {
-    throw new Error('Tool "getUserFinancialSummary" is not registered.');
-  }
-
-  return await tool.handler(userId, {});
+  return await executeMentorTool("getUserFinancialSummary", {}, userId);
 }
 
-/**
- * Execute a tool by name with strict validation and argument clamping
- */
-export async function executeMentorTool(name, args = {}, userId) {
-  if (!userId) throw new Error("Unauthorized tool execution: missing userId");
-
-  const tool = MENTOR_TOOLS_REGISTRY.find((t) => t.name === name);
-  if (!tool) {
-    throw new Error(`Unknown or unallowed tool function: "${name}"`);
+/** Validate model-generated arguments before handlers can read private data. */
+function validateMentorToolArgs(tool, args) {
+  if (!args || typeof args !== "object" || Array.isArray(args)) {
+    throw new Error("Invalid arguments for " + tool.name + ": expected an object.");
   }
-
-  if (PRIVATE_SETTL_TOOLS.has(name)) {
-    const hasConsent = await checkDataConsent(userId);
-    if (!hasConsent) {
-      return CONSENT_REQUIRED_RESPONSE;
+  const properties = tool.parameters?.properties || {};
+  const allowedKeys = new Set(Object.keys(properties));
+  for (const key of Object.keys(args)) {
+    if (!allowedKeys.has(key)) {
+      throw new Error("Invalid arguments for " + tool.name + ": unexpected parameter " + key + ".");
     }
   }
+  for (const [key, value] of Object.entries(args)) {
+    const definition = properties[key] || {};
+    if (value === null || value === undefined) continue;
+    const expected = definition.type;
+    const valid = expected === "number" ? typeof value === "number" && Number.isFinite(value) :
+      expected === "integer" ? Number.isInteger(value) :
+      expected === "string" ? typeof value === "string" :
+      expected === "boolean" ? typeof value === "boolean" :
+      expected === "array" ? Array.isArray(value) :
+      expected === "object" ? typeof value === "object" && !Array.isArray(value) : true;
+    if (!valid) {
+      throw new Error("Invalid arguments for " + tool.name + ": " + key + " must be a valid " + (expected || "value") + ".");
+    }
+    if (Array.isArray(definition.enum) && !definition.enum.includes(value)) {
+      throw new Error("Invalid arguments for " + tool.name + ": " + key + " is not an allowed value.");
+    }
+  }
+}
 
+/** Execute a tool only after validating arguments and checking consent. */
+export async function executeMentorTool(name, args = {}, userId) {
+  if (!userId) throw new Error("Unauthorized tool execution: missing userId");
+  const tool = MENTOR_TOOLS_REGISTRY.find((t) => t.name === name);
+  if (!tool) throw new Error('Unknown or unallowed tool function: "' + name + '"');
+  validateMentorToolArgs(tool, args);
+  if (PRIVATE_SETTL_TOOLS.has(name)) {
+    const hasConsent = await checkDataConsent(userId);
+    if (!hasConsent) return CONSENT_REQUIRED_RESPONSE;
+  }
   return await tool.handler(userId, args);
 }

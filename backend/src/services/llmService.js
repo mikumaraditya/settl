@@ -37,7 +37,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 /**
  * Send chat request to Gemini REST API with native tool calling support
  */
-export async function chat({ messages = [], tools = [], temperature = 0.2, thinkingLevel = null, thinkingBudget = null }) {
+export async function chat({ messages = [], tools = [], temperature = 0.2, thinkingLevel = null, thinkingBudget = null, signal = null }) {
   const apiKey = process.env.GEMINI_API_KEY;
   const model = process.env.GEMINI_MODEL || DEFAULT_MODEL;
 
@@ -183,6 +183,7 @@ export async function chat({ messages = [], tools = [], temperature = 0.2, think
             "x-goog-api-key": apiKey,
           },
           body: JSON.stringify(requestBody),
+          signal: signal || undefined,
         });
 
         const callDurationMs = Date.now() - callStartTime;
@@ -220,7 +221,11 @@ export async function chat({ messages = [], tools = [], temperature = 0.2, think
             throw retryErr;
           }
 
-          throw new Error(`Gemini LLM request failed (HTTP ${response.status}): ${errBody.slice(0, 300)}`);
+          const requestError = new Error(`Gemini request failed (HTTP ${response.status}). Check the configured model and tool schema.`);
+          requestError.status = response.status;
+          requestError.code = "GEMINI_REQUEST_FAILED";
+          requestError.isRetryable = isRetryable;
+          throw requestError;
         }
 
         const json = await response.json();
@@ -266,7 +271,9 @@ export async function chat({ messages = [], tools = [], temperature = 0.2, think
         };
       } catch (err) {
         lastError = err;
+        if (signal?.aborted || err?.name === "AbortError") throw err;
         if (err.code === "MENTOR_KEY_INVALID") throw err;
+        if (err.status && err.isRetryable === false) throw err;
         if (attempt > MAX_RETRIES) {
           if (mIdx < candidateModels.length - 1) {
             console.warn(`Attempt failed for ${activeModel}. Falling back to next model...`);

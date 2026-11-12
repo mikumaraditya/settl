@@ -275,9 +275,9 @@ The Trust Score tab in [FinancialMentorWidget.jsx](frontend/src/components/Finan
 Finn is Settl's built-in conversational AI financial mentor. It combines multi-turn reasoning via Google Gemini with 16 deterministic backend tools and an authoritative regulatory knowledge base.
 
 ### Architecture & Agent Loop
-1. **User Message & History**: The frontend dispatches user queries to `POST /api/mentor/chat`. The backend retrieves the last 10 conversation turns from `MentorConversation`.
+1. **User Message & History**: The frontend uses `POST /api/mentor/chat/stream` for server-sent status updates and final replies. The backend serializes requests per user, loads recent history, and stores a bounded rolling conversation history.
 2. **Knowledge Grounding**: `knowledgeService.js` performs tokenized keyword matching against a curated database of verified Indian finance facts (`financeFacts.json`). The top matching passages (with official regulatory URLs) are injected into the system prompt.
-3. **Tool Calling Loop**: Gemini evaluates the query against declared tool schemas. When tool calls are generated, the server executes them with strict `userId` scoping, deduplicating identical calls via signature caching.
+3. **Tool Calling Loop**: Gemini evaluates the query against declared tool schemas. Server-side argument validation, explicit consent checks, authenticated `userId` scoping, and duplicate-call caching run before private tools execute.
 4. **Synthesis & Citation**: Gemini synthesizes the guidance, citing authoritative regulatory sources (RBI, SEBI, AMFI, DICGC) and outputting markdown with deterministic figures.
 
 ### Verified Tool Registry (16 Tools)
@@ -718,18 +718,31 @@ if (!testDbName || !testDbName.endsWith("_test")) {
 - **XSS-Resistant Cookies**: JWT tokens are stored exclusively in HTTP-only cookies; browser JavaScript cannot read session tokens.
 - **Strict Server Scoping**: All database queries executed by REST routes and Finn tools enforce the authenticated `userId`. A user cannot view expenses or balances for groups they have not joined.
 - **Paise Precision**: Avoids JavaScript floating-point rounding bugs by storing and computing all splits and balances as integer paise.
-- **Data Consent Protection**: Private financial data and profiles are inaccessible to Finn unless the user explicitly enables `consentToUseForMentor`.
+- **Data Consent Protection**: Private financial data and profiles are inaccessible to Finn unless the user explicitly enables `consentToUseForMentor`; profile and goal tools are covered by the same server-side gate.
+- **Validated Tool Inputs**: Model-generated tool arguments are checked against each registered tool schema before a handler executes.
+- **Serialized Mentor Requests**: A per-user database lease prevents overlapping chat requests from racing or overwriting conversation history. Completed history is appended atomically and capped at 60 messages.
 - **Prompt Sanitization**: User-provided strings (group names, goal names) are stripped of prompt injection patterns via `sanitizePromptText()`.
 - **No Chat Logging**: Server logs do not print conversation text or prompt bodies.
 
 ### Current Limitations
 - **In-Memory Rate Limiting**: `express-rate-limit` uses in-memory tracking which resets upon server restart. Multi-instance production clusters will require Redis.
 - **Manual UPI Reconciliation**: Settlements depend on receiver peer confirmation. Settl does not connect to banking APIs to independently verify bank ledger entries.
-- **Single Active Conversation**: Finn maintains one active conversation thread per user.
+- **Single Conversation Thread**: Finn currently maintains one conversation thread per user; overlapping requests are serialized and a second in-flight request receives a retryable conflict response.
 
 ---
 
 ## Deployment Configuration
+
+### Mentor Conversation Migration
+
+Before deploying this update, stop the backend and run the one-time migration from the `backend/` directory. It merges any duplicate conversation documents, keeps the latest 60 messages per user, and creates the unique user index required for request locking:
+
+```bash
+cd backend
+npm run migrate:mentor-conversations
+```
+
+Run this once against the production `MONGO_URI` before starting the updated backend. Do not run it while the application is accepting mentor requests.
 
 ### Production Build
 ```bash

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { sendMentorMessage, fetchMentorHistory, clearMentorHistory, getMentorProfile } from '../api/mentor';
+import { streamMentorMessage, fetchMentorHistory, clearMentorHistory, getMentorProfile } from '../api/mentor';
 import { MENTOR_NAME } from '../constants/mentor';
 import MentorOnboardingModal from './MentorOnboardingModal';
 
@@ -57,13 +57,21 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
 
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
+  const activeRequestRef = useRef(null);
+  const mountedRef = useRef(false);
+  const userCancelledRef = useRef(false);
 
   const scrollToBottom = (behavior = 'smooth') => {
     messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
   useEffect(() => {
+    mountedRef.current = true;
     loadInitialData();
+    return () => {
+      mountedRef.current = false;
+      activeRequestRef.current?.abort();
+    };
   }, []);
 
   useEffect(() => {
@@ -93,6 +101,8 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
         getMentorProfile().catch(() => null),
       ]);
 
+      if (!mountedRef.current) return;
+
       if (Array.isArray(historyData?.messages) && historyData.messages.length > 0) {
         const cleanHistory = historyData.messages.map((m) => ({
           ...m,
@@ -117,11 +127,15 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
         setShowOnboarding(true);
       }
     } catch (err) {
-      console.error('Failed to load mentor data:', err);
-      setError(`Unable to connect to ${MENTOR_NAME}. Please try again later.`);
+      if (mountedRef.current) {
+        console.error('Failed to load mentor data:', err);
+        setError(`Unable to connect to ${MENTOR_NAME}. Please try again later.`);
+      }
     } finally {
-      setFetchingHistory(false);
-      setTimeout(() => textareaRef.current?.focus(), 150);
+      if (mountedRef.current) {
+        setFetchingHistory(false);
+        setTimeout(() => textareaRef.current?.focus(), 150);
+      }
     }
   };
 
@@ -160,9 +174,18 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
     setStatusMessage(`${MENTOR_NAME} is analyzing...`);
+    const controller = new AbortController();
+    userCancelledRef.current = false;
+    activeRequestRef.current = controller;
 
     try {
-      const res = await sendMentorMessage(textToSend);
+      const res = await streamMentorMessage(textToSend, {
+        signal: controller.signal,
+        onStatus: (status) => {
+          if (mountedRef.current) setStatusMessage(status);
+        },
+      });
+      if (!mountedRef.current) return;
       const cleanReply = typeof res.reply === 'string'
         ? res.reply.replace(/(I'm|I am|This is)\s+Aarav/gi, `$1 ${MENTOR_NAME}`)
         : res.reply;
@@ -174,10 +197,26 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
       };
       setMessages((prev) => [...prev, assistantMsg]);
     } catch (err) {
+      if (err.name === 'AbortError') {
+        if (mountedRef.current && userCancelledRef.current) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: 'assistant',
+              content: 'Request cancelled. You can send another question whenever you are ready.',
+              toolsUsed: [],
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        }
+        return;
+      }
+      if (!mountedRef.current) return;
       console.error('Send message error:', err);
       const isBusy = err.response?.data?.message?.includes('busy') || err.status === 503;
       const errorMsg =
         err.response?.data?.message ||
+        (err.status ? err.message : "") ||
         (isBusy
           ? `${MENTOR_NAME} is currently busy. Please try again in a moment.`
           : `Failed to get a response from ${MENTOR_NAME}. Please try again.`);
@@ -194,10 +233,18 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
         },
       ]);
     } finally {
-      setLoading(false);
-      setStatusMessage('');
-      setTimeout(() => textareaRef.current?.focus(), 100);
+      activeRequestRef.current = null;
+      if (mountedRef.current) {
+        setLoading(false);
+        setStatusMessage('');
+        setTimeout(() => textareaRef.current?.focus(), 100);
+      }
     }
+  };
+
+  const handleCancelRequest = () => {
+    userCancelledRef.current = true;
+    activeRequestRef.current?.abort();
   };
 
   const handleClearHistory = async () => {
@@ -559,10 +606,21 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
             )}
           </div>
 
+          {loading ? (
+            <button
+              type="button"
+              onClick={handleCancelRequest}
+              aria-label="Stop response"
+              title="Stop response"
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 transition-colors"
+            >
+              <span className="material-symbols-outlined text-[18px]">stop</span>
+            </button>
+          ) : (
           <button
             type="submit"
-            disabled={!input.trim() || loading}
-            aria-disabled={!input.trim() || loading}
+            disabled={!input.trim()}
+            aria-disabled={!input.trim()}
             aria-label="Send message"
             title="Send message"
             className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-200 self-end ${
@@ -579,6 +637,7 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
               <span className="material-symbols-outlined text-[18px]">send</span>
             )}
           </button>
+          )}
         </form>
 
         <p className="text-[10.5px] text-center text-slate-400 dark:text-slate-500 font-medium mt-2 mb-0.5 flex items-center justify-center gap-1">

@@ -6,6 +6,7 @@ import MentorConversation from "../models/MentorConversation.js";
 import UserFinancialProfile from "../models/UserFinancialProfile.js";
 import { runMentorAgent } from "../services/mentorAgent.js";
 import { sanitizePromptText } from "../utils/sanitizeInput.js";
+import { acquireMentorConversation, appendMentorTurn, releaseMentorConversation } from "../services/mentorConversation.js";
 
 const router = express.Router();
 
@@ -149,7 +150,7 @@ router.put("/profile", async (req, res) => {
           goals: cleanGoals,
           riskComfort: cleanRisk,
           language: cleanLang,
-          consentToUseForMentor: Boolean(consentToUseForMentor),
+          consentToUseForMentor: consentToUseForMentor === true,
         },
       },
       { new: true, upsert: true, runValidators: true }
@@ -216,10 +217,10 @@ router.delete("/history", async (req, res) => {
  * Standard JSON endpoint for conversing with the mentor agent
  */
 router.post("/chat", chatLimiter, async (req, res) => {
-  const { message } = req.body;
+  const { message } = req.body || {};
 
-  if (!message || !message.trim()) {
-    return res.status(400).json({ message: "Message content cannot be empty." });
+  if (typeof message !== "string" || !message.trim()) {
+    return res.status(400).json({ message: "Message content must be a non-empty string." });
   }
 
   if (message.trim().length > 500) {
@@ -233,36 +234,17 @@ router.post("/chat", chatLimiter, async (req, res) => {
     });
   }
 
+  let lease;
   try {
-    let conversation = await MentorConversation.findOne({ user: req.user.id });
-    if (!conversation) {
-      conversation = new MentorConversation({
-        user: req.user.id,
-        messages: [],
-      });
-    }
-
+    lease = await acquireMentorConversation(req.user.id);
+    const { conversation } = lease;
     const { reply, toolsUsed } = await runMentorAgent(
       req.user.id,
       message.trim(),
       conversation.messages
     );
 
-    conversation.messages.push({
-      role: "user",
-      content: message.trim(),
-      timestamp: new Date(),
-    });
-
-    conversation.messages.push({
-      role: "assistant",
-      content: reply,
-      toolsUsed: toolsUsed || [],
-      timestamp: new Date(),
-    });
-
-    conversation.lastActiveAt = new Date();
-    await conversation.save();
+    await appendMentorTurn(req.user.id, lease.requestId, message.trim(), reply, toolsUsed || []);
 
     return res.json({
       reply,
@@ -279,9 +261,15 @@ router.post("/chat", chatLimiter, async (req, res) => {
       });
     }
 
-    return res.status(500).json({
+    return res.status(err.status || 500).json({
       message: err.message || "Failed to process mentor message.",
     });
+  } finally {
+    if (lease?.requestId) {
+      await releaseMentorConversation(req.user.id, lease.requestId).catch((releaseError) => {
+        console.error("Unable to release mentor conversation lease:", releaseError.message);
+      });
+    }
   }
 });
 
@@ -290,10 +278,10 @@ router.post("/chat", chatLimiter, async (req, res) => {
  * Server-Sent Events (SSE) streaming endpoint for live responses
  */
 router.post("/chat/stream", chatLimiter, async (req, res) => {
-  const { message } = req.body;
+  const { message } = req.body || {};
 
-  if (!message || !message.trim()) {
-    return res.status(400).json({ message: "Message cannot be empty" });
+  if (typeof message !== "string" || !message.trim()) {
+    return res.status(400).json({ message: "Message content must be a non-empty string." });
   }
 
   if (message.trim().length > 500) {
@@ -301,23 +289,30 @@ router.post("/chat/stream", chatLimiter, async (req, res) => {
   }
 
   res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders();
 
+  const controller = new AbortController();
+  let clientDisconnected = false;
+
+  // Stop paid model work when the browser closes or aborts the stream.
+  res.on("close", () => {
+    if (!res.writableEnded) {
+      clientDisconnected = true;
+      controller.abort();
+    }
+  });
+
   const sendEvent = (event, data) => {
+    if (clientDisconnected || res.writableEnded || res.destroyed) return;
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
 
+  let lease;
   try {
-    let conversation = await MentorConversation.findOne({ user: req.user.id });
-    if (!conversation) {
-      conversation = new MentorConversation({
-        user: req.user.id,
-        messages: [],
-      });
-    }
-
+    lease = await acquireMentorConversation(req.user.id);
+    const { conversation } = lease;
     sendEvent("status", { message: "Analyzing..." });
 
     const { reply, toolsUsed } = await runMentorAgent(
@@ -326,24 +321,13 @@ router.post("/chat/stream", chatLimiter, async (req, res) => {
       conversation.messages,
       {
         onStatus: (statusText) => sendEvent("status", { message: statusText }),
+        signal: controller.signal,
       }
     );
 
-    conversation.messages.push({
-      role: "user",
-      content: message.trim(),
-      timestamp: new Date(),
-    });
+    if (controller.signal.aborted || clientDisconnected) return;
 
-    conversation.messages.push({
-      role: "assistant",
-      content: reply,
-      toolsUsed: toolsUsed || [],
-      timestamp: new Date(),
-    });
-
-    conversation.lastActiveAt = new Date();
-    await conversation.save();
+    await appendMentorTurn(req.user.id, lease.requestId, message.trim(), reply, toolsUsed || []);
 
     sendEvent("done", {
       reply,
@@ -352,11 +336,22 @@ router.post("/chat/stream", chatLimiter, async (req, res) => {
     });
     res.end();
   } catch (err) {
+    if (controller.signal.aborted || clientDisconnected || err?.name === "AbortError") {
+      return;
+    }
+
     console.error("Stream mentor error:", err.message);
     sendEvent("error", {
       message: err.message || "Something went wrong.",
+      status: err.status || 500,
     });
-    res.end();
+    if (!res.writableEnded && !res.destroyed) res.end();
+  } finally {
+    if (lease?.requestId) {
+      await releaseMentorConversation(req.user.id, lease.requestId).catch((releaseError) => {
+        console.error("Unable to release mentor conversation lease:", releaseError.message);
+      });
+    }
   }
 });
 
