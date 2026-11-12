@@ -338,6 +338,9 @@ Settl uses Socket.IO to keep connected clients synchronized. Clients join rooms 
 | `settlement_requested` | Server → Client | Populated `Settlement` | Notifies the receiver that a payment was marked as sent. |
 | `settlement_done` | Server → Client | Populated `Settlement` | Notifies the group that the receiver confirmed receipt. |
 | `settlement_undone` | Server → Client | `{ fromId, toId }` | Emitted when a settlement is cancelled by payer or rejected by receiver. |
+| `schedule_proposed` / `schedule_accepted` / `schedule_rejected` | Server → Client | Populated `SettlementSchedule` | Notifies participants about a proposal and its response. |
+| `schedule_cancelled` | Server → Client | Populated `SettlementSchedule` | Notifies participants that a proposed or accepted schedule was cancelled. |
+| `schedule_reminder` | Server → Client | Populated `SettlementSchedule` | In-app reminder emitted once when Settle Up is opened on the due date or the day before. |
 | `message_created` | Server → Client | Populated `Message` | Broadcasts new group chat messages. |
 
 ---
@@ -600,6 +603,7 @@ All application endpoints are mounted under `/api` and require authenticated HTT
 | `GET` | `/api/settlements/schedules/:groupId` | Protected | Retrieve active payment schedules for a group, including overdue state. |
 | `POST` | `/api/settlements/schedule/:scheduleId/respond` | Protected | Recipient accepts or rejects a proposed repayment date. |
 | `POST` | `/api/settlements/schedule/:scheduleId/cancel` | Protected | Either participant cancels a proposed or accepted schedule. |
+> Due-date reminders are emitted in-app when a participant opens or refreshes Settle Up on the due date or the day before. This first version is request-driven; it does not send background push notifications while the app is closed.
 | `POST` | `/api/settlements/confirm` | Protected | Receiver confirms payment receipt (`confirmed`), clearing the debt and completing any linked schedule. |
 | `POST` | `/api/settlements/reject` | Protected | Receiver rejects unreceived payment (`rejected`), recording the reason. |
 | `DELETE`| `/api/settlements/settle` | Protected | Payer cancels their pending settlement request (`cancelled`). |
@@ -683,6 +687,7 @@ node --test backend/test/mentorRoutes.test.mjs          # Supertest mentor route
 node backend/test/mentorToolsSlice1.test.mjs            # 16 Finn tools & calculators
 node backend/test/settlementsRoutes.test.mjs            # 10 settlement lifecycle scenarios
 node backend/test/settlementsValidation.test.mjs        # 4 debt validation edge cases
+node --test backend/test/settlementSchedules.test.mjs  # Payment schedule lifecycle and balance invariants
 node backend/test/docsInSync.test.mjs                   # Verifies README matches tool registry
 node backend/test/trustScore2.test.mjs                  # Trust Score 2.0 verification suite
 node backend/test/mentor12Scenarios.test.mjs            # 12 end-to-end Finn scenario tests
