@@ -16,6 +16,8 @@ describe("Mentor conversation request coordination", () => {
   before(async () => {
     const { testUri } = getTestDbConfig();
     await mongoose.connect(testUri);
+    // Ensure the unique user index exists before testing concurrent first-time requests.
+    await MentorConversation.init();
     user = await User.create({
       name: "Mentor Lease Test",
       email: "mentor-lease-" + Date.now() + "@example.com",
