@@ -631,7 +631,7 @@ export default function SettleUp() {
                                 onClick={() => {
                                   const customAmt = settleAmounts[t.to?._id] !== undefined && settleAmounts[t.to?._id] !== ''
                                     ? parseFloat(settleAmounts[t.to?._id])
-                                    : t.amount;
+                                    : (acceptedSchedule?.amount ?? t.amount);
                                   if (customAmt <= 0) {
                                     alert('Please enter a positive amount to settle');
                                     return;
@@ -654,14 +654,14 @@ export default function SettleUp() {
                               onClick={() => {
                                 const customAmt = settleAmounts[t.to?._id] !== undefined && settleAmounts[t.to?._id] !== ''
                                   ? parseFloat(settleAmounts[t.to?._id])
-                                  : t.amount;
+                                  : (acceptedSchedule?.amount ?? t.amount);
                                 if (customAmt <= 0) {
                                   alert('Please enter a positive amount to settle');
                                   return;
                                 }
                                 handleSettle(t.to, customAmt, acceptedSchedule?._id || null);
                               }}
-                              disabled={actionLoading[settleKey] || !!pendingReq}
+                              disabled={actionLoading[settleKey] || !!pendingReq || waitingForScheduleApproval || (acceptedSchedule && Number(settleAmounts[t.to?._id] !== undefined && settleAmounts[t.to?._id] !== '' ? settleAmounts[t.to?._id] : acceptedSchedule.amount) !== acceptedSchedule.amount)}
                               className={`py-3 px-4 rounded-2xl flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-wider border active:scale-95 transition-all cursor-pointer disabled:opacity-50 ${
                                 t.to?.upiId 
                                   ? 'bg-white/5 border-white/10 text-white hover:bg-white/10 sm:flex-1' 
@@ -743,6 +743,56 @@ export default function SettleUp() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Schedule Payment Modal */}
+      {scheduleDraft && (
+        <div className="modal-overlay z-60 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <form onSubmit={handleCreateSchedule} className="glass-card w-full max-w-sm rounded-3xl border border-cyan-500/20 p-6 flex flex-col gap-5 animate-in zoom-in-95 duration-200">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-extrabold text-white">Schedule a Payment</h2>
+                <p className="text-xs mt-1 text-on-surface-variant font-semibold">
+                  Propose a repayment date to {scheduleDraft.toUser.name}. They must accept it.
+                </p>
+              </div>
+              <button type="button" onClick={() => setScheduleDraft(null)} className="w-8 h-8 rounded-xl border border-white/10 text-white/70 hover:text-white">×</button>
+            </div>
+            <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-4 flex items-center justify-between">
+              <div>
+                <p className="text-[9px] uppercase tracking-widest font-bold text-on-surface-variant">Paying to</p>
+                <p className="text-sm font-bold text-white mt-1">{scheduleDraft.toUser.name}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[9px] uppercase tracking-widest font-bold text-on-surface-variant">Amount</p>
+                <p className="text-lg font-black text-cyan-200 mt-1">₹{scheduleDraft.amount.toLocaleString('en-IN')}</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="schedule-due-date" className="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                Proposed repayment date
+              </label>
+              <input
+                id="schedule-due-date"
+                type="date"
+                min={new Date().toISOString().slice(0, 10)}
+                value={scheduleDate}
+                onChange={(e) => setScheduleDate(e.target.value)}
+                required
+                className="w-full rounded-xl border border-white/10 bg-background px-4 py-3 text-sm font-bold text-white [color-scheme:dark] focus:outline-none focus:border-cyan-500/50"
+              />
+            </div>
+            <p className="text-[10px] leading-relaxed text-on-surface-variant">
+              This is a repayment agreement, not a payment confirmation. Your group balance will only change after the receiver confirms the actual payment.
+            </p>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setScheduleDraft(null)} disabled={scheduleSaving} className="flex-1 py-3 rounded-xl border border-white/10 text-white text-[10px] font-bold uppercase tracking-wider disabled:opacity-40">Cancel</button>
+              <button type="submit" disabled={scheduleSaving || !scheduleDate} className="flex-1 py-3 rounded-xl bg-cyan-500 text-slate-950 text-[10px] font-extrabold uppercase tracking-wider disabled:opacity-40">
+                {scheduleSaving ? 'Sending…' : 'Send proposal'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
