@@ -213,6 +213,7 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
       const isBusy = err.response?.data?.message?.includes('busy') || err.status === 503;
       const errorMsg =
         err.response?.data?.message ||
+        (err.status ? err.message : "") ||
         (isBusy
           ? `${MENTOR_NAME} is currently busy. Please try again in a moment.`
           : `Failed to get a response from ${MENTOR_NAME}. Please try again.`);
