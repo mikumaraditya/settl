@@ -155,7 +155,7 @@ router.get("/simplify/:groupId", protect, async (req, res) => {
         transactions: [],
         confirmedSettlements,
         pendingRequests,
-        scheduleRequests,
+        scheduleRequests: scheduleRequestsWithStatus,
       });
     }
 
@@ -204,7 +204,7 @@ router.get("/simplify/:groupId", protect, async (req, res) => {
       transactions,
       confirmedSettlements,
       pendingRequests,
-      scheduleRequests,
+      scheduleRequests: scheduleRequestsWithStatus,
     });
   } catch (error) {
     console.error("Error fetching settlements/transactions:", error);
@@ -589,6 +589,7 @@ router.get("/schedules/:groupId", async (req, res) => {
       .sort({ dueDate: 1, createdAt: -1 });
 
     const today = getDateInTimeZone(req.query.timeZone);
+    const tomorrow = addDaysToDateOnly(today, 1);
     res.json({
       schedules: schedules.map((schedule) => {
         const dueDateOnly = schedule.dueDate.toISOString().slice(0, 10);
