@@ -7,13 +7,16 @@ import http from "http";
 import app from "./src/app.js";
 import connectDB from "./src/config/db.js";
 import { initSocket } from "./src/socket.js";
+import { startSettlementReminderWorker } from "./src/services/settlementReminderWorker.js";
 
 const server = http.createServer(app);
 
 const io = initSocket(server);
 export { io };
 
-connectDB();
+connectDB()
+  .then(() => startSettlementReminderWorker())
+  .catch((error) => console.error("Database connection failed:", error));
 
 const PORT = process.env.PORT || 5000;
 const HOST = process.env.HOST || "0.0.0.0";
