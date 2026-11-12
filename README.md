@@ -287,7 +287,7 @@ All 17 tools are defined in [`backend/src/services/mentorTools.js`](backend/src/
 | Category | Tool Name | Parameters | Description |
 | :--- | :--- | :--- | :--- |
 | **Settl Data** | `getUserFinancialSummary` | None | Comprehensive overview of groups, upfront spend, total owed, total owed to user, net balance, and pending settlements. |
-| **Settl Data** | `getGroupBalances` | None | Detailed balances across all user groups with member lists, simplified debts, and pending requests. |
+| **Settl Data** | `getGroupBalances` | `groupName` (optional): exact group name, case-insensitive; omit for all groups | Detailed balances for all groups or one named group, with member lists, simplified debts, and pending requests. Group-scoped requests only return groups the authenticated user belongs to. |
 | **Settl Data** | `getPendingSettlements` | None | Pending settlements requiring confirmation by the user or awaiting confirmation from others. |
 | **Settl Data** | `getExpenseBreakdown` | `months` (optional): 1 to 12, default 3 | Categorical spending breakdown (food, rent, groceries, shopping, etc.) with amounts and percentage shares. |
 | **Settl Data** | `getExpenseDetails` | `months` (optional): 1 to 12, default 3; `limit` (optional): 1 to 50, default 30; `category` (optional): supported expense category | Individual shared expenses with date, description, category, group, full group bill, and the authenticated user’s allocated share. Requires mentoring consent. |
