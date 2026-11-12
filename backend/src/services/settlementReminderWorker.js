@@ -143,8 +143,8 @@ export function startSettlementReminderWorker() {
     }
   };
 
-  // Run on startup so schedules that became due while the service was asleep
-  // are picked up, then check every 15 minutes. Unique database keys prevent
+  // Run on startup to pick up reminders for today and tomorrow immediately,
+  // then check every 15 minutes. Unique database keys prevent
   // duplicate notifications across instances or restarts.
   void run();
   const interval = setInterval(run, FIFTEEN_MINUTES);
