@@ -30,9 +30,11 @@ const tokenFor = (user) => jwt.sign(
 let userA;
 let userB;
 let userC;
+let userD;
 let tokenA;
 let tokenB;
 let tokenC;
+let tokenD;
 let group;
 let groupId;
 let scheduleId;
@@ -43,18 +45,20 @@ before(async () => {
   await Promise.all([Settlement.syncIndexes(), SettlementSchedule.syncIndexes()]);
 
   const stamp = Date.now();
-  [userA, userB, userC] = await User.create([
+  [userA, userB, userC, userD] = await User.create([
     { name: "Schedule Payer", email: `schedule_payer_${stamp}@example.com`, password: "password123", isEmailVerified: true },
     { name: "Schedule Receiver", email: `schedule_receiver_${stamp}@example.com`, password: "password123", isEmailVerified: true },
+    { name: "Schedule Group Member", email: `schedule_member_${stamp}@example.com`, password: "password123", isEmailVerified: true },
     { name: "Schedule Outsider", email: `schedule_outsider_${stamp}@example.com`, password: "password123", isEmailVerified: true },
   ]);
   tokenA = tokenFor(userA);
   tokenB = tokenFor(userB);
   tokenC = tokenFor(userC);
+  tokenD = tokenFor(userD);
 
   group = await Group.create({
     name: `Schedule Test Group ${stamp}`,
-    members: [{ user: userA._id }, { user: userB._id }],
+    members: [{ user: userA._id }, { user: userB._id }, { user: userC._id }],
     createdBy: userA._id,
   });
   groupId = group._id.toString();
@@ -106,7 +110,23 @@ test("payer can propose a date without changing the group's debt", async () => {
   const privateScheduleList = await request(app)
     .get(`/api/settlements/schedules/${groupId}`)
     .set("Authorization", `Bearer ${tokenC}`);
-  assert.equal(privateScheduleList.status, 403, "non-members cannot read schedules");
+  assert.equal(privateScheduleList.status, 200);
+  assert.deepEqual(privateScheduleList.body.schedules, [], "other group members must not see a participant's schedule");
+
+  const outsiderList = await request(app)
+    .get(`/api/settlements/schedules/${groupId}`)
+    .set("Authorization", `Bearer ${tokenD}`);
+  assert.equal(outsiderList.status, 403, "non-members cannot read schedules");
+
+  const groupActivity = await request(app)
+    .get(`/api/settlements/group/${groupId}/activity?limit=100`)
+    .set("Authorization", `Bearer ${tokenC}`);
+  assert.equal(groupActivity.status, 200);
+  assert.equal(
+    groupActivity.body.logs.filter((log) => String(log.type).startsWith("schedule_")).length,
+    0,
+    "non-participating group members must not see schedule activity details",
+  );
 
   const snapshot = await request(app)
     .get(`/api/settlements/simplify/${groupId}`)
