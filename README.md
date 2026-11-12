@@ -610,7 +610,15 @@ All application endpoints are mounted under `/api` and require authenticated HTT
 | `POST` | `/api/settlements/cancel` | Protected | Alternate endpoint for payer cancellation. |
 | `GET` | `/api/settlements/group/:id/activity` | Protected | Fetch paginated activity audit logs for a group. |
 
-> Due-date reminders are sent independently to each participant when they open or refresh Settle Up on the due date or the day before, using their local timezone. This first version is request-driven; it does not send background push notifications while the app is closed.
+### Notifications (`/api/notifications`)
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/notifications` | Protected | Retrieve the authenticated user's latest persistent in-app reminders. |
+| `PATCH` | `/api/notifications/:notificationId/read` | Protected | Mark one of the user's notifications as read. |
+| `PATCH` | `/api/notifications/read-all` | Protected | Mark all of the user's notifications as read. |
+| `DELETE` | `/api/notifications` | Protected | Clear notifications from the user's Activity panel without removing reminder deduplication records. |
+
+> Accepted schedules generate persistent in-app reminders for both participants one day before and on the due date. Reminders appear in the Activity bell, are retained if a participant is offline, and are deduplicated. Settle Up shows upcoming, due tomorrow, due today, and overdue states. The reminder worker checks at backend startup and every 15 minutes while the service is running. No email or browser push notifications are sent.
 
 ### Insights & Trust Score (`/api/insights`)
 | Method | Endpoint | Access | Description |
@@ -656,7 +664,7 @@ User ────< Group (members.user)
   │          │
   │          └────< Message (sender)
   │
-  ├────< ScoreHistory (user, score, delta, reason)
+  ├────< Notification (user, schedule)\n  ├────< ScoreHistory (user, score, delta, reason)
   ├────< MentorConversation (user, messages)
   └────< UserFinancialProfile (user, goals, consent)
 ```
@@ -665,12 +673,12 @@ User ────< Group (members.user)
 2. **`Group`**: Shared workspace with `name`, `currency`, and an array of `members` storing `user` reference, `role` (`admin` or `member`), and `joinedAt`.
 3. **`Expense`**: Shared cost containing `amount`, `category`, `paidBy`, and `splits` array (`user`, `amount`, `paid`). `splitType` is constrained to `equal`, `exact`, or `percentage`.
 4. **`Settlement`**: Peer transaction between `from` and `to` members. `status` lifecycle transitions through `pending`, `confirmed`, `cancelled`, `expired`, and `rejected`. Stores `dueDate` and `rejectionReason`.
-5. **`SettlementSchedule`**: Separate future-repayment agreement with payer, receiver, amount, date-only due date, response state, optional linked payment, and one-time reminder timestamp. Only payment confirmation completes a schedule; a proposal or acceptance never changes group balances.
+5. **`SettlementSchedule`**: Separate future-repayment agreement with payer, receiver, amount, date-only due date, response state, and optional linked payment. Only payment confirmation completes a schedule; a proposal or acceptance never changes group balances.
 6. **`ActivityLog`**: Immutable audit record tracking expense, settlement, and schedule lifecycle events (`schedule_proposed`, `schedule_accepted`, `schedule_rejected`, `schedule_cancelled`, `schedule_completed`) with metadata.
 7. **`ScoreHistory`**: Historical ledger of Trust Scores containing `score`, `delta`, `reason`, `eventId`, and `eventType` (`initial_baseline`, `score_adjustment`, `weekly_snapshot`).
 8. **`UserFinancialProfile`**: Consent-gated profile storing `status`, `monthlyIncome`, `monthlySavingsTarget`, `goals` (`name`, `targetAmount`, `deadline`, `savedSoFar`), `riskComfort`, and `consentToUseForMentor`.
 9. **`MentorConversation`**: Chat turns between `user` and `model`, recording `content`, `toolsUsed`, and timestamps.
-10. **`Message`**: Real-time group chat message with `group`, `sender`, and `content`.
+10. **`Message`**: Real-time group chat message with `group`, `sender`, and `content`.\n11. **`Notification`**: User-scoped persistent in-app reminder with read/dismissal state, schedule reference, reminder stage, and a unique deduplication key.
 
 ---
 
@@ -803,7 +811,7 @@ For deployments on Vercel or similar platforms, [`frontend/vercel.json`](fronten
 | **Trust Score Interactive UI** | **Implemented** | Score gauge, trend pill, quick actions, factors, commitments, ledger. |
 | **Redis-Backed Rate Limiting** | Planned | Distributed rate limiting across multiple server instances. |
 | **Multi-Session Mentor Conversations** | Planned | Ability to save, name, and archive separate conversation threads. |
-| **Settlement Due Date Customization** | **Implemented** | Payer proposes a date or gets a 7-day default; receiver accepts or declines, and linked payment confirmation completes the schedule without changing balances early. |
+| **Settlement Due Date Customization** | **Implemented** | Payer proposes a date or gets a 7-day default; receiver accepts or declines, and linked payment confirmation completes the schedule without changing balances early. |\n| **In-App Settlement Reminders** | **Implemented** | Persistent bell notifications for both participants one day before and on the due date; Settle Up shows due tomorrow, due today, and overdue states. |
 
 ### Contributing
 1. Fork the repository and create a feature branch (`git checkout -b feature/amazing-feature`).
