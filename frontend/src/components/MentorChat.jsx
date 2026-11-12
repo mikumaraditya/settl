@@ -58,14 +58,20 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
   const activeRequestRef = useRef(null);
+  const mountedRef = useRef(false);
+  const userCancelledRef = useRef(false);
 
   const scrollToBottom = (behavior = 'smooth') => {
     messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
   useEffect(() => {
+    mountedRef.current = true;
     loadInitialData();
-    return () => activeRequestRef.current?.abort();
+    return () => {
+      mountedRef.current = false;
+      activeRequestRef.current?.abort();
+    };
   }, []);
 
   useEffect(() => {
@@ -95,6 +101,8 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
         getMentorProfile().catch(() => null),
       ]);
 
+      if (!mountedRef.current) return;
+
       if (Array.isArray(historyData?.messages) && historyData.messages.length > 0) {
         const cleanHistory = historyData.messages.map((m) => ({
           ...m,
@@ -119,11 +127,15 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
         setShowOnboarding(true);
       }
     } catch (err) {
-      console.error('Failed to load mentor data:', err);
-      setError(`Unable to connect to ${MENTOR_NAME}. Please try again later.`);
+      if (mountedRef.current) {
+        console.error('Failed to load mentor data:', err);
+        setError(`Unable to connect to ${MENTOR_NAME}. Please try again later.`);
+      }
     } finally {
-      setFetchingHistory(false);
-      setTimeout(() => textareaRef.current?.focus(), 150);
+      if (mountedRef.current) {
+        setFetchingHistory(false);
+        setTimeout(() => textareaRef.current?.focus(), 150);
+      }
     }
   };
 
@@ -163,6 +175,7 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
     setLoading(true);
     setStatusMessage(`${MENTOR_NAME} is analyzing...`);
     const controller = new AbortController();
+    userCancelledRef.current = false;
     activeRequestRef.current = controller;
 
     try {
@@ -182,17 +195,20 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
       setMessages((prev) => [...prev, assistantMsg]);
     } catch (err) {
       if (err.name === 'AbortError') {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: 'assistant',
-            content: 'Request cancelled. You can send another question whenever you are ready.',
-            toolsUsed: [],
-            timestamp: new Date().toISOString(),
-          },
-        ]);
+        if (mountedRef.current && userCancelledRef.current) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: 'assistant',
+              content: 'Request cancelled. You can send another question whenever you are ready.',
+              toolsUsed: [],
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        }
         return;
       }
+      if (!mountedRef.current) return;
       console.error('Send message error:', err);
       const isBusy = err.response?.data?.message?.includes('busy') || err.status === 503;
       const errorMsg =
@@ -214,13 +230,16 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
       ]);
     } finally {
       activeRequestRef.current = null;
-      setLoading(false);
-      setStatusMessage('');
-      setTimeout(() => textareaRef.current?.focus(), 100);
+      if (mountedRef.current) {
+        setLoading(false);
+        setStatusMessage('');
+        setTimeout(() => textareaRef.current?.focus(), 100);
+      }
     }
   };
 
   const handleCancelRequest = () => {
+    userCancelledRef.current = true;
     activeRequestRef.current?.abort();
   };
 
