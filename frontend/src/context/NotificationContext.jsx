@@ -115,6 +115,61 @@ export function NotificationProvider({ children }) {
       )
     }
 
+    const onScheduleProposed = (schedule) => {
+      if (str(schedule?.to?._id) !== myId) return
+      const date = schedule.dueDate ? new Date(schedule.dueDate).toLocaleDateString('en-IN') : 'a proposed date'
+      push(
+        'schedule', 'event', '#22d3ee',
+        `${schedule.from?.name} proposed a payment date`,
+        `₹${Number(schedule.amount).toLocaleString('en-IN')} — proposed for ${date}. Review in Settle Up.`,
+        schedule.group
+      )
+    }
+
+    const onScheduleAccepted = (schedule) => {
+      if (str(schedule?.from?._id) !== myId) return
+      const date = schedule.dueDate ? new Date(schedule.dueDate).toLocaleDateString('en-IN') : 'the agreed date'
+      push(
+        'schedule', 'event_available', '#4ade80',
+        `${schedule.to?.name} accepted your payment date`,
+        `₹${Number(schedule.amount).toLocaleString('en-IN')} — due ${date}.`,
+        schedule.group
+      )
+    }
+
+    const onScheduleRejected = (schedule) => {
+      if (str(schedule?.from?._id) !== myId) return
+      push(
+        'schedule', 'event_busy', '#f87171',
+        `${schedule.to?.name} declined your payment date`,
+        `₹${Number(schedule.amount).toLocaleString('en-IN')} — propose another date or cancel the plan.`,
+        schedule.group
+      )
+    }
+
+    const onScheduleReminder = (schedule) => {
+      const involved = str(schedule?.from?._id) === myId || str(schedule?.to?._id) === myId
+      if (!involved) return
+      const date = schedule.dueDate ? new Date(schedule.dueDate).toLocaleDateString('en-IN') : 'today'
+      push(
+        'schedule_reminder', 'notifications_active', '#fbbf24',
+        'Payment schedule due soon',
+        `₹${Number(schedule.amount).toLocaleString('en-IN')} is due ${date}. Open Settle Up to record the payment.`,
+        schedule.group
+      )
+    }
+
+    const onScheduleCancelled = (schedule) => {
+      const involved = str(schedule?.from?._id) === myId || str(schedule?.to?._id) === myId
+      if (!involved) return
+      push(
+        'schedule', 'event_busy', '#fbbf24',
+        'Payment schedule cancelled',
+        `₹${Number(schedule.amount).toLocaleString('en-IN')} payment schedule is no longer active.`,
+        schedule.group
+      )
+    }
+
     const onSettlementDisputed = ({ settlement }) => {
       if (!settlement) return
       // Only the payer should be notified of a dispute
@@ -154,6 +209,11 @@ export function NotificationProvider({ children }) {
     socket.on('expense_added',                 onExpenseAdded)
     socket.on('settlement_requested',          onSettlementRequested)
     socket.on('settlement_done',               onSettlementDone)
+    socket.on('schedule_proposed',             onScheduleProposed)
+    socket.on('schedule_accepted',             onScheduleAccepted)
+    socket.on('schedule_rejected',             onScheduleRejected)
+    socket.on('schedule_cancelled',            onScheduleCancelled)
+    socket.on('schedule_reminder',             onScheduleReminder)
     socket.on('settlement_disputed',           onSettlementDisputed)
     socket.on('settlement_resolved',           onSettlementResolved)
     socket.on('settlement_evidence_submitted', onEvidenceSubmitted)
@@ -163,6 +223,11 @@ export function NotificationProvider({ children }) {
       socket.off('expense_added',                onExpenseAdded)
       socket.off('settlement_requested',         onSettlementRequested)
       socket.off('settlement_done',              onSettlementDone)
+      socket.off('schedule_proposed',            onScheduleProposed)
+      socket.off('schedule_accepted',            onScheduleAccepted)
+      socket.off('schedule_rejected',            onScheduleRejected)
+      socket.off('schedule_cancelled',           onScheduleCancelled)
+      socket.off('schedule_reminder',            onScheduleReminder)
       socket.off('settlement_disputed',          onSettlementDisputed)
       socket.off('settlement_resolved',          onSettlementResolved)
       socket.off('settlement_evidence_submitted', onEvidenceSubmitted)

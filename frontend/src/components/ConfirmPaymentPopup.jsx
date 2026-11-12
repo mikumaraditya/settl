@@ -15,6 +15,7 @@ export default function ConfirmPaymentPopup({ transaction, groupId, onConfirm, o
         groupId,
         toUserId: to._id,
         amount,
+        ...(transaction.scheduleId ? { scheduleId: transaction.scheduleId } : {}),
       })
       onConfirm()
     } catch (err) {

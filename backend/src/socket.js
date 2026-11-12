@@ -35,6 +35,9 @@ const initSocket = (server) => {
   io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
 
+    // Private user room used for personal financial notifications.
+    socket.join(`user:${socket.data.userId}`);
+
     // user joins a group room
     socket.on("join_group", async (groupId) => {
       const group = await Group.findById(groupId);
