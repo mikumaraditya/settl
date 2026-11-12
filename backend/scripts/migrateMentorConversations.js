@@ -53,6 +53,11 @@ async function migrateMentorConversations() {
     }
   }
 
+  const indexes = await collection.indexes();
+  const existingUserIndex = indexes.find((index) => index.name === "user_1");
+  if (existingUserIndex && !existingUserIndex.unique) {
+    await collection.dropIndex("user_1");
+  }
   await collection.createIndex({ user: 1 }, { unique: true, name: "user_1" });
   console.log("Mentor conversation migration complete. Duplicate documents merged:", mergedCount);
 }
