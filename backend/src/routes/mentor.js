@@ -301,11 +301,23 @@ router.post("/chat/stream", chatLimiter, async (req, res) => {
   }
 
   res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders();
 
+  const controller = new AbortController();
+  let clientDisconnected = false;
+
+  // Stop paid model work when the browser closes or aborts the stream.
+  res.on("close", () => {
+    if (!res.writableEnded) {
+      clientDisconnected = true;
+      controller.abort();
+    }
+  });
+
   const sendEvent = (event, data) => {
+    if (clientDisconnected || res.writableEnded || res.destroyed) return;
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
 
@@ -326,8 +338,11 @@ router.post("/chat/stream", chatLimiter, async (req, res) => {
       conversation.messages,
       {
         onStatus: (statusText) => sendEvent("status", { message: statusText }),
+        signal: controller.signal,
       }
     );
+
+    if (controller.signal.aborted || clientDisconnected) return;
 
     conversation.messages.push({
       role: "user",
@@ -352,11 +367,16 @@ router.post("/chat/stream", chatLimiter, async (req, res) => {
     });
     res.end();
   } catch (err) {
+    if (controller.signal.aborted || clientDisconnected || err?.name === "AbortError") {
+      return;
+    }
+
     console.error("Stream mentor error:", err.message);
     sendEvent("error", {
       message: err.message || "Something went wrong.",
+      status: err.status || 500,
     });
-    res.end();
+    if (!res.writableEnded && !res.destroyed) res.end();
   }
 });
 
