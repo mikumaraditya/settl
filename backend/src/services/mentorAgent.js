@@ -123,7 +123,7 @@ function buildMessageList(systemPrompt, conversationHistory, newContent) {
  * @returns {Promise<{ reply: string, toolsUsed: Array }>}
  */
 export async function runMentorAgent(userId, userMessage, conversationHistory = [], options = {}) {
-  const { onStatus } = options;
+  const { onStatus, signal = null } = options;
   const user = await User.findById(userId).select("name").lean();
   const rawName = user?.name ? user.name.trim() : "Friend";
   const firstName = rawName.split(/\s+/)[0];
@@ -148,12 +148,18 @@ export async function runMentorAgent(userId, userMessage, conversationHistory = 
   let iterations = 0;
 
   while (iterations < MAX_ITERATIONS) {
+    if (signal?.aborted) {
+      const abortError = new Error("Mentor request was cancelled.");
+      abortError.name = "AbortError";
+      throw abortError;
+    }
     iterations++;
 
     const response = await llmService.chat({
       messages,
       tools: MENTOR_TOOLS_SCHEMA,
       temperature: 0.2,
+      signal,
     });
 
     const { content, toolCalls } = response;
@@ -191,6 +197,12 @@ export async function runMentorAgent(userId, userMessage, conversationHistory = 
 
         if (onStatus) {
           onStatus(`Checking ${fnName.replace(/^get/, '').replace(/([A-Z])/g, ' $1').toLowerCase()}...`);
+        }
+
+        if (signal?.aborted) {
+          const abortError = new Error("Mentor request was cancelled.");
+          abortError.name = "AbortError";
+          throw abortError;
         }
 
         try {
@@ -252,6 +264,7 @@ export async function runMentorAgent(userId, userMessage, conversationHistory = 
     messages,
     tools: [], // No tools on final summary call
     temperature: 0.2,
+    signal,
   });
 
   return {
