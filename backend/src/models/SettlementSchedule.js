@@ -50,7 +50,11 @@ const settlementScheduleSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
-    reminderSentAt: {
+    fromReminderSentAt: {
+      type: Date,
+      default: null,
+    },
+    toReminderSentAt: {
       type: Date,
       default: null,
     },
