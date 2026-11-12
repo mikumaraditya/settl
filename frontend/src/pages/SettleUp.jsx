@@ -37,6 +37,13 @@ export default function SettleUp() {
     const day = String(now.getDate()).padStart(2, '0')
     return `${now.getFullYear()}-${month}-${day}`
   }
+  const getTomorrowDateOnly = () => {
+    const date = new Date()
+    date.setDate(date.getDate() + 1)
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${date.getFullYear()}-${month}-${day}`
+  }
   const getLocalTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
   const getDefaultScheduleDate = () => {
     const date = new Date()
@@ -424,7 +431,9 @@ export default function SettleUp() {
                         ? 'overdue'
                         : (schedule.dueDateOnly || new Date(schedule.dueDate).toISOString().slice(0, 10)) === getLocalDateOnly()
                           ? 'due_today'
-                          : 'upcoming'
+                          : (schedule.dueDateOnly || new Date(schedule.dueDate).toISOString().slice(0, 10)) === getTomorrowDateOnly()
+                            ? 'due_tomorrow'
+                            : 'upcoming'
                     )
                     return (
                       <div key={schedule._id} className="glass-card rounded-2xl border border-cyan-500/15 p-5 flex flex-col gap-3">
@@ -455,8 +464,8 @@ export default function SettleUp() {
                               {formatScheduleDate(schedule)}
                             </p>
                             {schedule.status === 'accepted' && dueStatus !== 'upcoming' && (
-                              <p className={`text-[9px] uppercase tracking-wider font-bold mt-0.5 ${dueStatus === 'overdue' ? 'text-rose-400' : 'text-amber-300'}`}>
-                                {dueStatus === 'overdue' ? 'Overdue' : 'Due today'}
+                              <p className={`text-[9px] uppercase tracking-wider font-bold mt-0.5 ${dueStatus === 'overdue' ? 'text-rose-400' : dueStatus === 'due_today' ? 'text-amber-300' : 'text-cyan-200'}`}>
+                                {dueStatus === 'overdue' ? 'Overdue' : dueStatus === 'due_today' ? 'Due today' : 'Due tomorrow'}
                               </p>
                             )}
                           </div>

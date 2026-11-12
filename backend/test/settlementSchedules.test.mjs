@@ -8,17 +8,21 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import settlementsRouter from "../src/routes/settlements.js";
+import notificationsRouter from "../src/routes/notifications.js";
 import User from "../src/models/User.js";
 import Group from "../src/models/Group.js";
 import Expense from "../src/models/Expense.js";
 import Settlement from "../src/models/Settlement.js";
 import SettlementSchedule from "../src/models/SettlementSchedule.js";
 import ActivityLog from "../src/models/ActivityLog.js";
+import Notification from "../src/models/Notification.js";
+import { processSettlementScheduleReminders } from "../src/services/settlementReminderWorker.js";
 import { getTestDbConfig } from "./testDbHelper.mjs";
 
 const app = express();
 app.use(express.json());
 app.use("/api/settlements", settlementsRouter);
+app.use("/api/notifications", notificationsRouter);
 
 const JWT_SECRET = process.env.JWT_SECRET || "default_super_secret_jwt_key_123";
 const tokenFor = (user) => jwt.sign(
@@ -42,7 +46,7 @@ let scheduleId;
 before(async () => {
   const { testUri, testDbName } = getTestDbConfig();
   await mongoose.connect(testUri);
-  await Promise.all([Settlement.syncIndexes(), SettlementSchedule.syncIndexes()]);
+  await Promise.all([Settlement.syncIndexes(), SettlementSchedule.syncIndexes(), Notification.syncIndexes()]);
 
   const stamp = Date.now();
   [userA, userB, userC, userD] = await User.create([
@@ -85,6 +89,7 @@ after(async () => {
       Settlement.deleteMany({ group: group._id }),
       SettlementSchedule.deleteMany({ group: group._id }),
       ActivityLog.deleteMany({ group: group._id }),
+      Notification.deleteMany({ group: group._id }),
     ]);
   }
   if (userA?._id) {
@@ -172,38 +177,122 @@ test("only the receiver can accept; accepted schedule remains separate from paym
     });
   assert.equal(duplicate.status, 409);
 
-  // Opening Settle Up on the due date or the day before emits one in-app reminder.
-  const reminderDueDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  // The worker sends one persistent reminder to each participant the day before.
+  const today = new Date().toISOString().slice(0, 10);
+  const dueDate = new Date(`${today}T12:00:00.000Z`);
+  dueDate.setUTCDate(dueDate.getUTCDate() + 1);
+  const dueDateOnly = dueDate.toISOString().slice(0, 10);
   await SettlementSchedule.updateOne(
     { _id: scheduleId },
-    { $set: { dueDate: new Date(`${reminderDueDate}T12:00:00.000Z`), reminderSentAt: null } },
+    {
+      $set: {
+        dueDate,
+        fromReminderSentAt: null,
+        toReminderSentAt: null,
+      },
+    },
   );
+
+  const dayBeforeCount = await processSettlementScheduleReminders({
+    now: new Date(`${today}T10:00:00.000Z`),
+  });
+  assert.equal(dayBeforeCount, 2, "payer and receiver should each get a day-before notification");
+
+  const duplicateDayBeforeCount = await processSettlementScheduleReminders({
+    now: new Date(`${today}T10:15:00.000Z`),
+  });
+  assert.equal(duplicateDayBeforeCount, 0, "repeated scans must not duplicate reminders");
+
+  const payerNotifications = await request(app)
+    .get("/api/notifications")
+    .set("Authorization", `Bearer ${tokenA}`);
+  const receiverNotifications = await request(app)
+    .get("/api/notifications")
+    .set("Authorization", `Bearer ${tokenB}`);
+  const otherMemberNotifications = await request(app)
+    .get("/api/notifications")
+    .set("Authorization", `Bearer ${tokenC}`);
+
+  assert.equal(payerNotifications.status, 200);
+  assert.equal(receiverNotifications.status, 200);
+  assert.equal(payerNotifications.body.notifications.length, 1);
+  assert.equal(receiverNotifications.body.notifications.length, 1);
+  assert.equal(otherMemberNotifications.body.notifications.length, 0, "non-participants must not see schedule reminders");
+  assert.equal(payerNotifications.body.notifications[0].type, "settlement_schedule_reminder");
+  const markAllPayerRead = await request(app)
+    .patch("/api/notifications/read-all")
+    .set("Authorization", `Bearer ${tokenA}`);
+  assert.equal(markAllPayerRead.status, 200);
+  assert.equal(
+    await Notification.countDocuments({ user: userA._id, readAt: null }),
+    0,
+    "mark-all-read must persist for the current user",
+  );
+  const dayBeforeRows = await Notification.find({ schedule: scheduleId }).lean();
+  assert.equal(dayBeforeRows.length, 2);
+  assert.ok(dayBeforeRows.every((item) => item.reminderStage === "day_before"));
+
+  const receiverReminderId = receiverNotifications.body.notifications[0].id;
+  const unauthorizedRead = await request(app)
+    .patch(`/api/notifications/${receiverReminderId}/read`)
+    .set("Authorization", `Bearer ${tokenA}`);
+  assert.equal(unauthorizedRead.status, 404, "a participant cannot modify another user's notification");
+
+  const markRead = await request(app)
+    .patch(`/api/notifications/${receiverReminderId}/read`)
+    .set("Authorization", `Bearer ${tokenB}`);
+  assert.equal(markRead.status, 200);
+  const receiverReminder = await Notification.findById(receiverReminderId).lean();
+  assert.ok(receiverReminder.readAt, "notification read state should persist in MongoDB");
+
+  // The due-date scan creates a separate reminder stage for both participants.
+  const dueTodayCount = await processSettlementScheduleReminders({
+    now: new Date(`${dueDateOnly}T10:00:00.000Z`),
+  });
+  assert.equal(dueTodayCount, 2);
+
+  const payerNotificationsAfterDue = await request(app)
+    .get("/api/notifications")
+    .set("Authorization", `Bearer ${tokenA}`);
+  const receiverNotificationsAfterDue = await request(app)
+    .get("/api/notifications")
+    .set("Authorization", `Bearer ${tokenB}`);
+  assert.equal(payerNotificationsAfterDue.body.notifications.length, 2);
+  assert.equal(receiverNotificationsAfterDue.body.notifications.length, 2);
+  assert.equal(
+    receiverNotificationsAfterDue.body.notifications.filter((item) => item.type === "settlement_schedule_reminder").length,
+    2,
+  );
+  const allReminderRows = await Notification.find({ schedule: scheduleId }).lean();
+  assert.equal(allReminderRows.length, 4);
+  assert.equal(allReminderRows.filter((item) => item.reminderStage === "day_before").length, 2);
+  assert.equal(allReminderRows.filter((item) => item.reminderStage === "due_today").length, 2);
+
+  const clearReceiverNotifications = await request(app)
+    .delete("/api/notifications")
+    .set("Authorization", `Bearer ${tokenB}`);
+  assert.equal(clearReceiverNotifications.status, 200);
+  const receiverFeedAfterClear = await request(app)
+    .get("/api/notifications")
+    .set("Authorization", `Bearer ${tokenB}`);
+  assert.equal(receiverFeedAfterClear.body.notifications.length, 0);
+  const scanAfterClear = await processSettlementScheduleReminders({
+    now: new Date(`${dueDateOnly}T10:15:00.000Z`),
+  });
+  assert.equal(scanAfterClear, 0, "clearing a notification must not allow the worker to recreate it");
+  assert.equal(
+    await Notification.countDocuments({ schedule: scheduleId, deletedAt: { $ne: null } }),
+    2,
+  );
+
   const snapshot = await request(app)
     .get(`/api/settlements/simplify/${groupId}`)
     .set("Authorization", `Bearer ${tokenB}`);
-  assert.equal(snapshot.body.transactions[0].amount, 500);
+  assert.equal(snapshot.body.transactions[0].amount, 500, "reminders must not change group balances");
   assert.equal(snapshot.body.pendingRequests.length, 0);
   assert.equal(snapshot.body.scheduleRequests[0].status, "accepted");
-
-  const reminderMarked = await SettlementSchedule.findById(scheduleId).lean();
-  assert.ok(reminderMarked.toReminderSentAt, "receiver should receive a reminder when they open Settle Up");
-  assert.equal(reminderMarked.fromReminderSentAt, null, "the payer's reminder must remain available until they open Settle Up");
-
-  await request(app)
-    .get(`/api/settlements/simplify/${groupId}`)
-    .set("Authorization", `Bearer ${tokenB}`);
-  const reminderAfterReceiverRefresh = await SettlementSchedule.findById(scheduleId).lean();
-  assert.equal(
-    reminderAfterReceiverRefresh.toReminderSentAt.getTime(),
-    reminderMarked.toReminderSentAt.getTime(),
-    "receiver refresh must not issue a second reminder",
-  );
-
-  await request(app)
-    .get(`/api/settlements/simplify/${groupId}`)
-    .set("Authorization", `Bearer ${tokenA}`);
-  const reminderAfterPayerOpen = await SettlementSchedule.findById(scheduleId).lean();
-  assert.ok(reminderAfterPayerOpen.fromReminderSentAt, "payer should receive their own reminder when they open Settle Up");
+  assert.equal(snapshot.body.scheduleRequests[0].dueDateOnly, dueDateOnly);
+  assert.equal(snapshot.body.scheduleRequests[0].dueStatus, "due_tomorrow");
 });
 
 test("scheduled payment completes only after receiver confirms; rejection restores accepted schedule", async () => {
