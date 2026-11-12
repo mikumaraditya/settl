@@ -181,8 +181,11 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
     try {
       const res = await streamMentorMessage(textToSend, {
         signal: controller.signal,
-        onStatus: setStatusMessage,
+        onStatus: (status) => {
+          if (mountedRef.current) setStatusMessage(status);
+        },
       });
+      if (!mountedRef.current) return;
       const cleanReply = typeof res.reply === 'string'
         ? res.reply.replace(/(I'm|I am|This is)\s+Aarav/gi, `$1 ${MENTOR_NAME}`)
         : res.reply;
