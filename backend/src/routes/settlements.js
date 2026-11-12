@@ -36,6 +36,11 @@ const getDateInTimeZone = (timeZone) => {
     return new Date().toISOString().slice(0, 10);
   }
 };
+const addDaysToDateOnly = (dateOnly, days) => {
+  const date = new Date(`${dateOnly}T12:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+};
 import { clearInsightCaches } from './insights.js';
 
 const router = express.Router();
@@ -617,20 +622,26 @@ router.post("/schedule", async (req, res) => {
   try {
     const { groupId, toUserId, dueDate } = req.body;
     const amount = Number(req.body.amount);
-    if (!groupId || !toUserId || req.body.amount === undefined || !dueDate) {
-      return res.status(400).json({ message: "groupId, toUserId, amount and dueDate are required" });
+    if (!groupId || !toUserId || req.body.amount === undefined) {
+      return res.status(400).json({ message: "groupId, toUserId and amount are required" });
     }
     if (!Number.isFinite(amount) || amount <= 0 || Math.round(amount * 100) !== amount * 100) {
       return res.status(400).json({ message: "Amount must be positive and have at most two decimal places" });
     }
-    if (typeof dueDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+
+    // If the payer leaves the date empty, default to seven calendar days
+    // from today in their local timezone.
+    const resolvedDueDate = dueDate === undefined || dueDate === null || dueDate === ""
+      ? addDaysToDateOnly(getDateInTimeZone(req.body.timeZone), 7)
+      : dueDate;
+    if (typeof resolvedDueDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(resolvedDueDate)) {
       return res.status(400).json({ message: "Due date must use YYYY-MM-DD format" });
     }
-    const parsedDueDate = new Date(`${dueDate}T12:00:00.000Z`);
-    if (Number.isNaN(parsedDueDate.getTime()) || parsedDueDate.toISOString().slice(0, 10) !== dueDate) {
+    const parsedDueDate = new Date(`${resolvedDueDate}T12:00:00.000Z`);
+    if (Number.isNaN(parsedDueDate.getTime()) || parsedDueDate.toISOString().slice(0, 10) !== resolvedDueDate) {
       return res.status(400).json({ message: "Please provide a valid calendar date" });
     }
-    if (dueDate < getDateInTimeZone(req.body.timeZone)) {
+    if (resolvedDueDate < getDateInTimeZone(req.body.timeZone)) {
       return res.status(400).json({ message: "Due date cannot be in the past" });
     }
 
@@ -693,7 +704,7 @@ router.post("/schedule", async (req, res) => {
     safeEmitSchedule(populated, "schedule_proposed");
     await ActivityLog.create({
       group: groupId, actor: req.user.id, type: "schedule_proposed",
-      meta: { amount, fromId: req.user.id, toId: toUserId, dueDate },
+      meta: { amount, fromId: req.user.id, toId: toUserId, dueDate: resolvedDueDate },
     });
     res.status(201).json(populated);
   } catch (error) {

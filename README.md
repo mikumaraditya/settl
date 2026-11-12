@@ -599,7 +599,7 @@ All application endpoints are mounted under `/api` and require authenticated HTT
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/settlements/simplify/:id` | Protected | Compute net balances and simplified debt transactions for a group. |
 | `POST` | `/api/settlements/settle` | Protected | Payer records a payment as pending; the receiver must confirm before it clears debt. An accepted schedule can be linked by `scheduleId`. |
-| `POST` | `/api/settlements/schedule` | Protected | Payer proposes an amount and future date; the proposal does not change balances. |
+| `POST` | `/api/settlements/schedule` | Protected | Payer proposes an amount and optional future date; if omitted, Settl defaults the due date to 7 calendar days from today in the payer's timezone. The proposal does not change balances. |
 | `GET` | `/api/settlements/schedules/:groupId` | Protected | Retrieve active payment schedules for a group, including overdue state. |
 | `POST` | `/api/settlements/schedule/:scheduleId/respond` | Protected | Recipient accepts or rejects a proposed repayment date. |
 | `POST` | `/api/settlements/schedule/:scheduleId/cancel` | Protected | Either participant cancels a proposed or accepted schedule. |
@@ -803,7 +803,7 @@ For deployments on Vercel or similar platforms, [`frontend/vercel.json`](fronten
 | **Trust Score Interactive UI** | **Implemented** | Score gauge, trend pill, quick actions, factors, commitments, ledger. |
 | **Redis-Backed Rate Limiting** | Planned | Distributed rate limiting across multiple server instances. |
 | **Multi-Session Mentor Conversations** | Planned | Ability to save, name, and archive separate conversation threads. |
-| **Settlement Due Date Customization** | **Implemented** | Payer proposes a future date, receiver accepts or declines, and linked payment confirmation completes the schedule without changing balances early. |
+| **Settlement Due Date Customization** | **Implemented** | Payer proposes a date or gets a 7-day default; receiver accepts or declines, and linked payment confirmation completes the schedule without changing balances early. |
 
 ### Contributing
 1. Fork the repository and create a feature branch (`git checkout -b feature/amazing-feature`).

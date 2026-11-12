@@ -38,6 +38,13 @@ export default function SettleUp() {
     return `${now.getFullYear()}-${month}-${day}`
   }
   const getLocalTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  const getDefaultScheduleDate = () => {
+    const date = new Date()
+    date.setDate(date.getDate() + 7)
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${date.getFullYear()}-${month}-${day}`
+  }
 
   const fetchData = async () => {
     try {
@@ -76,14 +83,14 @@ export default function SettleUp() {
 
   const handleCreateSchedule = async (e) => {
     e?.preventDefault()
-    if (!scheduleDraft || !scheduleDate) return
+    if (!scheduleDraft) return
     setScheduleSaving(true)
     try {
       await axios.post('/settlements/schedule', {
         groupId: id,
         toUserId: scheduleDraft.toUser._id,
         amount: scheduleDraft.amount,
-        dueDate: scheduleDate,
+        dueDate: scheduleDate || null,
         timeZone: getLocalTimeZone(),
       })
       setScheduleDraft(null)
@@ -790,16 +797,18 @@ export default function SettleUp() {
                 min={getLocalDateOnly()}
                 value={scheduleDate}
                 onChange={(e) => setScheduleDate(e.target.value)}
-                required
                 className="w-full rounded-xl border border-white/10 bg-background px-4 py-3 text-sm font-bold text-white [color-scheme:dark] focus:outline-none focus:border-cyan-500/50"
               />
+              <p className="text-[10px] text-cyan-200/80">
+                Optional. Leave blank to use {new Date(`${getDefaultScheduleDate()}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} (7 days from today).
+              </p>
             </div>
             <p className="text-[10px] leading-relaxed text-on-surface-variant">
               This is a repayment agreement, not a payment confirmation. Your group balance will only change after the receiver confirms the actual payment.
             </p>
             <div className="flex gap-3">
               <button type="button" onClick={() => setScheduleDraft(null)} disabled={scheduleSaving} className="flex-1 py-3 rounded-xl border border-white/10 text-white text-[10px] font-bold uppercase tracking-wider disabled:opacity-40">Cancel</button>
-              <button type="submit" disabled={scheduleSaving || !scheduleDate} className="flex-1 py-3 rounded-xl bg-cyan-500 text-slate-950 text-[10px] font-extrabold uppercase tracking-wider disabled:opacity-40">
+              <button type="submit" disabled={scheduleSaving} className="flex-1 py-3 rounded-xl bg-cyan-500 text-slate-950 text-[10px] font-extrabold uppercase tracking-wider disabled:opacity-40">
                 {scheduleSaving ? 'Sending…' : 'Send proposal'}
               </button>
             </div>

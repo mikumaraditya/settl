@@ -88,7 +88,7 @@ after(async () => {
     ]);
   }
   if (userA?._id) {
-    await User.deleteMany({ _id: { $in: [userA._id, userB._id, userC._id] } });
+    await User.deleteMany({ _id: { $in: [userA._id, userB._id, userC._id, userD._id] } });
   }
   if (mongoose.connection.readyState) await mongoose.disconnect();
 });
@@ -272,4 +272,26 @@ test("scheduled payment completes only after receiver confirms; rejection restor
   assert.equal(snapshot.body.transactions.length, 1);
   assert.equal(snapshot.body.transactions[0].amount, 200);
   assert.equal(snapshot.body.scheduleRequests.length, 0);
+});
+
+test("blank due date defaults to seven calendar days", async () => {
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  const expectedDate = new Date(`${todayUtc}T12:00:00.000Z`);
+  expectedDate.setUTCDate(expectedDate.getUTCDate() + 7);
+  const expectedDueDate = expectedDate.toISOString().slice(0, 10);
+
+  const create = await request(app)
+    .post("/api/settlements/schedule")
+    .set("Authorization", `Bearer ${tokenA}`)
+    .send({
+      groupId,
+      toUserId: userB._id.toString(),
+      amount: 50,
+      dueDate: null,
+      timeZone: "UTC",
+    });
+
+  assert.equal(create.status, 201, JSON.stringify(create.body));
+  assert.equal(create.body.dueDate.slice(0, 10), expectedDueDate);
+  assert.equal(create.body.status, "proposed");
 });
