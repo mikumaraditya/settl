@@ -164,18 +164,27 @@ export const MENTOR_TOOLS_REGISTRY = [
       properties: {},
     },
     handler: async (userId) => {
+      const toolStartedAt = Date.now();
+      const groupQueryStartedAt = Date.now();
       const groups = await Group.find({ "members.user": userId })
         .populate("members.user", "name email")
         .lean();
+      console.info(`[Mentor Perf] getGroupBalances group query: ${Date.now() - groupQueryStartedAt}ms; groups=${groups.length}`);
 
-      if (groups.length === 0) return { currency: "INR", groups: [], message: "No groups found." };
+      if (groups.length === 0) {
+        console.info(`[Mentor Perf] getGroupBalances total: ${Date.now() - toolStartedAt}ms; groups=0`);
+        return { currency: "INR", groups: [], message: "No groups found." };
+      }
 
       const groupIds = groups.map((g) => g._id);
+      const recordsQueryStartedAt = Date.now();
       const [expenses, settlements] = await Promise.all([
         Expense.find({ group: { $in: groupIds } }).populate("paidBy", "name").lean(),
         Settlement.find({ group: { $in: groupIds } }).populate("from to", "name").lean(),
       ]);
+      console.info(`[Mentor Perf] getGroupBalances expense/settlement queries: ${Date.now() - recordsQueryStartedAt}ms; expenses=${expenses.length}; settlements=${settlements.length}`);
 
+      const processingStartedAt = Date.now();
       const results = [];
 
       for (const group of groups.slice(0, 20)) {
@@ -238,6 +247,8 @@ export const MENTOR_TOOLS_REGISTRY = [
         });
       }
 
+      console.info(`[Mentor Perf] getGroupBalances reconciliation processing: ${Date.now() - processingStartedAt}ms; groupsProcessed=${results.length}`);
+      console.info(`[Mentor Perf] getGroupBalances total: ${Date.now() - toolStartedAt}ms`);
       return { currency: "INR", groups: results };
     },
   },

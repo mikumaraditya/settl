@@ -133,6 +133,7 @@ function buildMessageList(systemPrompt, conversationHistory, newContent) {
  * @returns {Promise<{ reply: string, toolsUsed: Array }>}
  */
 export async function runMentorAgent(userId, userMessage, conversationHistory = [], options = {}) {
+  const requestStartedAt = Date.now();
   const { onStatus, signal = null } = options;
   const user = await User.findById(userId).select("name").lean();
   const rawName = user?.name ? user.name.trim() : "Friend";
@@ -165,14 +166,15 @@ export async function runMentorAgent(userId, userMessage, conversationHistory = 
     }
     iterations++;
 
+    const llmStartedAt = Date.now();
     const response = await llmService.chat({
       messages,
       tools: MENTOR_TOOLS_SCHEMA,
       temperature: 0.2,
       signal,
     });
-
     const { content, toolCalls } = response;
+    console.info(`[Mentor Perf] LLM iteration ${iterations}: ${Date.now() - llmStartedAt}ms; toolCalls=${toolCalls?.length || 0}; model=${response.modelUsed || "unknown"}`);
 
     // Check if the model requested function tool calls
     if (toolCalls && toolCalls.length > 0) {
@@ -216,7 +218,9 @@ export async function runMentorAgent(userId, userMessage, conversationHistory = 
         }
 
         try {
+          const toolStartedAt = Date.now();
           const result = await executeMentorTool(fnName, fnArgs, userId);
+          console.info(`[Mentor Perf] Tool ${fnName}: ${Date.now() - toolStartedAt}ms`);
           cachedToolResults.set(signature, result);
           const jsonString = JSON.stringify(result);
 
@@ -233,7 +237,7 @@ export async function runMentorAgent(userId, userMessage, conversationHistory = 
             content: jsonString,
           });
         } catch (toolErr) {
-          console.error(`Tool execution error for ${fnName}:`, toolErr.message);
+          console.error(`[Mentor Perf] Tool ${fnName} failed after execution attempt:`, toolErr.message);
           messages.push({
             role: "tool",
             name: fnName,
@@ -258,6 +262,7 @@ export async function runMentorAgent(userId, userMessage, conversationHistory = 
       cleanReply = "I have analyzed your requested financial information.";
     }
 
+    console.info(`[Mentor Perf] Request completed in ${Date.now() - requestStartedAt}ms; llmIterations=${iterations}; toolsUsed=${toolsUsed.length}`);
     return {
       reply: cleanReply,
       toolsUsed,
@@ -270,12 +275,15 @@ export async function runMentorAgent(userId, userMessage, conversationHistory = 
     content: "Please provide your final answer and summary based on the retrieved information.",
   });
 
+  const finalLlmStartedAt = Date.now();
   const finalResponse = await llmService.chat({
     messages,
     tools: [], // No tools on final summary call
     temperature: 0.2,
     signal,
   });
+  console.info(`[Mentor Perf] Final LLM response: ${Date.now() - finalLlmStartedAt}ms`);
+  console.info(`[Mentor Perf] Request completed in ${Date.now() - requestStartedAt}ms; llmIterations=${iterations}; toolsUsed=${toolsUsed.length}; finalSummary=true`);
 
   return {
     reply: (finalResponse.content || "I have analyzed your financial data.").trim(),
