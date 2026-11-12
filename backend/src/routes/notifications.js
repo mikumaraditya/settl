@@ -2,10 +2,11 @@ import express from "express";
 import mongoose from "mongoose";
 import Notification from "../models/Notification.js";
 import protect from "../middleware/auth.js";
+import requireVerified from "../middleware/requireVerified.js";
 
 const router = express.Router();
 
-router.use(protect);
+router.use(protect, requireVerified);
 
 // Notifications are scoped to the authenticated user. A participant never
 // receives another member's schedule reminders through this endpoint.
@@ -44,7 +45,7 @@ router.patch("/:notificationId/read", async (req, res) => {
     }
 
     const notification = await Notification.findOneAndUpdate(
-      { _id: req.params.notificationId, user: req.user.id },
+      { _id: req.params.notificationId, user: req.user.id, deletedAt: null },
       { $set: { readAt: new Date() } },
       { new: true },
     );
@@ -63,7 +64,7 @@ router.patch("/:notificationId/read", async (req, res) => {
 router.patch("/read-all", async (req, res) => {
   try {
     await Notification.updateMany(
-      { user: req.user.id, readAt: null },
+      { user: req.user.id, readAt: null, deletedAt: null },
       { $set: { readAt: new Date() } },
     );
     res.json({ success: true });
