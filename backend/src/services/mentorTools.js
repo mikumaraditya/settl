@@ -188,14 +188,8 @@ export const MENTOR_TOOLS_REGISTRY = [
       const groups = await Group.find(groupQuery).lean();
       console.info(`[Mentor Perf] getGroupBalances group documents query: ${Date.now() - groupQueryStartedAt}ms; groups=${groups.length}`);
 
-      const memberPopulationStartedAt = Date.now();
-      if (groups.length > 0) {
-        await Group.populate(groups, { path: "members.user", select: "name email" });
-      }
-      const populatedMemberCount = groups.reduce((total, group) => total + (group.members?.length || 0), 0);
-      console.info(`[Mentor Perf] getGroupBalances member population: ${Date.now() - memberPopulationStartedAt}ms; groups=${groups.length}; members=${populatedMemberCount}`);
-
       if (groups.length === 0) {
+        console.info("[Mentor Perf] getGroupBalances member population: 0ms; groups=0; members=0");
         console.info(`[Mentor Perf] getGroupBalances database retrieval total: ${Date.now() - databaseStartedAt}ms`);
         console.info(`[Mentor Perf] getGroupBalances total: ${Date.now() - toolStartedAt}ms; groups=0`);
         return {
