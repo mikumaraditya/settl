@@ -22,7 +22,7 @@ export async function sendMentorMessage(message) {
 export async function streamMentorMessage(message, { signal, onStatus } = {}) {
   const baseURL = axios.defaults.baseURL || "/api";
   const endpoint = new URL(
-    `${baseURL.replace(/\\/$/, "")}/mentor/chat/stream`,
+    `${baseURL.replace(/\/$/, "")}/mentor/chat/stream`,
     window.location.origin
   );
 
@@ -52,13 +52,13 @@ export async function streamMentorMessage(message, { signal, onStatus } = {}) {
   const handleFrame = (frame) => {
     let eventName = "message";
     const dataLines = [];
-    for (const line of frame.split(/\\r?\\n/)) {
+    for (const line of frame.split(/\r?\n/)) {
       if (line.startsWith("event:")) eventName = line.slice(6).trim();
       else if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
     }
     if (!dataLines.length) return;
     let payload;
-    try { payload = JSON.parse(dataLines.join("\\n")); }
+    try { payload = JSON.parse(dataLines.join("\n")); }
     catch { return; }
 
     if (eventName === "status") onStatus?.(payload.message || "Finn is working...");
@@ -74,7 +74,7 @@ export async function streamMentorMessage(message, { signal, onStatus } = {}) {
     while (true) {
       const { value, done } = await reader.read();
       buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-      const frames = buffer.split(/\\r?\\n\\r?\\n/);
+      const frames = buffer.split(/\r?\n\r?\n/);
       buffer = frames.pop() || "";
       for (const frame of frames) handleFrame(frame);
       if (done) break;
