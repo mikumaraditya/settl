@@ -350,6 +350,92 @@ export const MENTOR_TOOLS_REGISTRY = [
     },
   },
   {
+    name: "getExpenseDetails",
+    description: "Get the user's individual Settl shared expenses over recent months, including date, description, category, group, total group expense amount, and the user's own share. Use this when the user asks which transactions make up a spending category or wants date-wise/group-wise details.",
+    parameters: {
+      type: "object",
+      properties: {
+        months: {
+          type: "number",
+          description: "Number of past months to analyze (clamped between 1 and 12, default 3)",
+        },
+        limit: {
+          type: "number",
+          description: "Maximum number of individual expenses to return (clamped between 1 and 50, default 30)",
+        },
+        category: {
+          type: "string",
+          description: "Optional expense category filter, such as food, travel, shopping, rent, groceries, entertainment, fuel, medical, or other",
+          enum: ["food", "travel", "shopping", "rent", "entertainment", "fuel", "groceries", "medical", "other"],
+        },
+      },
+    },
+    handler: async (userId, args = {}) => {
+      const months = Math.min(12, Math.max(1, Math.floor(Number(args.months || 3))));
+      const limit = Math.min(50, Math.max(1, Math.floor(Number(args.limit || 30))));
+      const groups = await Group.find({ "members.user": userId }).select("_id name").lean();
+      const groupIds = groups.map((group) => group._id);
+      if (groupIds.length === 0) {
+        return {
+          currency: "INR",
+          timeframeMonths: months,
+          totalMatchingExpenses: 0,
+          expenses: [],
+          hasMore: false,
+          message: "No group expenses were found for this period.",
+        };
+      }
+
+      const startDate = new Date();
+      startDate.setMonth(startDate.getMonth() - months);
+      const query = {
+        group: { $in: groupIds },
+        createdAt: { $gte: startDate },
+        "splits.user": userId,
+      };
+      if (args.category) query.category = args.category;
+
+      const [expenses, totalMatchingExpenses] = await Promise.all([
+        Expense.find(query)
+          .populate("group", "name")
+          .populate("paidBy", "name")
+          .sort({ createdAt: -1, _id: -1 })
+          .limit(limit + 1)
+          .lean(),
+        Expense.countDocuments(query),
+      ]);
+
+      const hasMore = expenses.length > limit;
+      const visibleExpenses = expenses.slice(0, limit);
+      const items = visibleExpenses.map((expense) => {
+        const split = expense.splits?.find((entry) => entry.user?.toString() === userId.toString());
+        return {
+          date: expense.createdAt,
+          description: { untrustedText: expense.description || "Shared expense" },
+          category: expense.category || "other",
+          groupName: { untrustedText: expense.group?.name || "Group" },
+          totalGroupExpenseAmount: round(expense.amount),
+          yourShare: round(split?.amount || 0),
+          paidByName: { untrustedText: expense.paidBy?.name || "Unknown" },
+          currency: "INR",
+        };
+      });
+
+      return {
+        currency: "INR",
+        timeframeMonths: months,
+        categoryFilter: args.category || null,
+        totalMatchingExpenses,
+        returnedExpenses: items.length,
+        totalYourShareInReturnedItems: round(items.reduce((sum, item) => sum + item.yourShare, 0)),
+        expenses: items,
+        hasMore,
+        nextStep: hasMore ? "Ask the user if they want the next page or a narrower category/date range." : null,
+        dataDefinition: "Only expenses where the user has a recorded split are included. totalGroupExpenseAmount is the full group bill; yourShare is the user's allocated share. This is Settl shared-expense data, not all personal bank spending.",
+      };
+    },
+  },
+  {
     name: "getSpendingTrend",
     description: "Get monthly spending trends and historical totals for the user over the past N months.",
     parameters: {
