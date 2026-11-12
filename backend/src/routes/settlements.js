@@ -97,6 +97,25 @@ router.get("/simplify/:groupId", protect, async (req, res) => {
         .sort({ dueDate: 1 }),
     ]);
 
+    // Deliver a single in-app reminder when a participant opens the group
+    // on the due date or the day before. This is request-driven, not a
+    // background push scheduler; no notifications are emitted for old dates.
+    const today = new Date().toISOString().slice(0, 10);
+    const todayUtc = Date.parse(`${today}T00:00:00.000Z`);
+    await Promise.all(scheduleRequests.map(async (schedule) => {
+      if (schedule.status !== "accepted" || schedule.reminderSentAt) return;
+      const dueDateOnly = schedule.dueDate.toISOString().slice(0, 10);
+      const daysUntilDue = (Date.parse(`${dueDateOnly}T00:00:00.000Z`) - todayUtc) / (24 * 60 * 60 * 1000);
+      if (daysUntilDue < 0 || daysUntilDue > 1) return;
+
+      const reminder = await SettlementSchedule.findOneAndUpdate(
+        { _id: schedule._id, status: "accepted", active: true, reminderSentAt: null },
+        { $set: { reminderSentAt: new Date() } },
+        { new: true },
+      ).populate("from to", "name email upiId");
+      if (reminder) safeEmit(req.params.groupId, "schedule_reminder", reminder);
+    }));
+
     // Separate by status (legacy settlements have no status and should be treated as confirmed)
     const confirmedSettlements  = allSettlements.filter((s) => !s.status || s.status === "confirmed");
     const pendingRequests       = allSettlements.filter((s) => s.status === "pending");
