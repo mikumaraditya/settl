@@ -261,7 +261,7 @@ router.post("/chat", chatLimiter, async (req, res) => {
       });
     }
 
-    return res.status(500).json({
+    return res.status(err.status || 500).json({
       message: err.message || "Failed to process mentor message.",
     });
   } finally {
@@ -346,7 +346,6 @@ router.post("/chat/stream", chatLimiter, async (req, res) => {
       status: err.status || 500,
     });
     if (!res.writableEnded && !res.destroyed) res.end();
-  }
   } finally {
     if (lease?.requestId) {
       await releaseMentorConversation(req.user.id, lease.requestId).catch((releaseError) => {
