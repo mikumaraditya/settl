@@ -12,9 +12,12 @@ import simplifyDebts, { computeBalances } from "../utils/debtSimplify.js";
 import { buildGroupBalanceEvidence } from "../utils/financialReconciliation.js";
 
 const round = (val) => Math.round(Number(val || 0) * 100) / 100;
-const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\\]\\]/g, "\\const round = (val) => Math.round(Number(val || 0) * 100) / 100;
-");
-
+const escapeRegex = (value) => value.split("").map((char) => {
+  const code = char.charCodeAt(0);
+  return [36, 40, 41, 42, 43, 46, 63, 91, 92, 93, 94, 123, 124, 125].includes(code)
+    ? String.fromCharCode(92) + char
+    : char;
+}).join("");
 /**
  * Shared helper to fetch the user's financial profile ONLY when consent is granted.
  * Returns the profile object (lean) if found and consented, or null otherwise.
@@ -178,20 +181,7 @@ export const MENTOR_TOOLS_REGISTRY = [
       }
       const groupQuery = { "members.user": userId };
       if (requestedGroupName) {
-        groupQuery.name = { $regex: `^${escapeRegex(requestedGroupName)}    name: "getGroupBalances",
-    description: "Get detailed balances for the user groups, including exact who-owes-whom breakdowns and member lists. When the user names one group, pass its exact group name to avoid fetching unrelated groups.",
-    parameters: {
-      type: "object",
-      properties: {
-        groupName: {
-          type: "string",
-          description: "Optional exact group name when the user asks about one specific group. Omit for an all-groups balance summary.",
-        },
-      },
-    },
-    handler: async (userId, args = {}) => {
-      const toolStartedAt = Date.now();
-, $options: "i" };
+        groupQuery.name = new RegExp(`^${escapeRegex(requestedGroupName)}$`, "i");
       }
       const groupQueryStartedAt = Date.now();
       const groups = await Group.find(groupQuery)
