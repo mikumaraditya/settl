@@ -353,6 +353,11 @@ router.post("/settle", protect, async (req, res) => {
         await linkedSchedule.save();
       }
     } catch (createError) {
+      // If the settlement row was created but linking the schedule failed,
+      // remove that uncommitted pending row before restoring the agreement.
+      if (settlement?._id) {
+        await Settlement.deleteOne({ _id: settlement._id, status: "pending" });
+      }
       if (linkedSchedule) {
         await SettlementSchedule.updateOne(
           { _id: linkedSchedule._id, status: "payment_pending", paymentSettlement: null },
