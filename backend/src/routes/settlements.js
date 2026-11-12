@@ -77,13 +77,17 @@ router.get("/simplify/:groupId", protect, async (req, res) => {
       return res.status(403).json({ message: "You are not a member of this group" });
     }
 
-    const [expenses, allSettlements] = await Promise.all([
+    const [expenses, allSettlements, scheduleRequests] = await Promise.all([
       Expense.find({ group: req.params.groupId })
         .populate("paidBy", "name email upiId")
         .populate("splits.user", "name email upiId"),
       Settlement.find({ group: req.params.groupId })
         .populate("from", "name email upiId")
         .populate("to",   "name email upiId"),
+      SettlementSchedule.find({ group: req.params.groupId, active: true })
+        .populate("from", "name email upiId")
+        .populate("to", "name email upiId")
+        .sort({ dueDate: 1 }),
     ]);
 
     // Separate by status (legacy settlements have no status and should be treated as confirmed)
@@ -95,6 +99,7 @@ router.get("/simplify/:groupId", protect, async (req, res) => {
         transactions: [],
         confirmedSettlements,
         pendingRequests,
+        scheduleRequests,
       });
     }
 
@@ -143,6 +148,7 @@ router.get("/simplify/:groupId", protect, async (req, res) => {
       transactions,
       confirmedSettlements,
       pendingRequests,
+      scheduleRequests,
     });
   } catch (error) {
     console.error("Error fetching settlements/transactions:", error);
