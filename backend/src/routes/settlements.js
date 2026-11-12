@@ -119,20 +119,25 @@ router.get("/simplify/:groupId", protect, async (req, res) => {
     const today = new Date().toISOString().slice(0, 10);
     const todayUtc = Date.parse(`${today}T00:00:00.000Z`);
     await Promise.all(scheduleRequests.map(async (schedule) => {
-      if (schedule.status !== "accepted" || schedule.reminderSentAt) return;
+      if (schedule.status !== "accepted") return;
+      const isPayer = schedule.from?._id?.toString() === req.user.id;
+      const reminderField = isPayer ? "fromReminderSentAt" : "toReminderSentAt";
+      if (schedule[reminderField]) return;
       const dueDateOnly = schedule.dueDate.toISOString().slice(0, 10);
       const daysUntilDue = (Date.parse(`${dueDateOnly}T00:00:00.000Z`) - todayUtc) / (24 * 60 * 60 * 1000);
       if (daysUntilDue < 0 || daysUntilDue > 1) return;
 
       const reminder = await SettlementSchedule.findOneAndUpdate(
-        { _id: schedule._id, status: "accepted", active: true, reminderSentAt: null },
-        { $set: { reminderSentAt: new Date() } },
+        {
+          _id: schedule._id,
+          status: "accepted",
+          active: true,
+          [reminderField]: null,
+        },
+        { $set: { [reminderField]: new Date() } },
         { new: true },
       ).populate("from to", "name email upiId");
-      if (reminder) {
-        safeEmitUser(reminder.from?._id, "schedule_reminder", reminder);
-        safeEmitUser(reminder.to?._id, "schedule_reminder", reminder);
-      }
+      if (reminder) safeEmitUser(req.user.id, "schedule_reminder", reminder);
     }));
 
     // Separate by status (legacy settlements have no status and should be treated as confirmed)
