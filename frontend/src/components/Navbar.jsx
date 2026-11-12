@@ -177,7 +177,7 @@ export default function Navbar() {
               onClick={() => {
                 markRead(n.id)
                 setBellOpen(false)
-                if (n.groupId) navigate(`/group/${n.groupId}`)
+                if (n.groupId) navigate(n.type === 'settlement_schedule_reminder' ? `/settle/${n.groupId}` : `/group/${n.groupId}`)
               }}
               className="w-full flex items-start gap-3 px-4 py-3.5 text-left hover:bg-white/5 transition-colors cursor-pointer border-b border-white/5 last:border-0 relative"
               style={{ backgroundColor: n.read ? 'transparent' : 'rgba(37,99,235,0.06)' }}
