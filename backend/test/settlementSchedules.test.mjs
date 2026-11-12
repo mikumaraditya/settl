@@ -88,7 +88,7 @@ after(async () => {
     ]);
   }
   if (userA?._id) {
-    await User.deleteMany({ _id: { $in: [userA._id, userB._id, userC._id] } });
+    await User.deleteMany({ _id: { $in: [userA._id, userB._id, userC._id, userD._id] } });
   }
   if (mongoose.connection.readyState) await mongoose.disconnect();
 });
