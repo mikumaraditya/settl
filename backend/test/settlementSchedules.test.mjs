@@ -218,8 +218,10 @@ test("only the receiver can accept; accepted schedule remains separate from paym
   assert.equal(payerNotifications.body.notifications.length, 1);
   assert.equal(receiverNotifications.body.notifications.length, 1);
   assert.equal(otherMemberNotifications.body.notifications.length, 0, "non-participants must not see schedule reminders");
-  assert.equal(payerNotifications.body.notifications[0].reminderStage, undefined);
   assert.equal(payerNotifications.body.notifications[0].type, "settlement_schedule_reminder");
+  const dayBeforeRows = await Notification.find({ schedule: scheduleId }).lean();
+  assert.equal(dayBeforeRows.length, 2);
+  assert.ok(dayBeforeRows.every((item) => item.reminderStage === "day_before"));
 
   const receiverReminderId = receiverNotifications.body.notifications[0].id;
   const unauthorizedRead = await request(app)
@@ -250,6 +252,27 @@ test("only the receiver can accept; accepted schedule remains separate from paym
   assert.equal(receiverNotificationsAfterDue.body.notifications.length, 2);
   assert.equal(
     receiverNotificationsAfterDue.body.notifications.filter((item) => item.type === "settlement_schedule_reminder").length,
+    2,
+  );
+  const allReminderRows = await Notification.find({ schedule: scheduleId }).lean();
+  assert.equal(allReminderRows.length, 4);
+  assert.equal(allReminderRows.filter((item) => item.reminderStage === "day_before").length, 2);
+  assert.equal(allReminderRows.filter((item) => item.reminderStage === "due_today").length, 2);
+
+  const clearReceiverNotifications = await request(app)
+    .delete("/api/notifications")
+    .set("Authorization", `Bearer ${tokenB}`);
+  assert.equal(clearReceiverNotifications.status, 200);
+  const receiverFeedAfterClear = await request(app)
+    .get("/api/notifications")
+    .set("Authorization", `Bearer ${tokenB}`);
+  assert.equal(receiverFeedAfterClear.body.notifications.length, 0);
+  const scanAfterClear = await processSettlementScheduleReminders({
+    now: new Date(`${dueDateOnly}T10:15:00.000Z`),
+  });
+  assert.equal(scanAfterClear, 0, "clearing a notification must not allow the worker to recreate it");
+  assert.equal(
+    await Notification.countDocuments({ schedule: scheduleId, deletedAt: { $ne: null } }),
     2,
   );
 
