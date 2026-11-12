@@ -664,7 +664,8 @@ User ────< Group (members.user)
   │          │
   │          └────< Message (sender)
   │
-  ├────< Notification (user, schedule)\n  ├────< ScoreHistory (user, score, delta, reason)
+  ├────< Notification (user, schedule)
+  ├────< ScoreHistory (user, score, delta, reason)
   ├────< MentorConversation (user, messages)
   └────< UserFinancialProfile (user, goals, consent)
 ```
@@ -678,7 +679,8 @@ User ────< Group (members.user)
 7. **`ScoreHistory`**: Historical ledger of Trust Scores containing `score`, `delta`, `reason`, `eventId`, and `eventType` (`initial_baseline`, `score_adjustment`, `weekly_snapshot`).
 8. **`UserFinancialProfile`**: Consent-gated profile storing `status`, `monthlyIncome`, `monthlySavingsTarget`, `goals` (`name`, `targetAmount`, `deadline`, `savedSoFar`), `riskComfort`, and `consentToUseForMentor`.
 9. **`MentorConversation`**: Chat turns between `user` and `model`, recording `content`, `toolsUsed`, and timestamps.
-10. **`Message`**: Real-time group chat message with `group`, `sender`, and `content`.\n11. **`Notification`**: User-scoped persistent in-app reminder with read/dismissal state, schedule reference, reminder stage, and a unique deduplication key.
+10. **`Message`**: Real-time group chat message with `group`, `sender`, and `content`.
+11. **`Notification`**: User-scoped persistent in-app reminder with read/dismissal state, schedule reference, reminder stage, and a unique deduplication key.
 
 ---
 
@@ -811,7 +813,8 @@ For deployments on Vercel or similar platforms, [`frontend/vercel.json`](fronten
 | **Trust Score Interactive UI** | **Implemented** | Score gauge, trend pill, quick actions, factors, commitments, ledger. |
 | **Redis-Backed Rate Limiting** | Planned | Distributed rate limiting across multiple server instances. |
 | **Multi-Session Mentor Conversations** | Planned | Ability to save, name, and archive separate conversation threads. |
-| **Settlement Due Date Customization** | **Implemented** | Payer proposes a date or gets a 7-day default; receiver accepts or declines, and linked payment confirmation completes the schedule without changing balances early. |\n| **In-App Settlement Reminders** | **Implemented** | Persistent bell notifications for both participants one day before and on the due date; Settle Up shows due tomorrow, due today, and overdue states. |
+| **Settlement Due Date Customization** | **Implemented** | Payer proposes a date or gets a 7-day default; receiver accepts or declines, and linked payment confirmation completes the schedule without changing balances early. |
+| **In-App Settlement Reminders** | **Implemented** | Persistent bell notifications for both participants one day before and on the due date; Settle Up shows due tomorrow, due today, and overdue states. |
 
 ### Contributing
 1. Fork the repository and create a feature branch (`git checkout -b feature/amazing-feature`).
