@@ -53,7 +53,12 @@ async function migrateMentorConversations() {
     }
   }
 
-  const indexes = await collection.indexes();
+  let indexes = [];
+  try {
+    indexes = await collection.indexes();
+  } catch (error) {
+    if (error.code !== 26 && error.codeName !== "NamespaceNotFound") throw error;
+  }
   const existingUserIndex = indexes.find((index) => index.name === "user_1");
   if (existingUserIndex && !existingUserIndex.unique) {
     await collection.dropIndex("user_1");
