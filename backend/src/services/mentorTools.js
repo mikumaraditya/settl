@@ -1164,12 +1164,7 @@ export const MENTOR_TOOLS_DEFINITIONS = MENTOR_TOOLS_SCHEMA;
  * Kept for older route imports and feature parity with the previous API.
  */
 export async function getUserFinancialSummary(userId) {
-  const tool = MENTOR_TOOLS_REGISTRY.find((t) => t.name === "getUserFinancialSummary");
-  if (!tool) {
-    throw new Error('Tool "getUserFinancialSummary" is not registered.');
-  }
-
-  return await tool.handler(userId, {});
+  return await executeMentorTool("getUserFinancialSummary", {}, userId);
 }
 
 /** Validate model-generated arguments before handlers can read private data. */
