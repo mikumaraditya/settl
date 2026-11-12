@@ -23,9 +23,48 @@ export function NotificationProvider({ children }) {
 
   // Persist to localStorage whenever notifications change
   useEffect(() => {
-    const trimmed = notifications.slice(0, 10)
+    const trimmed = notifications.slice(0, 30)
     localStorage.setItem('settl_notifications', JSON.stringify(trimmed))
   }, [notifications])
+
+  // Load server-backed reminders on login and whenever the user returns to the app.
+  // Transient Socket.IO activity remains local; persistent reminders are authoritative on the server.
+  useEffect(() => {
+    if (!user) return undefined
+
+    let disposed = false
+    const loadPersistentNotifications = async () => {
+      try {
+        const { data } = await axios.get('/notifications')
+        if (disposed) return
+        const serverNotifications = data.notifications || []
+        setNotifications(prev => {
+          const transient = prev.filter(notification => !notification.persistent)
+          const merged = [...serverNotifications, ...transient]
+          const unique = new Map()
+          merged.forEach(notification => unique.set(notification.id, notification))
+          return [...unique.values()]
+            .sort((a, b) => b.time - a.time)
+            .slice(0, 30)
+        })
+      } catch {
+        // Keep locally cached activity visible if the API is temporarily unavailable.
+      }
+    }
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') loadPersistentNotifications()
+    }
+
+    loadPersistentNotifications()
+    window.addEventListener('focus', refreshWhenVisible)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      disposed = true
+      window.removeEventListener('focus', refreshWhenVisible)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
+  }, [user])
 
   // Clear on logout
   useEffect(() => {
@@ -147,16 +186,12 @@ export function NotificationProvider({ children }) {
       )
     }
 
-    const onScheduleReminder = (schedule) => {
-      const involved = str(schedule?.from?._id) === myId || str(schedule?.to?._id) === myId
-      if (!involved) return
-      const date = schedule.dueDate ? new Date(schedule.dueDate).toLocaleDateString('en-IN') : 'today'
-      push(
-        'schedule_reminder', 'notifications_active', '#fbbf24',
-        'Payment schedule due soon',
-        `₹${Number(schedule.amount).toLocaleString('en-IN')} is due ${date}. Open Settle Up to record the payment.`,
-        schedule.group
-      )
+    const onNotificationCreated = (notification) => {
+      if (!notification?.id) return
+      setNotifications(prev => {
+        if (prev.some(item => item.id === notification.id)) return prev
+        return [notification, ...prev].slice(0, 30)
+      })
     }
 
     const onScheduleCancelled = (schedule) => {
@@ -213,7 +248,7 @@ export function NotificationProvider({ children }) {
     socket.on('schedule_accepted',             onScheduleAccepted)
     socket.on('schedule_rejected',             onScheduleRejected)
     socket.on('schedule_cancelled',            onScheduleCancelled)
-    socket.on('schedule_reminder',             onScheduleReminder)
+    socket.on('notification_created',          onNotificationCreated)
     socket.on('settlement_disputed',           onSettlementDisputed)
     socket.on('settlement_resolved',           onSettlementResolved)
     socket.on('settlement_evidence_submitted', onEvidenceSubmitted)
@@ -227,7 +262,7 @@ export function NotificationProvider({ children }) {
       socket.off('schedule_accepted',            onScheduleAccepted)
       socket.off('schedule_rejected',            onScheduleRejected)
       socket.off('schedule_cancelled',           onScheduleCancelled)
-      socket.off('schedule_reminder',            onScheduleReminder)
+      socket.off('notification_created',         onNotificationCreated)
       socket.off('settlement_disputed',          onSettlementDisputed)
       socket.off('settlement_resolved',          onSettlementResolved)
       socket.off('settlement_evidence_submitted', onEvidenceSubmitted)
@@ -236,15 +271,23 @@ export function NotificationProvider({ children }) {
 
   const unreadCount = notifications.filter(n => !n.read).length
 
-  const markAllRead = () =>
+  const markAllRead = () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+    axios.patch('/notifications/read-all').catch(() => {})
+  }
 
-  const markRead = (id) =>
+  const markRead = (id) => {
+    const notification = notifications.find(n => n.id === id)
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
+    if (notification?.persistent) {
+      axios.patch(`/notifications/${id}/read`).catch(() => {})
+    }
+  }
 
   const clearAll = () => {
     setNotifications([])
     localStorage.removeItem('settl_notifications')
+    axios.delete('/notifications').catch(() => {})
   }
 
   const joinGroup = (groupId) => {
