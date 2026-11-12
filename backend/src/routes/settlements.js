@@ -656,11 +656,24 @@ router.post("/schedule/:scheduleId/respond", async (req, res) => {
     if (!["accept", "reject"].includes(action)) {
       return res.status(400).json({ message: "Action must be accept or reject" });
     }
+    const proposedSchedule = await SettlementSchedule.findOne({
+      _id: req.params.scheduleId, to: req.user.id, status: "proposed", active: true,
+    });
+    if (!proposedSchedule) {
+      return res.status(404).json({ message: "No proposed payment schedule found for you to respond to" });
+    }
+    const group = await Group.findById(proposedSchedule.group);
+    const bothParticipantsAreMembers = group?.members.some((member) => member.user.toString() === proposedSchedule.from.toString())
+      && group?.members.some((member) => member.user.toString() === proposedSchedule.to.toString());
+    if (!bothParticipantsAreMembers) {
+      return res.status(403).json({ message: "Both participants must remain members of this group" });
+    }
+
     const update = action === "accept"
       ? { $set: { status: "accepted", respondedAt: new Date() } }
       : { $set: { status: "rejected", active: false, respondedAt: new Date(), responseReason: String(reason || "Declined").slice(0, 240) } };
     const schedule = await SettlementSchedule.findOneAndUpdate(
-      { _id: req.params.scheduleId, to: req.user.id, status: "proposed", active: true },
+      { _id: proposedSchedule._id, to: req.user.id, status: "proposed", active: true },
       update,
       { new: true },
     ).populate("from to", "name email upiId");
@@ -683,13 +696,24 @@ router.post("/schedule/:scheduleId/respond", async (req, res) => {
 
 router.post("/schedule/:scheduleId/cancel", async (req, res) => {
   try {
+    const cancellableSchedule = await SettlementSchedule.findOne({
+      _id: req.params.scheduleId,
+      $or: [{ from: req.user.id }, { to: req.user.id }],
+      active: true,
+      status: { $in: ["proposed", "accepted"] },
+    });
+    if (!cancellableSchedule) {
+      return res.status(404).json({ message: "No cancellable payment schedule found" });
+    }
+    const group = await Group.findById(cancellableSchedule.group);
+    const bothParticipantsAreMembers = group?.members.some((member) => member.user.toString() === cancellableSchedule.from.toString())
+      && group?.members.some((member) => member.user.toString() === cancellableSchedule.to.toString());
+    if (!bothParticipantsAreMembers) {
+      return res.status(403).json({ message: "Both participants must remain members of this group" });
+    }
+
     const schedule = await SettlementSchedule.findOneAndUpdate(
-      {
-        _id: req.params.scheduleId,
-        $or: [{ from: req.user.id }, { to: req.user.id }],
-        active: true,
-        status: { $in: ["proposed", "accepted"] },
-      },
+      { _id: cancellableSchedule._id, active: true, status: { $in: ["proposed", "accepted"] } },
       { $set: { status: "cancelled", active: false, respondedAt: new Date() } },
       { new: true },
     ).populate("from to", "name email upiId");
