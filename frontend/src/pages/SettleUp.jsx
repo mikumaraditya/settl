@@ -16,6 +16,10 @@ export default function SettleUp() {
 
   const [transactions, setTransactions]        = useState([])
   const [pendingRequests, setPending]          = useState([])
+  const [schedules, setSchedules] = useState([])
+  const [scheduleDraft, setScheduleDraft] = useState(null)
+  const [scheduleDate, setScheduleDate] = useState('')
+  const [scheduleSaving, setScheduleSaving] = useState(false)
   const [loading, setLoading]                  = useState(true)
   const [actionLoading, setActionLoading]      = useState({})
   const [showPaymentModal, setShowPaymentModal]   = useState(false)
@@ -35,6 +39,7 @@ export default function SettleUp() {
 
       setTransactions(txs)
       setPending(pending)
+      setSchedules(data.scheduleRequests || [])
     } catch (err) {
       console.error(err)
     } finally {
@@ -45,15 +50,68 @@ export default function SettleUp() {
   const setLoading_ = (key, val) =>
     setActionLoading(prev => ({ ...prev, [key]: val }))
 
-  const handleSettle = async (toUser, amount) => {
+  const handleSettle = async (toUser, amount, scheduleId = null) => {
     const key = `settle-${toUser._id}`
     setLoading_(key, true)
     try {
-      await axios.post('/settlements/settle', { groupId: id, toUserId: toUser._id, amount })
+      await axios.post('/settlements/settle', {
+        groupId: id, toUserId: toUser._id, amount,
+        ...(scheduleId ? { scheduleId } : {}),
+      })
       await fetchData()
     } catch (err) {
       alert(err.response?.data?.message || 'Error requesting settlement')
     } finally { setLoading_(key, false) }
+  }
+
+  const handleCreateSchedule = async (e) => {
+    e?.preventDefault()
+    if (!scheduleDraft || !scheduleDate) return
+    setScheduleSaving(true)
+    try {
+      await axios.post('/settlements/schedule', {
+        groupId: id,
+        toUserId: scheduleDraft.toUser._id,
+        amount: scheduleDraft.amount,
+        dueDate: scheduleDate,
+      })
+      setScheduleDraft(null)
+      setScheduleDate('')
+      await fetchData()
+    } catch (err) {
+      alert(err.response?.data?.message || 'Error proposing payment schedule')
+    } finally {
+      setScheduleSaving(false)
+    }
+  }
+
+  const handleScheduleResponse = async (schedule, action) => {
+    const key = `schedule-${action}-${schedule._id}`
+    setLoading_(key, true)
+    try {
+      await axios.post(`/settlements/schedule/${schedule._id}/respond`, { action })
+      await fetchData()
+    } catch (err) {
+      alert(err.response?.data?.message || 'Unable to update payment schedule')
+    } finally { setLoading_(key, false) }
+  }
+
+  const handleScheduleCancel = async (schedule) => {
+    const key = `schedule-cancel-${schedule._id}`
+    setLoading_(key, true)
+    try {
+      await axios.post(`/settlements/schedule/${schedule._id}/cancel`)
+      await fetchData()
+    } catch (err) {
+      alert(err.response?.data?.message || 'Unable to cancel payment schedule')
+    } finally { setLoading_(key, false) }
+  }
+
+  const formatScheduleDate = (schedule) => {
+    const date = schedule.dueDateOnly || new Date(schedule.dueDate).toISOString().slice(0, 10)
+    return new Date(`${date}T12:00:00`).toLocaleDateString('en-IN', {
+      day: 'numeric', month: 'short', year: 'numeric',
+    })
   }
 
   const handleConfirm = async (fromUser) => {
@@ -106,6 +164,10 @@ export default function SettleUp() {
     socket.on('settlement_requested',          refresh)
     socket.on('settlement_done',               refresh)
     socket.on('settlement_undone',             refresh)
+    socket.on('schedule_proposed',             refresh)
+    socket.on('schedule_accepted',             refresh)
+    socket.on('schedule_rejected',             refresh)
+    socket.on('schedule_cancelled',            refresh)
     socket.on('expense_added',                 refresh)
     socket.on('expense_deleted',               refresh)
     return () => {
@@ -113,6 +175,10 @@ export default function SettleUp() {
       socket.off('settlement_requested',          refresh)
       socket.off('settlement_done',               refresh)
       socket.off('settlement_undone',             refresh)
+      socket.off('schedule_proposed',             refresh)
+      socket.off('schedule_accepted',             refresh)
+      socket.off('schedule_rejected',             refresh)
+      socket.off('schedule_cancelled',            refresh)
       socket.off('expense_added',                 refresh)
       socket.off('expense_deleted',               refresh)
       socket.disconnect()
