@@ -693,7 +693,7 @@ router.post("/schedule", async (req, res) => {
     safeEmitSchedule(populated, "schedule_proposed");
     await ActivityLog.create({
       group: groupId, actor: req.user.id, type: "schedule_proposed",
-      meta: { amount, toId: toUserId, dueDate },
+      meta: { amount, fromId: req.user.id, toId: toUserId, dueDate },
     });
     res.status(201).json(populated);
   } catch (error) {
@@ -740,7 +740,7 @@ router.post("/schedule/:scheduleId/respond", async (req, res) => {
     await ActivityLog.create({
       group: schedule.group, actor: req.user.id,
       type: action === "accept" ? "schedule_accepted" : "schedule_rejected",
-      meta: { amount: schedule.amount, fromId: schedule.from?._id, toId: schedule.to?._id, dueDate: schedule.dueDate.toISOString().slice(0, 10) },
+      meta: { amount: schedule.amount, fromId: schedule.from?._id?.toString(), toId: schedule.to?._id?.toString(), dueDate: schedule.dueDate.toISOString().slice(0, 10) },
     });
     res.json(schedule);
   } catch (error) {
@@ -777,7 +777,7 @@ router.post("/schedule/:scheduleId/cancel", async (req, res) => {
     safeEmitSchedule(schedule, "schedule_cancelled");
     await ActivityLog.create({
       group: schedule.group, actor: req.user.id, type: "schedule_cancelled",
-      meta: { amount: schedule.amount, fromId: schedule.from?._id, toId: schedule.to?._id },
+      meta: { amount: schedule.amount, fromId: schedule.from?._id?.toString(), toId: schedule.to?._id?.toString() },
     });
     res.json(schedule);
   } catch (error) {
@@ -801,13 +801,35 @@ router.get('/group/:groupId/activity', protect, async (req, res) => {
     const isMember = group.members.some(m => m.user.toString() === req.user.id);
     if (!isMember) return res.status(403).json({ message: 'Not a member of this group' });
 
+    const scheduleActivityTypes = [
+      "schedule_proposed",
+      "schedule_accepted",
+      "schedule_rejected",
+      "schedule_cancelled",
+      "schedule_completed",
+    ];
+    const activityVisibilityQuery = {
+      group: groupId,
+      $or: [
+        { type: { $nin: scheduleActivityTypes } },
+        {
+          type: { $in: scheduleActivityTypes },
+          $or: [
+            { actor: req.user.id },
+            { "meta.fromId": req.user.id },
+            { "meta.toId": req.user.id },
+          ],
+        },
+      ],
+    };
+
     const [logs, total] = await Promise.all([
-      ActivityLog.find({ group: groupId })
+      ActivityLog.find(activityVisibilityQuery)
         .populate('actor', 'name email')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit),
-      ActivityLog.countDocuments({ group: groupId }),
+      ActivityLog.countDocuments(activityVisibilityQuery),
     ]);
 
     res.json({ logs, total, hasMore: skip + limit < total });
