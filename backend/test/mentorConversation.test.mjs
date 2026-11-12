@@ -34,7 +34,7 @@ describe("Mentor conversation request coordination", () => {
 
   it("allows only one active request per user and atomically stores a completed turn", async () => {
     const lease = await acquireMentorConversation(user._id.toString());
-    assert.deepEqual(lease.conversation.messages, []);
+    assert.equal(lease.conversation.messages.length, 0);
 
     await assert.rejects(
       () => acquireMentorConversation(user._id.toString()),
