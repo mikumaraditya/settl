@@ -9,6 +9,7 @@ dotenv.config();
 import app from "../src/app.js";
 import User from "../src/models/User.js";
 import UserFinancialProfile from "../src/models/UserFinancialProfile.js";
+import MentorConversation from "../src/models/MentorConversation.js";
 import llmService from "../src/services/llmService.js";
 import { MENTOR_NAME } from "../src/constants/mentor.js";
 
@@ -47,6 +48,7 @@ describe("Mentor Routes Supertest Suite", () => {
   after(async () => {
     if (testUser) {
       await UserFinancialProfile.deleteMany({ user: testUser._id });
+      await MentorConversation.deleteMany({ user: testUser._id });
       await User.deleteMany({ _id: testUser._id });
     }
     await mongoose.disconnect();
