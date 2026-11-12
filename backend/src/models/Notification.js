@@ -34,6 +34,7 @@ const notificationSchema = new mongoose.Schema(
     },
     dedupeKey: { type: String, required: true },
     readAt: { type: Date, default: null },
+    deletedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
