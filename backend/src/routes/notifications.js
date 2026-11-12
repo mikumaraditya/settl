@@ -11,7 +11,7 @@ router.use(protect);
 // receives another member's schedule reminders through this endpoint.
 router.get("/", async (req, res) => {
   try {
-    const notifications = await Notification.find({ user: req.user.id })
+    const notifications = await Notification.find({ user: req.user.id, deletedAt: null })
       .sort({ createdAt: -1 })
       .limit(30)
       .lean();
@@ -75,7 +75,10 @@ router.patch("/read-all", async (req, res) => {
 
 router.delete("/", async (req, res) => {
   try {
-    await Notification.deleteMany({ user: req.user.id });
+    await Notification.updateMany(
+      { user: req.user.id, deletedAt: null },
+      { $set: { deletedAt: new Date(), readAt: new Date() } },
+    );
     res.json({ success: true });
   } catch (error) {
     console.error("Error clearing notifications:", error);
