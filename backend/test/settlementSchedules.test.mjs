@@ -103,6 +103,11 @@ test("payer can propose a date without changing the group's debt", async () => {
   assert.equal(create.body.amount, 300);
   scheduleId = create.body._id;
 
+  const privateScheduleList = await request(app)
+    .get(`/api/settlements/schedules/${groupId}`)
+    .set("Authorization", `Bearer ${tokenC}`);
+  assert.equal(privateScheduleList.status, 403, "non-members cannot read schedules");
+
   const snapshot = await request(app)
     .get(`/api/settlements/simplify/${groupId}`)
     .set("Authorization", `Bearer ${tokenA}`);
@@ -147,12 +152,27 @@ test("only the receiver can accept; accepted schedule remains separate from paym
     });
   assert.equal(duplicate.status, 409);
 
+  // Opening Settle Up on the due date or the day before emits one in-app reminder.
+  const reminderDueDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  await SettlementSchedule.updateOne(
+    { _id: scheduleId },
+    { $set: { dueDate: new Date(`${reminderDueDate}T12:00:00.000Z`), reminderSentAt: null } },
+  );
   const snapshot = await request(app)
     .get(`/api/settlements/simplify/${groupId}`)
     .set("Authorization", `Bearer ${tokenB}`);
   assert.equal(snapshot.body.transactions[0].amount, 500);
   assert.equal(snapshot.body.pendingRequests.length, 0);
   assert.equal(snapshot.body.scheduleRequests[0].status, "accepted");
+
+  const reminderMarked = await SettlementSchedule.findById(scheduleId).lean();
+  assert.ok(reminderMarked.reminderSentAt, "the first Settle Up visit should mark a due reminder");
+  const firstReminderAt = reminderMarked.reminderSentAt.getTime();
+  await request(app)
+    .get(`/api/settlements/simplify/${groupId}`)
+    .set("Authorization", `Bearer ${tokenB}`);
+  const reminderAfterRefresh = await SettlementSchedule.findById(scheduleId).lean();
+  assert.equal(reminderAfterRefresh.reminderSentAt.getTime(), firstReminderAt, "refresh must not issue a second reminder");
 });
 
 test("scheduled payment completes only after receiver confirms; rejection restores accepted schedule", async () => {
