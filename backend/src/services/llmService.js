@@ -1,6 +1,16 @@
 import { MENTOR_NAME } from "../constants/mentor.js";
 
 const DEFAULT_MODEL = "gemini-3.1-flash-lite";
+const DEFAULT_GEMINI_REQUEST_TIMEOUT_MS = 12000;
+
+export function getGeminiRequestTimeoutMs(timeoutMs = null) {
+  const configuredTimeout = timeoutMs ?? process.env.GEMINI_REQUEST_TIMEOUT_MS;
+  const parsedTimeout = Number(configuredTimeout);
+
+  return Number.isFinite(parsedTimeout) && parsedTimeout > 0
+    ? Math.floor(parsedTimeout)
+    : DEFAULT_GEMINI_REQUEST_TIMEOUT_MS;
+}
 
 export const CANDIDATE_MODELS = [
   process.env.GEMINI_MODEL || DEFAULT_MODEL,
@@ -37,9 +47,10 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 /**
  * Send chat request to Gemini REST API with native tool calling support
  */
-export async function chat({ messages = [], tools = [], temperature = 0.2, thinkingLevel = null, thinkingBudget = null, signal = null }) {
+export async function chat({ messages = [], tools = [], temperature = 0.2, thinkingLevel = null, thinkingBudget = null, signal = null, requestTimeoutMs = null }) {
   const apiKey = process.env.GEMINI_API_KEY;
   const model = process.env.GEMINI_MODEL || DEFAULT_MODEL;
+  const effectiveRequestTimeoutMs = getGeminiRequestTimeoutMs(requestTimeoutMs);
 
   if (!apiKey) {
     console.warn("⚠️ Startup Warning: GEMINI_API_KEY is missing or invalid in backend environment variables.");
@@ -173,7 +184,24 @@ export async function chat({ messages = [], tools = [], temperature = 0.2, think
     while (attempt <= MAX_RETRIES) {
       attempt++;
       const callStartTime = Date.now();
-      console.log(`[Gemini Request] Model: ${activeModel} | Attempt ${attempt}/${MAX_RETRIES}...`);
+      const requestController = new AbortController();
+      let didTimeout = false;
+      const abortForCaller = () => requestController.abort(signal?.reason);
+      if (signal?.aborted) {
+        abortForCaller();
+      } else {
+        signal?.addEventListener("abort", abortForCaller, { once: true });
+      }
+      const timeoutTimer = setTimeout(() => {
+        didTimeout = true;
+        requestController.abort(new Error(`Gemini request timed out after ${effectiveRequestTimeoutMs}ms.`));
+      }, effectiveRequestTimeoutMs);
+      const cleanupRequestTimeout = () => {
+        clearTimeout(timeoutTimer);
+        signal?.removeEventListener("abort", abortForCaller);
+      };
+
+      console.log(`[Gemini Request] Model: ${activeModel} | Attempt ${attempt}/${MAX_RETRIES} | Timeout: ${effectiveRequestTimeoutMs}ms`);
 
       try {
         const response = await fetch(url, {
@@ -183,13 +211,12 @@ export async function chat({ messages = [], tools = [], temperature = 0.2, think
             "x-goog-api-key": apiKey,
           },
           body: JSON.stringify(requestBody),
-          signal: signal || undefined,
+          signal: requestController.signal,
         });
-
-        const callDurationMs = Date.now() - callStartTime;
 
         if (!response.ok) {
           const errBody = await response.text();
+          const callDurationMs = Date.now() - callStartTime;
           const isRetryable = response.status === 429 || response.status === 503 || errBody.includes("RESOURCE_EXHAUSTED") || errBody.includes("UNAVAILABLE");
           const isKeyError = response.status === 401 || response.status === 403 || errBody.includes("API_KEY_INVALID");
 
@@ -205,6 +232,7 @@ export async function chat({ messages = [], tools = [], temperature = 0.2, think
           if (isRetryable && attempt <= MAX_RETRIES) {
             const backoffMs = attempt * 1200 + Math.floor(Math.random() * 400);
             console.warn(`Gemini temporary error (HTTP ${response.status}). Retrying in ${backoffMs}ms... (Attempt ${attempt}/${MAX_RETRIES})`);
+            cleanupRequestTimeout();
             await delay(backoffMs);
             continue;
           }
@@ -229,6 +257,7 @@ export async function chat({ messages = [], tools = [], temperature = 0.2, think
         }
 
         const json = await response.json();
+        const callDurationMs = Date.now() - callStartTime;
         const candidate = json?.candidates?.[0];
 
         if (!candidate) {
@@ -271,9 +300,30 @@ export async function chat({ messages = [], tools = [], temperature = 0.2, think
         };
       } catch (err) {
         lastError = err;
-        if (signal?.aborted || err?.name === "AbortError") throw err;
+
+        // An explicit user cancellation always wins over the internal timeout.
+        if (signal?.aborted || (!didTimeout && err?.name === "AbortError")) throw err;
         if (err.code === "MENTOR_KEY_INVALID") throw err;
         if (err.status && err.isRetryable === false) throw err;
+
+        if (didTimeout) {
+          const timeoutError = new Error(`Gemini request timed out after ${effectiveRequestTimeoutMs}ms for model ${activeModel}.`);
+          timeoutError.status = 503;
+          timeoutError.code = "GEMINI_REQUEST_TIMEOUT";
+          timeoutError.isRetryable = true;
+          lastError = timeoutError;
+
+          if (mIdx < candidateModels.length - 1) {
+            console.warn(`[Gemini Timeout] Model: ${activeModel} | Timeout: ${effectiveRequestTimeoutMs}ms | Falling back to ${candidateModels[mIdx + 1]}.`);
+            break;
+          }
+
+          const busyError = new Error(`${MENTOR_NAME} is taking longer than expected. Please try again shortly.`);
+          busyError.status = 503;
+          busyError.code = "MENTOR_BUSY";
+          throw busyError;
+        }
+
         if (attempt > MAX_RETRIES) {
           if (mIdx < candidateModels.length - 1) {
             console.warn(`Attempt failed for ${activeModel}. Falling back to next model...`);
@@ -281,6 +331,8 @@ export async function chat({ messages = [], tools = [], temperature = 0.2, think
           }
           throw err;
         }
+      } finally {
+        cleanupRequestTimeout();
       }
     }
   }
