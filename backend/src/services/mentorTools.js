@@ -45,6 +45,7 @@ export const PRIVATE_SETTL_TOOLS = new Set([
   "getGroupBalances",
   "getPendingSettlements",
   "getExpenseBreakdown",
+  "getExpenseDetails",
   "getSpendingTrend",
   "getTrustScoreDetails",
   "getTrustScoreHistory",
