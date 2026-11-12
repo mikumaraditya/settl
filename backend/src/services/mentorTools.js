@@ -1179,15 +1179,9 @@ function validateMentorToolArgs(tool, args) {
       throw new Error("Invalid arguments for " + tool.name + ": unexpected parameter " + key + ".");
     }
   }
-  const requiredKeys = new Set(tool.parameters?.required || []);
   for (const [key, value] of Object.entries(args)) {
     const definition = properties[key] || {};
-    if (value === null || value === undefined) {
-      if (requiredKeys.has(key)) {
-        throw new Error("Invalid arguments for " + tool.name + ": " + key + " is required.");
-      }
-      continue;
-    }
+    if (value === null || value === undefined) continue;
     const expected = definition.type;
     const valid = expected === "number" ? typeof value === "number" && Number.isFinite(value) :
       expected === "integer" ? Number.isInteger(value) :
@@ -1200,11 +1194,6 @@ function validateMentorToolArgs(tool, args) {
     }
     if (Array.isArray(definition.enum) && !definition.enum.includes(value)) {
       throw new Error("Invalid arguments for " + tool.name + ": " + key + " is not an allowed value.");
-    }
-  }
-  for (const key of requiredKeys) {
-    if (args[key] === undefined || args[key] === null) {
-      throw new Error("Invalid arguments for " + tool.name + ": " + key + " is required.");
     }
   }
 }
