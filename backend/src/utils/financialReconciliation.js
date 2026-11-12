@@ -57,7 +57,8 @@ export function buildGroupBalanceEvidence({ group, expenses = [], settlements = 
       category: expense.category || "other",
       fullGroupBill: round(expense.amount),
       splitTotal: toRupees(totalSplitPaise),
-      paidBy: members.get(toId(expense.paidBy)) || expense.paidBy?.name || "Unknown",
+      paidBy: isPayer ? "You" : (members.get(toId(expense.paidBy)) || expense.paidBy?.name || "Unknown"),
+      paidByUser: isPayer,
       yourShare: mySplit ? round(mySplit.amount) : 0,
       yourBalanceImpact: toRupees(impactPaise),
       currency: "INR",
@@ -103,10 +104,7 @@ export function buildGroupBalanceEvidence({ group, expenses = [], settlements = 
     userNetBalance: toRupees(userBalancePaise),
     balanceDirection: userBalancePaise > 0 ? "owes_you" : userBalancePaise < 0 ? "you_owe" : "settled",
     simplifiedDebts: userSimplifiedDebts,
-    expenseEvidence: expenseEvidence.map((item) => ({
-      ...item,
-      paidByUser: item.paidBy === "You",
-    })),
+    expenseEvidence,
     settlementEvidence,
     reconciliation: {
       computedBalance: toRupees(userBalancePaise),
