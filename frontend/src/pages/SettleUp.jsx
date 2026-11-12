@@ -31,9 +31,19 @@ export default function SettleUp() {
 
   const socketRef = useRef(null)
 
+  const getLocalDateOnly = () => {
+    const now = new Date()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const day = String(now.getDate()).padStart(2, '0')
+    return `${now.getFullYear()}-${month}-${day}`
+  }
+  const getLocalTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+
   const fetchData = async () => {
     try {
-      const { data } = await axios.get(`/settlements/simplify/${id}`)
+      const { data } = await axios.get(`/settlements/simplify/${id}`, {
+        params: { timeZone: getLocalTimeZone() },
+      })
       const txs = data.transactions || []
       const pending = data.pendingRequests || []
 
@@ -74,6 +84,7 @@ export default function SettleUp() {
         toUserId: scheduleDraft.toUser._id,
         amount: scheduleDraft.amount,
         dueDate: scheduleDate,
+        timeZone: getLocalTimeZone(),
       })
       setScheduleDraft(null)
       setScheduleDate('')
@@ -402,9 +413,9 @@ export default function SettleUp() {
                           ? 'Payment sent'
                           : schedule.status
                     const dueStatus = schedule.dueStatus || (
-                      (schedule.dueDateOnly || new Date(schedule.dueDate).toISOString().slice(0, 10)) < new Date().toISOString().slice(0, 10)
+                      (schedule.dueDateOnly || new Date(schedule.dueDate).toISOString().slice(0, 10)) < getLocalDateOnly()
                         ? 'overdue'
-                        : (schedule.dueDateOnly || new Date(schedule.dueDate).toISOString().slice(0, 10)) === new Date().toISOString().slice(0, 10)
+                        : (schedule.dueDateOnly || new Date(schedule.dueDate).toISOString().slice(0, 10)) === getLocalDateOnly()
                           ? 'due_today'
                           : 'upcoming'
                     )
@@ -776,7 +787,7 @@ export default function SettleUp() {
               <input
                 id="schedule-due-date"
                 type="date"
-                min={new Date().toISOString().slice(0, 10)}
+                min={getLocalDateOnly()}
                 value={scheduleDate}
                 onChange={(e) => setScheduleDate(e.target.value)}
                 required
