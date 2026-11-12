@@ -161,7 +161,7 @@ router.get("/simplify/:groupId", protect, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.post("/settle", protect, async (req, res) => {
   try {
-    const { groupId, toUserId } = req.body;
+    const { groupId, toUserId, scheduleId } = req.body;
     await autoExpirePendingSettlements(groupId);
 
     const amount = Math.round(Number(req.body.amount) * 100) / 100;
@@ -233,15 +233,70 @@ router.post("/settle", protect, async (req, res) => {
       });
     }
 
-    const defaultDueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    const settlement = await Settlement.create({
+    const activeSchedule = await SettlementSchedule.findOne({
       group: groupId,
       from: req.user.id,
       to: toUserId,
-      amount,
-      status: "pending",
-      dueDate: defaultDueDate,
+      active: true,
     });
+    if (activeSchedule && activeSchedule.status === "proposed") {
+      return res.status(409).json({
+        message: "This payment schedule is awaiting the receiver's response. Cancel it before making an immediate payment.",
+      });
+    }
+    if (activeSchedule && activeSchedule.status === "accepted" && !scheduleId) {
+      return res.status(409).json({
+        message: "Use the accepted payment schedule to record this payment.",
+      });
+    }
+    if (activeSchedule && scheduleId && activeSchedule._id.toString() !== String(scheduleId)) {
+      return res.status(409).json({ message: "The active payment schedule does not match this payment." });
+    }
+
+    let linkedSchedule = null;
+    if (scheduleId) {
+      if (!activeSchedule || activeSchedule._id.toString() !== String(scheduleId) || activeSchedule.status !== "accepted") {
+        return res.status(409).json({ message: "This payment schedule is not available for payment." });
+      }
+      if (Math.round(activeSchedule.amount * 100) !== amountInPaise) {
+        return res.status(400).json({
+          message: "Payment amount must exactly match the accepted schedule amount. Update or cancel the schedule first.",
+        });
+      }
+      linkedSchedule = await SettlementSchedule.findOneAndUpdate(
+        { _id: scheduleId, group: groupId, from: req.user.id, to: toUserId, status: "accepted", active: true },
+        { $set: { status: "payment_pending" } },
+        { new: true },
+      );
+      if (!linkedSchedule) {
+        return res.status(409).json({ message: "This payment schedule has already been used or changed." });
+      }
+    }
+
+    const defaultDueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    let settlement;
+    try {
+      settlement = await Settlement.create({
+        group: groupId,
+        from: req.user.id,
+        to: toUserId,
+        amount,
+        status: "pending",
+        dueDate: defaultDueDate,
+      });
+      if (linkedSchedule) {
+        linkedSchedule.paymentSettlement = settlement._id;
+        await linkedSchedule.save();
+      }
+    } catch (createError) {
+      if (linkedSchedule) {
+        await SettlementSchedule.updateOne(
+          { _id: linkedSchedule._id, status: "payment_pending", paymentSettlement: null },
+          { $set: { status: "accepted" } },
+        );
+      }
+      throw createError;
+    }
 
     const populated = await Settlement.findById(settlement._id)
       .populate("from", "name email upiId")
@@ -298,6 +353,20 @@ router.post("/confirm", protect, async (req, res) => {
       return res.status(400).json({ message: "Both users must still be members of this group" });
     }
 
+    const linkedSchedule = await SettlementSchedule.findOneAndUpdate(
+      { paymentSettlement: settlement._id, status: "payment_pending", active: true },
+      { $set: { status: "completed", active: false, completedAt: new Date() } },
+      { new: true },
+    );
+    if (linkedSchedule) {
+      await ActivityLog.create({
+        group: linkedSchedule.group,
+        actor: req.user.id,
+        type: "schedule_completed",
+        meta: { amount: linkedSchedule.amount, fromId: fromUserId, toId: req.user.id },
+      });
+    }
+
     const populated = await Settlement.findById(settlement._id)
       .populate("from", "name email upiId")
       .populate("to", "name email upiId");
@@ -346,6 +415,11 @@ const handlePayerCancel = async (req, res) => {
 
     settlement.status = "cancelled";
     await settlement.save();
+
+    await SettlementSchedule.updateOne(
+      { paymentSettlement: settlement._id, status: "payment_pending", active: true },
+      { $set: { status: "accepted", paymentSettlement: null } },
+    );
 
     // Log activity
     await ActivityLog.create({
@@ -398,6 +472,11 @@ router.post("/reject", protect, async (req, res) => {
     settlement.status = "rejected";
     settlement.rejectionReason = reason || "Payment not received or amount mismatch";
     await settlement.save();
+
+    await SettlementSchedule.updateOne(
+      { paymentSettlement: settlement._id, status: "payment_pending", active: true },
+      { $set: { status: "accepted", paymentSettlement: null } },
+    );
 
     // Notify group
     safeEmit(groupId, "settlement_undone", {
