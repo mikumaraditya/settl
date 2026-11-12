@@ -129,7 +129,7 @@ graph TD
             DebtEngine["Greedy Debt Simplification (debtSimplify.js)"]
             ScoringEngine["Trust Score Engine (financialMentor.js)"]
             KnowledgeEngine["Keyword Knowledge Retrieval (knowledgeService.js)"]
-            ToolRegistry["16 Mentor Tools (mentorTools.js)"]
+            ToolRegistry["17 Mentor Tools (mentorTools.js)"]
         end
 
         subgraph AgentLayer["Finn AI Agent (Orchestration & Advice Only)"]
@@ -280,9 +280,9 @@ Finn is Settl's built-in conversational AI financial mentor. It combines multi-t
 3. **Tool Calling Loop**: Gemini evaluates the query against declared tool schemas. Server-side argument validation, explicit consent checks, authenticated `userId` scoping, and duplicate-call caching run before private tools execute.
 4. **Synthesis & Citation**: Gemini synthesizes the guidance, citing authoritative regulatory sources (RBI, SEBI, AMFI, DICGC) and outputting markdown with deterministic figures.
 
-### Verified Tool Registry (16 Tools)
+### Verified Tool Registry (17 Tools)
 
-All 16 tools are defined in [`backend/src/services/mentorTools.js`](backend/src/services/mentorTools.js). Parameter names and required constraints match the implementation:
+All 17 tools are defined in [`backend/src/services/mentorTools.js`](backend/src/services/mentorTools.js). Parameter names and required constraints match the implementation:
 
 | Category | Tool Name | Parameters | Description |
 | :--- | :--- | :--- | :--- |
@@ -290,6 +290,7 @@ All 16 tools are defined in [`backend/src/services/mentorTools.js`](backend/src/
 | **Settl Data** | `getGroupBalances` | None | Detailed balances across all user groups with member lists, simplified debts, and pending requests. |
 | **Settl Data** | `getPendingSettlements` | None | Pending settlements requiring confirmation by the user or awaiting confirmation from others. |
 | **Settl Data** | `getExpenseBreakdown` | `months` (optional): 1 to 12, default 3 | Categorical spending breakdown (food, rent, groceries, shopping, etc.) with amounts and percentage shares. |
+| **Settl Data** | `getExpenseDetails` | `months` (optional): 1 to 12, default 3; `limit` (optional): 1 to 50, default 30; `category` (optional): supported expense category | Individual shared expenses with date, description, category, group, full group bill, and the authenticated user’s allocated share. Requires mentoring consent. |
 | **Settl Data** | `getSpendingTrend` | `months` (optional): 1 to 12, default 6 | Monthly spending trends (up to 12 months) showing group share spending, upfront payments, and expense counts. |
 | **Settl Data** | `getTrustScoreDetails` | None | Trust Score (0–100), score band, promptness hours, on-time rate, dispute count, and 4 dimension sub-scores. |
 | **Settl Data** | `getTrustScoreHistory` | None | Historical Trust Score snapshots from `ScoreHistory` (up to 20 entries) with score and timestamp. |
