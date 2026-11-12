@@ -67,6 +67,11 @@ test("getGroupBalances filters to the named group without exposing non-member gr
     assert.equal(namedGroup.groups.length, 1, "A named-group request should return only the matching membership");
     assert.equal(namedGroup.groups[0].groupName.untrustedText, "Goa [Trip]");
     assert.equal(namedGroup.groups[0].userNetBalance, 50);
+    assert.equal(namedGroup.groups[0].members.length, 2, "Member references should remain populated");
+    assert.ok(
+      namedGroup.groups[0].members.some((member) => member.untrustedText === friend.name),
+      "Populated member names should remain available to the balance explanation",
+    );
     assert.equal(namedGroup.groups[0].balanceEvidence.reconciliation.matches, true);
 
     const missingGroup = await executeMentorTool(
