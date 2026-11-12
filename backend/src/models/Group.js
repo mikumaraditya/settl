@@ -37,4 +37,7 @@ const groupSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+// Supports the frequent membership filter used by group lists and Finn tools.
+groupSchema.index({ "members.user": 1 });
+
 export default mongoose.model("Group", groupSchema);
