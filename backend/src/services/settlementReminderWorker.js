@@ -27,7 +27,7 @@ const emitCreated = (userId, notification) => {
       groupId: notification.group.toString(),
       scheduleId: notification.schedule.toString(),
       read: false,
-      time: notification.createdAt.getTime(),
+      time: new Date(notification.createdAt || Date.now()).getTime(),
       persistent: true,
     });
   } catch {
