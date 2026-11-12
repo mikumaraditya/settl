@@ -11,6 +11,13 @@ import Expense from "../src/models/Expense.js";
 import { executeMentorTool, MENTOR_TOOLS_REGISTRY } from "../src/services/mentorTools.js";
 import { getTestDbConfig } from "./testDbHelper.mjs";
 
+test("Group schema indexes member lookups", () => {
+  const hasMembershipIndex = Group.schema.indexes().some(
+    ([keys]) => keys["members.user"] === 1,
+  );
+  assert.equal(hasMembershipIndex, true, "Group membership queries should have a members.user index");
+});
+
 test("getGroupBalances filters to the named group without exposing non-member groups", async () => {
   const { testUri } = getTestDbConfig();
   await mongoose.connect(testUri);
