@@ -50,6 +50,10 @@ const settlementScheduleSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    reminderSentAt: {
+      type: Date,
+      default: null,
+    },
     paymentSettlement: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Settlement",
