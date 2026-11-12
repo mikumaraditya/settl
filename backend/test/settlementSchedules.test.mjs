@@ -166,13 +166,24 @@ test("only the receiver can accept; accepted schedule remains separate from paym
   assert.equal(snapshot.body.scheduleRequests[0].status, "accepted");
 
   const reminderMarked = await SettlementSchedule.findById(scheduleId).lean();
-  assert.ok(reminderMarked.reminderSentAt, "the first Settle Up visit should mark a due reminder");
-  const firstReminderAt = reminderMarked.reminderSentAt.getTime();
+  assert.ok(reminderMarked.toReminderSentAt, "receiver should receive a reminder when they open Settle Up");
+  assert.equal(reminderMarked.fromReminderSentAt, null, "the payer's reminder must remain available until they open Settle Up");
+
   await request(app)
     .get(`/api/settlements/simplify/${groupId}`)
     .set("Authorization", `Bearer ${tokenB}`);
-  const reminderAfterRefresh = await SettlementSchedule.findById(scheduleId).lean();
-  assert.equal(reminderAfterRefresh.reminderSentAt.getTime(), firstReminderAt, "refresh must not issue a second reminder");
+  const reminderAfterReceiverRefresh = await SettlementSchedule.findById(scheduleId).lean();
+  assert.equal(
+    reminderAfterReceiverRefresh.toReminderSentAt.getTime(),
+    reminderMarked.toReminderSentAt.getTime(),
+    "receiver refresh must not issue a second reminder",
+  );
+
+  await request(app)
+    .get(`/api/settlements/simplify/${groupId}`)
+    .set("Authorization", `Bearer ${tokenA}`);
+  const reminderAfterPayerOpen = await SettlementSchedule.findById(scheduleId).lean();
+  assert.ok(reminderAfterPayerOpen.fromReminderSentAt, "payer should receive their own reminder when they open Settle Up");
 });
 
 test("scheduled payment completes only after receiver confirms; rejection restores accepted schedule", async () => {
