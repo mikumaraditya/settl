@@ -219,6 +219,15 @@ test("only the receiver can accept; accepted schedule remains separate from paym
   assert.equal(receiverNotifications.body.notifications.length, 1);
   assert.equal(otherMemberNotifications.body.notifications.length, 0, "non-participants must not see schedule reminders");
   assert.equal(payerNotifications.body.notifications[0].type, "settlement_schedule_reminder");
+  const markAllPayerRead = await request(app)
+    .patch("/api/notifications/read-all")
+    .set("Authorization", `Bearer ${tokenA}`);
+  assert.equal(markAllPayerRead.status, 200);
+  assert.equal(
+    await Notification.countDocuments({ user: userA._id, readAt: null }),
+    0,
+    "mark-all-read must persist for the current user",
+  );
   const dayBeforeRows = await Notification.find({ schedule: scheduleId }).lean();
   assert.equal(dayBeforeRows.length, 2);
   assert.ok(dayBeforeRows.every((item) => item.reminderStage === "day_before"));
