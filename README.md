@@ -595,8 +595,12 @@ All application endpoints are mounted under `/api` and require authenticated HTT
 | Method | Endpoint | Access | Description |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/settlements/simplify/:id` | Protected | Compute net balances and simplified debt transactions for a group. |
-| `POST` | `/api/settlements/settle` | Protected | Payer requests a settlement (`pending`), setting a 7-day default due date. |
-| `POST` | `/api/settlements/confirm` | Protected | Receiver confirms payment receipt (`confirmed`), clearing the debt. |
+| `POST` | `/api/settlements/settle` | Protected | Payer records a payment as pending; the receiver must confirm before it clears debt. An accepted schedule can be linked by `scheduleId`. |
+| `POST` | `/api/settlements/schedule` | Protected | Payer proposes an amount and future date; the proposal does not change balances. |
+| `GET` | `/api/settlements/schedules/:groupId` | Protected | Retrieve active payment schedules for a group, including overdue state. |
+| `POST` | `/api/settlements/schedule/:scheduleId/respond` | Protected | Recipient accepts or rejects a proposed repayment date. |
+| `POST` | `/api/settlements/schedule/:scheduleId/cancel` | Protected | Either participant cancels a proposed or accepted schedule. |
+| `POST` | `/api/settlements/confirm` | Protected | Receiver confirms payment receipt (`confirmed`), clearing the debt and completing any linked schedule. |
 | `POST` | `/api/settlements/reject` | Protected | Receiver rejects unreceived payment (`rejected`), recording the reason. |
 | `DELETE`| `/api/settlements/settle` | Protected | Payer cancels their pending settlement request (`cancelled`). |
 | `POST` | `/api/settlements/cancel` | Protected | Alternate endpoint for payer cancellation. |
@@ -653,11 +657,12 @@ User ────< Group (members.user)
 2. **`Group`**: Shared workspace with `name`, `currency`, and an array of `members` storing `user` reference, `role` (`admin` or `member`), and `joinedAt`.
 3. **`Expense`**: Shared cost containing `amount`, `category`, `paidBy`, and `splits` array (`user`, `amount`, `paid`). `splitType` is constrained to `equal`, `exact`, or `percentage`.
 4. **`Settlement`**: Peer transaction between `from` and `to` members. `status` lifecycle transitions through `pending`, `confirmed`, `cancelled`, `expired`, and `rejected`. Stores `dueDate` and `rejectionReason`.
-5. **`ActivityLog`**: Immutable audit record tracking `type` (`member_added`, `expense_created`, `expense_deleted`, `settlement_requested`, `settlement_confirmed`, `settlement_rejected`, `settlement_cancelled`) with metadata.
-6. **`ScoreHistory`**: Historical ledger of Trust Scores containing `score`, `delta`, `reason`, `eventId`, and `eventType` (`initial_baseline`, `score_adjustment`, `weekly_snapshot`).
-7. **`UserFinancialProfile`**: Consent-gated profile storing `status`, `monthlyIncome`, `monthlySavingsTarget`, `goals` (`name`, `targetAmount`, `deadline`, `savedSoFar`), `riskComfort`, and `consentToUseForMentor`.
-8. **`MentorConversation`**: Chat turns between `user` and `model`, recording `content`, `toolsUsed`, and timestamps.
-9. **`Message`**: Real-time group chat message with `group`, `sender`, and `content`.
+5. **`SettlementSchedule`**: Separate future-repayment agreement with payer, receiver, amount, agreed due date, response state, and optional linked payment. Only payment confirmation completes a schedule; a proposal or acceptance never changes group balances.
+6. **`ActivityLog`**: Immutable audit record tracking expense, settlement, and schedule lifecycle events (`schedule_proposed`, `schedule_accepted`, `schedule_rejected`, `schedule_cancelled`, `schedule_completed`) with metadata.
+7. **`ScoreHistory`**: Historical ledger of Trust Scores containing `score`, `delta`, `reason`, `eventId`, and `eventType` (`initial_baseline`, `score_adjustment`, `weekly_snapshot`).
+8. **`UserFinancialProfile`**: Consent-gated profile storing `status`, `monthlyIncome`, `monthlySavingsTarget`, `goals` (`name`, `targetAmount`, `deadline`, `savedSoFar`), `riskComfort`, and `consentToUseForMentor`.
+9. **`MentorConversation`**: Chat turns between `user` and `model`, recording `content`, `toolsUsed`, and timestamps.
+10. **`Message`**: Real-time group chat message with `group`, `sender`, and `content`.
 
 ---
 
@@ -789,7 +794,7 @@ For deployments on Vercel or similar platforms, [`frontend/vercel.json`](fronten
 | **Trust Score Interactive UI** | **Implemented** | Score gauge, trend pill, quick actions, factors, commitments, ledger. |
 | **Redis-Backed Rate Limiting** | Planned | Distributed rate limiting across multiple server instances. |
 | **Multi-Session Mentor Conversations** | Planned | Ability to save, name, and archive separate conversation threads. |
-| **Settlement Due Date Customization** | Planned | Allowing payers and creditors to agree on custom settlement dates. |
+| **Settlement Due Date Customization** | **Implemented** | Payer proposes a future date, receiver accepts or declines, and linked payment confirmation completes the schedule without changing balances early. |
 
 ### Contributing
 1. Fork the repository and create a feature branch (`git checkout -b feature/amazing-feature`).
