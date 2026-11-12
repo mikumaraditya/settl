@@ -22,6 +22,20 @@ const safeEmitSchedule = (schedule, event) => {
   safeEmitUser(fromId, event, schedule);
   safeEmitUser(toId, event, schedule);
 };
+const getDateInTimeZone = (timeZone) => {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: typeof timeZone === "string" && timeZone.length <= 64 ? timeZone : "UTC",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(new Date());
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+};
 import { clearInsightCaches } from './insights.js';
 
 const router = express.Router();
@@ -116,7 +130,7 @@ router.get("/simplify/:groupId", protect, async (req, res) => {
     // Deliver a single in-app reminder when a participant opens the group
     // on the due date or the day before. This is request-driven, not a
     // background push scheduler; no notifications are emitted for old dates.
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getDateInTimeZone(req.query.timeZone);
     const todayUtc = Date.parse(`${today}T00:00:00.000Z`);
     await Promise.all(scheduleRequests.map(async (schedule) => {
       if (schedule.status !== "accepted") return;
@@ -577,7 +591,7 @@ router.get("/schedules/:groupId", async (req, res) => {
       .populate("to", "name email upiId")
       .sort({ dueDate: 1, createdAt: -1 });
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getDateInTimeZone(req.query.timeZone);
     res.json({
       schedules: schedules.map((schedule) => {
         const dueDateOnly = schedule.dueDate.toISOString().slice(0, 10);
@@ -611,7 +625,7 @@ router.post("/schedule", async (req, res) => {
     if (Number.isNaN(parsedDueDate.getTime()) || parsedDueDate.toISOString().slice(0, 10) !== dueDate) {
       return res.status(400).json({ message: "Please provide a valid calendar date" });
     }
-    if (dueDate < new Date().toISOString().slice(0, 10)) {
+    if (dueDate < getDateInTimeZone(req.body.timeZone)) {
       return res.status(400).json({ message: "Due date cannot be in the past" });
     }
 
