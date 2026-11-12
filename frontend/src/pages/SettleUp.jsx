@@ -380,6 +380,119 @@ export default function SettleUp() {
               </div>
             )}
 
+            {/* ── Payment Schedules ───────────────────────────────────────────── */}
+            {schedules.length > 0 && (
+              <section className="animate-in fade-in duration-300">
+                <p className="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest mb-4 px-1 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-cyan-400 text-[16px]">event</span>
+                  Payment Schedules
+                  <span className="px-2 py-0.5 rounded-full text-[9px] bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-bold">
+                    {schedules.length}
+                  </span>
+                </p>
+                <div className="space-y-3">
+                  {schedules.map((schedule) => {
+                    const iAmPayer = schedule.from?._id === user._id
+                    const iAmReceiver = schedule.to?._id === user._id
+                    const statusLabel = schedule.status === 'proposed'
+                      ? 'Awaiting approval'
+                      : schedule.status === 'accepted'
+                        ? 'Agreed'
+                        : schedule.status === 'payment_pending'
+                          ? 'Payment sent'
+                          : schedule.status
+                    const dueStatus = schedule.dueStatus || (
+                      (schedule.dueDateOnly || new Date(schedule.dueDate).toISOString().slice(0, 10)) < new Date().toISOString().slice(0, 10)
+                        ? 'overdue'
+                        : (schedule.dueDateOnly || new Date(schedule.dueDate).toISOString().slice(0, 10)) === new Date().toISOString().slice(0, 10)
+                          ? 'due_today'
+                          : 'upcoming'
+                    )
+                    return (
+                      <div key={schedule._id} className="glass-card rounded-2xl border border-cyan-500/15 p-5 flex flex-col gap-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-white">
+                              {iAmPayer ? 'You plan to pay' : iAmReceiver ? 'Payment expected from' : schedule.from?.name}
+                              {' '}
+                              <span className="text-cyan-300">{iAmPayer ? schedule.to?.name : iAmReceiver ? schedule.from?.name : schedule.to?.name}</span>
+                            </p>
+                            <p className="text-[10px] text-on-surface-variant mt-1">
+                              {iAmPayer ? 'Your proposed repayment' : iAmReceiver ? 'Repayment proposal' : 'Repayment schedule'}
+                            </p>
+                          </div>
+                          <span className="shrink-0 text-[9px] font-extrabold uppercase tracking-wide px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-300">
+                            {statusLabel}
+                          </span>
+                        </div>
+
+                        <div className="flex items-end justify-between gap-3 bg-white/[0.02] rounded-xl p-3">
+                          <div>
+                            <p className="text-[9px] uppercase tracking-widest text-on-surface-variant font-bold">Scheduled amount</p>
+                            <p className="text-xl font-black text-white">₹{schedule.amount?.toLocaleString('en-IN')}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[9px] uppercase tracking-widest text-on-surface-variant font-bold">Due date</p>
+                            <p className={`text-sm font-bold mt-1 ${dueStatus === 'overdue' ? 'text-rose-400' : dueStatus === 'due_today' ? 'text-amber-300' : 'text-cyan-200'}`}>
+                              {formatScheduleDate(schedule)}
+                            </p>
+                            {schedule.status === 'accepted' && dueStatus !== 'upcoming' && (
+                              <p className={`text-[9px] uppercase tracking-wider font-bold mt-0.5 ${dueStatus === 'overdue' ? 'text-rose-400' : 'text-amber-300'}`}>
+                                {dueStatus === 'overdue' ? 'Overdue' : 'Due today'}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {schedule.status === 'proposed' && iAmPayer && (
+                          <p className="text-[11px] text-amber-300/90 font-medium">
+                            Waiting for {schedule.to?.name} to agree to this date. You can still cancel the proposal.
+                          </p>
+                        )}
+                        {schedule.status === 'proposed' && iAmReceiver && (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleScheduleResponse(schedule, 'accept')}
+                              disabled={actionLoading[`schedule-accept-${schedule._id}`] || actionLoading[`schedule-reject-${schedule._id}`]}
+                              className="flex-1 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[10px] font-extrabold uppercase tracking-wider disabled:opacity-40"
+                            >
+                              {actionLoading[`schedule-accept-${schedule._id}`] ? 'Accepting…' : 'Accept date'}
+                            </button>
+                            <button
+                              onClick={() => handleScheduleResponse(schedule, 'reject')}
+                              disabled={actionLoading[`schedule-accept-${schedule._id}`] || actionLoading[`schedule-reject-${schedule._id}`]}
+                              className="flex-1 py-2.5 rounded-xl bg-rose-500/5 border border-rose-500/15 text-rose-300 text-[10px] font-extrabold uppercase tracking-wider disabled:opacity-40"
+                            >
+                              {actionLoading[`schedule-reject-${schedule._id}`] ? 'Declining…' : 'Decline'}
+                            </button>
+                          </div>
+                        )}
+                        {schedule.status === 'payment_pending' && (
+                          <p className="text-[11px] text-amber-300/90 font-medium">
+                            Payment has been marked as sent. The schedule will complete after {schedule.to?.name} confirms receipt.
+                          </p>
+                        )}
+                        {schedule.status === 'accepted' && (
+                          <p className="text-[11px] text-emerald-300/90 font-medium">
+                            Both sides agreed to this repayment date. The outstanding balance remains unchanged until payment is confirmed.
+                          </p>
+                        )}
+                        {schedule.status !== 'payment_pending' && (
+                          <button
+                            onClick={() => handleScheduleCancel(schedule)}
+                            disabled={actionLoading[`schedule-cancel-${schedule._id}`]}
+                            className="self-end text-[10px] font-bold uppercase tracking-wider text-on-surface-variant hover:text-rose-300 disabled:opacity-40"
+                          >
+                            {actionLoading[`schedule-cancel-${schedule._id}`] ? 'Cancelling…' : 'Cancel schedule'}
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+            )}
+
             {/* ── Pending Payments ──────────────────────────────────────────── */}
             {transactions.length > 0 && (
               <div className="animate-in fade-in duration-300">
@@ -390,6 +503,9 @@ export default function SettleUp() {
                   {transactions.map((t, index) => {
                     const isMe       = t.from?._id === user._id
                     const pendingReq = getPendingRequest(t.from?._id, t.to?._id)
+                    const activeSchedule = schedules.find(s => s.from?._id === t.from?._id && s.to?._id === t.to?._id)
+                    const waitingForScheduleApproval = isMe && activeSchedule?.status === 'proposed'
+                    const acceptedSchedule = isMe && activeSchedule?.status === 'accepted' ? activeSchedule : null
                     const settleKey  = `settle-${t.to?._id}`
                     return (
                       <div key={index} className="glass-card border border-white/5 rounded-3xl p-6 shadow-md hover:border-white/10 transition-all flex flex-col gap-4 relative overflow-hidden">
@@ -461,7 +577,7 @@ export default function SettleUp() {
                                 min="0.01"
                                 max={t.amount}
                                 step="any"
-                                value={settleAmounts[t.to?._id] !== undefined ? settleAmounts[t.to?._id] : t.amount}
+                                value={settleAmounts[t.to?._id] !== undefined ? settleAmounts[t.to?._id] : (acceptedSchedule?.amount ?? t.amount)}
                                 onChange={(e) => {
                                   let val = e.target.value;
                                   if (val !== '') {
@@ -475,6 +591,12 @@ export default function SettleUp() {
                                 placeholder={`Enter amount up to ₹${t.amount}`}
                               />
                             </div>
+                            {waitingForScheduleApproval && (
+                              <p className="text-[10px] text-amber-300 font-semibold">A payment-date proposal is awaiting approval. Cancel it before sending an immediate payment.</p>
+                            )}
+                            {acceptedSchedule && Number(settleAmounts[t.to?._id] !== undefined && settleAmounts[t.to?._id] !== '' ? settleAmounts[t.to?._id] : acceptedSchedule.amount) !== acceptedSchedule.amount && (
+                              <p className="text-[10px] text-amber-300 font-semibold">This agreed schedule is for ₹{acceptedSchedule.amount.toLocaleString('en-IN')}. Match the amount or cancel the schedule first.</p>
+                            )}
                             {settleAmounts[t.to?._id] !== undefined && settleAmounts[t.to?._id] !== '' && parseFloat(settleAmounts[t.to?._id]) < t.amount && (
                               <p className="text-[10px] text-amber-400 font-semibold flex items-center gap-1 mt-0.5 animate-in fade-in duration-200">
                                 <span className="material-symbols-outlined text-[14px]">info</span>
@@ -486,6 +608,24 @@ export default function SettleUp() {
 
                         {isMe ? (
                           <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                            <button
+                              onClick={() => {
+                                const selectedAmount = settleAmounts[t.to?._id] !== undefined && settleAmounts[t.to?._id] !== ''
+                                  ? Number(settleAmounts[t.to?._id])
+                                  : (acceptedSchedule?.amount ?? t.amount)
+                                if (!Number.isFinite(selectedAmount) || selectedAmount <= 0) {
+                                  alert('Please enter a positive amount to schedule')
+                                  return
+                                }
+                                setScheduleDraft({ toUser: t.to, amount: selectedAmount })
+                                setScheduleDate(acceptedSchedule?.dueDateOnly || '')
+                              }}
+                              disabled={!!pendingReq || !!activeSchedule || actionLoading[settleKey]}
+                              className="flex-1 py-3 px-4 rounded-2xl flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-wider border border-cyan-500/20 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/15 disabled:opacity-40"
+                            >
+                              <span className="material-symbols-outlined text-[16px]">event</span>
+                              Schedule Payment
+                            </button>
                             {t.to?.upiId && (
                               <button
                                 onClick={() => {
@@ -496,10 +636,14 @@ export default function SettleUp() {
                                     alert('Please enter a positive amount to settle');
                                     return;
                                   }
-                                  setActiveTransaction({ ...t, amount: customAmt });
+                                  if (acceptedSchedule && customAmt !== acceptedSchedule.amount) {
+                                    alert(`The accepted schedule is for ₹${acceptedSchedule.amount.toLocaleString('en-IN')}. Match the agreed amount or cancel the schedule first.`);
+                                    return;
+                                  }
+                                  setActiveTransaction({ ...t, amount: customAmt, scheduleId: acceptedSchedule?._id || null });
                                   setShowPaymentModal(true);
                                 }}
-                                disabled={actionLoading[settleKey] || !!pendingReq}
+                                disabled={actionLoading[settleKey] || !!pendingReq || waitingForScheduleApproval || (acceptedSchedule && Number(settleAmounts[t.to?._id] !== undefined && settleAmounts[t.to?._id] !== '' ? settleAmounts[t.to?._id] : acceptedSchedule.amount) !== acceptedSchedule.amount)}
                                 className="flex-1 py-3 px-4 rounded-2xl flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-wider shadow-md bg-blue-500 text-white border border-blue-500/20 hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
                               >
                                 <span className="material-symbols-outlined text-[16px]">bolt</span>
@@ -515,7 +659,7 @@ export default function SettleUp() {
                                   alert('Please enter a positive amount to settle');
                                   return;
                                 }
-                                handleSettle(t.to, customAmt);
+                                handleSettle(t.to, customAmt, acceptedSchedule?._id || null);
                               }}
                               disabled={actionLoading[settleKey] || !!pendingReq}
                               className={`py-3 px-4 rounded-2xl flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-wider border active:scale-95 transition-all cursor-pointer disabled:opacity-50 ${
