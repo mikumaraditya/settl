@@ -10,6 +10,18 @@ import requireVerified from '../middleware/requireVerified.js';
 import simplifyDebts from '../utils/debtSimplify.js';
 import { getIO } from '../socket.js';
 const safeEmit = (room, event, payload) => { try { getIO()?.to(room)?.emit(event, payload); } catch { /* ignore */ } };
+const safeEmitUser = (userId, event, payload) => {
+  try { if (userId) getIO()?.to(`user:${userId}`)?.emit(event, payload); } catch { /* ignore */ }
+};
+const safeEmitSchedule = (schedule, event) => {
+  if (!schedule) return;
+  const groupId = schedule.group?._id?.toString?.() || schedule.group?.toString?.();
+  const fromId = schedule.from?._id?.toString?.() || schedule.from?.toString?.();
+  const toId = schedule.to?._id?.toString?.() || schedule.to?.toString?.();
+  if (groupId) safeEmit(groupId, event, { group: groupId, scheduleId: schedule._id?.toString?.() });
+  safeEmitUser(fromId, event, schedule);
+  safeEmitUser(toId, event, schedule);
+};
 import { clearInsightCaches } from './insights.js';
 
 const router = express.Router();
@@ -91,7 +103,11 @@ router.get("/simplify/:groupId", protect, async (req, res) => {
       Settlement.find({ group: req.params.groupId })
         .populate("from", "name email upiId")
         .populate("to",   "name email upiId"),
-      SettlementSchedule.find({ group: req.params.groupId, active: true })
+      SettlementSchedule.find({
+        group: req.params.groupId,
+        active: true,
+        $or: [{ from: req.user.id }, { to: req.user.id }],
+      })
         .populate("from", "name email upiId")
         .populate("to", "name email upiId")
         .sort({ dueDate: 1 }),
@@ -113,7 +129,10 @@ router.get("/simplify/:groupId", protect, async (req, res) => {
         { $set: { reminderSentAt: new Date() } },
         { new: true },
       ).populate("from to", "name email upiId");
-      if (reminder) safeEmit(req.params.groupId, "schedule_reminder", reminder);
+      if (reminder) {
+        safeEmitUser(reminder.from?._id, "schedule_reminder", reminder);
+        safeEmitUser(reminder.to?._id, "schedule_reminder", reminder);
+      }
     }));
 
     // Separate by status (legacy settlements have no status and should be treated as confirmed)
@@ -544,7 +563,11 @@ router.get("/schedules/:groupId", async (req, res) => {
     const isMember = group.members.some((member) => member.user?.toString() === req.user.id);
     if (!isMember) return res.status(403).json({ message: "You are not a member of this group" });
 
-    const schedules = await SettlementSchedule.find({ group: req.params.groupId, active: true })
+    const schedules = await SettlementSchedule.find({
+      group: req.params.groupId,
+      active: true,
+      $or: [{ from: req.user.id }, { to: req.user.id }],
+    })
       .populate("from", "name email upiId")
       .populate("to", "name email upiId")
       .sort({ dueDate: 1, createdAt: -1 });
@@ -635,7 +658,7 @@ router.post("/schedule", async (req, res) => {
       .populate("from", "name email upiId")
       .populate("to", "name email upiId");
 
-    safeEmit(groupId, "schedule_proposed", populated);
+    safeEmitSchedule(populated, "schedule_proposed");
     await ActivityLog.create({
       group: groupId, actor: req.user.id, type: "schedule_proposed",
       meta: { amount, toId: toUserId, dueDate },
@@ -681,7 +704,7 @@ router.post("/schedule/:scheduleId/respond", async (req, res) => {
       return res.status(404).json({ message: "No proposed payment schedule found for you to respond to" });
     }
 
-    safeEmit(schedule.group.toString(), action === "accept" ? "schedule_accepted" : "schedule_rejected", schedule);
+    safeEmitSchedule(schedule, action === "accept" ? "schedule_accepted" : "schedule_rejected");
     await ActivityLog.create({
       group: schedule.group, actor: req.user.id,
       type: action === "accept" ? "schedule_accepted" : "schedule_rejected",
@@ -719,7 +742,7 @@ router.post("/schedule/:scheduleId/cancel", async (req, res) => {
     ).populate("from to", "name email upiId");
     if (!schedule) return res.status(404).json({ message: "No cancellable payment schedule found" });
 
-    safeEmit(schedule.group.toString(), "schedule_cancelled", schedule);
+    safeEmitSchedule(schedule, "schedule_cancelled");
     await ActivityLog.create({
       group: schedule.group, actor: req.user.id, type: "schedule_cancelled",
       meta: { amount: schedule.amount, fromId: schedule.from?._id, toId: schedule.to?._id },
