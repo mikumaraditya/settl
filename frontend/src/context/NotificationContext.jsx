@@ -147,6 +147,18 @@ export function NotificationProvider({ children }) {
       )
     }
 
+    const onScheduleReminder = (schedule) => {
+      const involved = str(schedule?.from?._id) === myId || str(schedule?.to?._id) === myId
+      if (!involved) return
+      const date = schedule.dueDate ? new Date(schedule.dueDate).toLocaleDateString('en-IN') : 'today'
+      push(
+        'schedule_reminder', 'notifications_active', '#fbbf24',
+        'Payment schedule due soon',
+        `₹${Number(schedule.amount).toLocaleString('en-IN')} is due ${date}. Open Settle Up to record the payment.`,
+        schedule.group
+      )
+    }
+
     const onScheduleCancelled = (schedule) => {
       const involved = str(schedule?.from?._id) === myId || str(schedule?.to?._id) === myId
       if (!involved) return
@@ -201,6 +213,7 @@ export function NotificationProvider({ children }) {
     socket.on('schedule_accepted',             onScheduleAccepted)
     socket.on('schedule_rejected',             onScheduleRejected)
     socket.on('schedule_cancelled',            onScheduleCancelled)
+    socket.on('schedule_reminder',             onScheduleReminder)
     socket.on('settlement_disputed',           onSettlementDisputed)
     socket.on('settlement_resolved',           onSettlementResolved)
     socket.on('settlement_evidence_submitted', onEvidenceSubmitted)
@@ -214,6 +227,7 @@ export function NotificationProvider({ children }) {
       socket.off('schedule_accepted',            onScheduleAccepted)
       socket.off('schedule_rejected',            onScheduleRejected)
       socket.off('schedule_cancelled',           onScheduleCancelled)
+      socket.off('schedule_reminder',            onScheduleReminder)
       socket.off('settlement_disputed',          onSettlementDisputed)
       socket.off('settlement_resolved',          onSettlementResolved)
       socket.off('settlement_evidence_submitted', onEvidenceSubmitted)
