@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import assert from "node:assert/strict";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -251,6 +252,27 @@ async function runSlice1ToolTests() {
     } else {
       console.error("❌ FAIL: Budget split failed!");
     }
+  }
+
+  // 7. Central argument validation and profile consent enforcement
+  console.log("\n[TEST 7] Tool argument validation and profile consent");
+  {
+    await assert.rejects(
+      () => executeMentorTool("calculateBudgetSplit", { monthlyIncome: "20000" }, userId),
+      /monthlyIncome must be a valid number/
+    );
+    await assert.rejects(
+      () => executeMentorTool("calculateBudgetSplit", { monthlyIncome: 20000, extra: true }, userId),
+      /unexpected parameter extra/
+    );
+
+    await UserFinancialProfile.updateOne({ user: userId }, { consentToUseForMentor: false });
+    const denied = await executeMentorTool("getGoalProgress", {}, userId);
+    if (denied.consentGranted !== false) {
+      throw new Error("getGoalProgress returned profile data without consent.");
+    }
+    await UserFinancialProfile.updateOne({ user: userId }, { consentToUseForMentor: true });
+    console.log("PASS: Invalid arguments rejected and goal progress requires consent.");
   }
 
   // Cleanup
