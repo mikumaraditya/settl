@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "test": "node --test test/mentorRoutes.test.mjs test/mentorConversation.test.mjs && node test/mentorToolsSlice1.test.mjs && node test/settlementsRoutes.test.mjs && node test/settlementsValidation.test.mjs && node test/docsInSync.test.mjs && node test/trustScore2.test.mjs",
     "test:live": "node test/mentorPersonalization.test.mjs",
-    "check": "npm run lint && npm run test"
+    "check": "npm run lint && npm run test",
+    "migrate:mentor-conversations": "node scripts/migrateMentorConversations.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
