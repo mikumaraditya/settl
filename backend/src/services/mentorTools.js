@@ -183,13 +183,20 @@ export const MENTOR_TOOLS_REGISTRY = [
       if (requestedGroupName) {
         groupQuery.name = new RegExp(`^${escapeRegex(requestedGroupName)}$`, "i");
       }
+      const databaseStartedAt = Date.now();
       const groupQueryStartedAt = Date.now();
-      const groups = await Group.find(groupQuery)
-        .populate("members.user", "name email")
-        .lean();
-      console.info(`[Mentor Perf] getGroupBalances group query: ${Date.now() - groupQueryStartedAt}ms; groups=${groups.length}`);
+      const groups = await Group.find(groupQuery).lean();
+      console.info(`[Mentor Perf] getGroupBalances group documents query: ${Date.now() - groupQueryStartedAt}ms; groups=${groups.length}`);
+
+      const memberPopulationStartedAt = Date.now();
+      if (groups.length > 0) {
+        await Group.populate(groups, { path: "members.user", select: "name email" });
+      }
+      const populatedMemberCount = groups.reduce((total, group) => total + (group.members?.length || 0), 0);
+      console.info(`[Mentor Perf] getGroupBalances member population: ${Date.now() - memberPopulationStartedAt}ms; groups=${groups.length}; members=${populatedMemberCount}`);
 
       if (groups.length === 0) {
+        console.info(`[Mentor Perf] getGroupBalances database retrieval total: ${Date.now() - databaseStartedAt}ms`);
         console.info(`[Mentor Perf] getGroupBalances total: ${Date.now() - toolStartedAt}ms; groups=0`);
         return {
           currency: "INR",
@@ -202,11 +209,29 @@ export const MENTOR_TOOLS_REGISTRY = [
 
       const groupIds = groups.map((g) => g._id);
       const recordsQueryStartedAt = Date.now();
-      const [expenses, settlements] = await Promise.all([
-        Expense.find({ group: { $in: groupIds } }).populate("paidBy", "name").lean(),
-        Settlement.find({ group: { $in: groupIds } }).populate("from to", "name").lean(),
-      ]);
-      console.info(`[Mentor Perf] getGroupBalances expense/settlement queries: ${Date.now() - recordsQueryStartedAt}ms; expenses=${expenses.length}; settlements=${settlements.length}`);
+      const expenseQueryStartedAt = Date.now();
+      const expensePromise = Expense.find({ group: { $in: groupIds } })
+        .populate("paidBy", "name")
+        .lean()
+        .exec()
+        .then((records) => {
+          console.info(`[Mentor Perf] getGroupBalances expense query: ${Date.now() - expenseQueryStartedAt}ms; expenses=${records.length}`);
+          return records;
+        });
+
+      const settlementQueryStartedAt = Date.now();
+      const settlementPromise = Settlement.find({ group: { $in: groupIds } })
+        .populate("from to", "name")
+        .lean()
+        .exec()
+        .then((records) => {
+          console.info(`[Mentor Perf] getGroupBalances settlement query: ${Date.now() - settlementQueryStartedAt}ms; settlements=${records.length}`);
+          return records;
+        });
+
+      const [expenses, settlements] = await Promise.all([expensePromise, settlementPromise]);
+      console.info(`[Mentor Perf] getGroupBalances expense/settlement queries wall time: ${Date.now() - recordsQueryStartedAt}ms`);
+      console.info(`[Mentor Perf] getGroupBalances database retrieval total: ${Date.now() - databaseStartedAt}ms`);
 
       const processingStartedAt = Date.now();
       const results = [];
