@@ -622,11 +622,19 @@ router.post("/schedule", async (req, res) => {
       return res.status(400).json({ message: "Schedule recipient must be a member of this group" });
     }
 
-    const existingPayment = await Settlement.findOne({
-      group: groupId, from: req.user.id, to: toUserId, status: "pending",
-    });
+    const [existingPayment, existingSchedule] = await Promise.all([
+      Settlement.findOne({
+        group: groupId, from: req.user.id, to: toUserId, status: "pending",
+      }),
+      SettlementSchedule.findOne({
+        group: groupId, from: req.user.id, to: toUserId, active: true,
+      }),
+    ]);
     if (existingPayment) {
       return res.status(409).json({ message: "A payment is already awaiting confirmation for this member" });
+    }
+    if (existingSchedule) {
+      return res.status(409).json({ message: "An active payment schedule already exists for this member" });
     }
 
     const [expenses, allSettlements] = await Promise.all([
