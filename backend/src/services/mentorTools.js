@@ -12,7 +12,12 @@ import simplifyDebts, { computeBalances } from "../utils/debtSimplify.js";
 import { buildGroupBalanceEvidence } from "../utils/financialReconciliation.js";
 
 const round = (val) => Math.round(Number(val || 0) * 100) / 100;
-
+const escapeRegex = (value) => value.split("").map((char) => {
+  const code = char.charCodeAt(0);
+  return [36, 40, 41, 42, 43, 46, 63, 91, 92, 93, 94, 123, 124, 125].includes(code)
+    ? String.fromCharCode(92) + char
+    : char;
+}).join("");
 /**
  * Shared helper to fetch the user's financial profile ONLY when consent is granted.
  * Returns the profile object (lean) if found and consented, or null otherwise.
@@ -158,22 +163,41 @@ export const MENTOR_TOOLS_REGISTRY = [
   },
   {
     name: "getGroupBalances",
-    description: "Get detailed balances for every group the user is in, including exact who-owes-whom breakdowns and member lists.",
+    description: "Get detailed balances for the user groups, including exact who-owes-whom breakdowns and member lists. When the user names one group, pass its exact group name to avoid fetching unrelated groups.",
     parameters: {
       type: "object",
-      properties: {},
+      properties: {
+        groupName: {
+          type: "string",
+          description: "Optional exact group name when the user asks about one specific group. Omit for an all-groups balance summary.",
+        },
+      },
     },
-    handler: async (userId) => {
+    handler: async (userId, args = {}) => {
       const toolStartedAt = Date.now();
+      const requestedGroupName = typeof args.groupName === "string" ? args.groupName.trim() : "";
+      if (requestedGroupName.length > 100) {
+        throw new Error("groupName must be 100 characters or fewer.");
+      }
+      const groupQuery = { "members.user": userId };
+      if (requestedGroupName) {
+        groupQuery.name = new RegExp(`^${escapeRegex(requestedGroupName)}$`, "i");
+      }
       const groupQueryStartedAt = Date.now();
-      const groups = await Group.find({ "members.user": userId })
+      const groups = await Group.find(groupQuery)
         .populate("members.user", "name email")
         .lean();
       console.info(`[Mentor Perf] getGroupBalances group query: ${Date.now() - groupQueryStartedAt}ms; groups=${groups.length}`);
 
       if (groups.length === 0) {
         console.info(`[Mentor Perf] getGroupBalances total: ${Date.now() - toolStartedAt}ms; groups=0`);
-        return { currency: "INR", groups: [], message: "No groups found." };
+        return {
+          currency: "INR",
+          groups: [],
+          message: requestedGroupName
+            ? `No group named "${requestedGroupName}" was found among your groups.`
+            : "No groups found.",
+        };
       }
 
       const groupIds = groups.map((g) => g._id);
