@@ -340,7 +340,7 @@ Settl uses Socket.IO to keep connected clients synchronized. Clients join rooms 
 | `settlement_undone` | Server → Client | `{ fromId, toId }` | Emitted when a settlement is cancelled by payer or rejected by receiver. |
 | `schedule_proposed` / `schedule_accepted` / `schedule_rejected` | Server → Client | Populated `SettlementSchedule` | Notifies participants about a proposal and its response. |
 | `schedule_cancelled` | Server → Client | Populated `SettlementSchedule` | Notifies participants that a proposed or accepted schedule was cancelled. |
-| `schedule_reminder` | Server → Client | Populated `SettlementSchedule` | In-app reminder emitted once when Settle Up is opened on the due date or the day before. |
+| `schedule_reminder` | Server → Client | Populated `SettlementSchedule` | In-app reminder emitted once per participant when Settle Up is opened on the due date or the day before. |
 | `message_created` | Server → Client | Populated `Message` | Broadcasts new group chat messages. |
 
 ---
@@ -603,12 +603,14 @@ All application endpoints are mounted under `/api` and require authenticated HTT
 | `GET` | `/api/settlements/schedules/:groupId` | Protected | Retrieve active payment schedules for a group, including overdue state. |
 | `POST` | `/api/settlements/schedule/:scheduleId/respond` | Protected | Recipient accepts or rejects a proposed repayment date. |
 | `POST` | `/api/settlements/schedule/:scheduleId/cancel` | Protected | Either participant cancels a proposed or accepted schedule. |
-> Due-date reminders are emitted in-app when a participant opens or refreshes Settle Up on the due date or the day before. This first version is request-driven; it does not send background push notifications while the app is closed.
+
 | `POST` | `/api/settlements/confirm` | Protected | Receiver confirms payment receipt (`confirmed`), clearing the debt and completing any linked schedule. |
 | `POST` | `/api/settlements/reject` | Protected | Receiver rejects unreceived payment (`rejected`), recording the reason. |
 | `DELETE`| `/api/settlements/settle` | Protected | Payer cancels their pending settlement request (`cancelled`). |
 | `POST` | `/api/settlements/cancel` | Protected | Alternate endpoint for payer cancellation. |
 | `GET` | `/api/settlements/group/:id/activity` | Protected | Fetch paginated activity audit logs for a group. |
+
+> Due-date reminders are sent independently to each participant when they open or refresh Settle Up on the due date or the day before, using their local timezone. This first version is request-driven; it does not send background push notifications while the app is closed.
 
 ### Insights & Trust Score (`/api/insights`)
 | Method | Endpoint | Access | Description |
