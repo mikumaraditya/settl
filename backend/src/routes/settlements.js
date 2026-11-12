@@ -2,6 +2,7 @@ import express from 'express';
 import Expense from '../models/Expense.js';
 import Group from '../models/Group.js';
 import Settlement from '../models/Settlement.js';
+import SettlementSchedule from '../models/SettlementSchedule.js';
 import User from '../models/User.js';
 import ActivityLog from '../models/ActivityLog.js';
 import protect from '../middleware/auth.js';
@@ -417,6 +418,180 @@ router.post("/reject", protect, async (req, res) => {
     clearInsightCaches([fromUserId, req.user.id]);
   } catch (error) {
     console.error("Error rejecting settlement request:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PAYMENT SCHEDULES (a future repayment agreement; does not clear debt)
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/schedules/:groupId", async (req, res) => {
+  try {
+    const group = await Group.findById(req.params.groupId);
+    if (!group) return res.status(404).json({ message: "Group not found" });
+    const isMember = group.members.some((member) => member.user?.toString() === req.user.id);
+    if (!isMember) return res.status(403).json({ message: "You are not a member of this group" });
+
+    const schedules = await SettlementSchedule.find({ group: req.params.groupId, active: true })
+      .populate("from", "name email upiId")
+      .populate("to", "name email upiId")
+      .sort({ dueDate: 1, createdAt: -1 });
+
+    const today = new Date().toISOString().slice(0, 10);
+    res.json({
+      schedules: schedules.map((schedule) => {
+        const dueDateOnly = schedule.dueDate.toISOString().slice(0, 10);
+        return {
+          ...schedule.toObject(),
+          dueDateOnly,
+          dueStatus: dueDateOnly < today ? "overdue" : dueDateOnly === today ? "due_today" : "upcoming",
+        };
+      }),
+    });
+  } catch (error) {
+    console.error("Error fetching payment schedules:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+router.post("/schedule", async (req, res) => {
+  try {
+    const { groupId, toUserId, dueDate } = req.body;
+    const amount = Number(req.body.amount);
+    if (!groupId || !toUserId || req.body.amount === undefined || !dueDate) {
+      return res.status(400).json({ message: "groupId, toUserId, amount and dueDate are required" });
+    }
+    if (!Number.isFinite(amount) || amount <= 0 || Math.round(amount * 100) !== amount * 100) {
+      return res.status(400).json({ message: "Amount must be positive and have at most two decimal places" });
+    }
+    if (typeof dueDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+      return res.status(400).json({ message: "Due date must use YYYY-MM-DD format" });
+    }
+    const parsedDueDate = new Date(`${dueDate}T12:00:00.000Z`);
+    if (Number.isNaN(parsedDueDate.getTime()) || parsedDueDate.toISOString().slice(0, 10) !== dueDate) {
+      return res.status(400).json({ message: "Please provide a valid calendar date" });
+    }
+    if (dueDate < new Date().toISOString().slice(0, 10)) {
+      return res.status(400).json({ message: "Due date cannot be in the past" });
+    }
+
+    const group = await Group.findById(groupId);
+    if (!group) return res.status(404).json({ message: "Group not found" });
+    const isMember = group.members.some((member) => member.user?.toString() === req.user.id);
+    if (!isMember) return res.status(403).json({ message: "Not a member of this group" });
+    if (toUserId === req.user.id) {
+      return res.status(400).json({ message: "You cannot schedule a payment to yourself" });
+    }
+    const recipientIsMember = group.members.some((member) => member.user?.toString() === toUserId);
+    if (!recipientIsMember) {
+      return res.status(400).json({ message: "Schedule recipient must be a member of this group" });
+    }
+
+    const existingPayment = await Settlement.findOne({
+      group: groupId, from: req.user.id, to: toUserId, status: "pending",
+    });
+    if (existingPayment) {
+      return res.status(409).json({ message: "A payment is already awaiting confirmation for this member" });
+    }
+
+    const [expenses, allSettlements] = await Promise.all([
+      Expense.find({ group: groupId }),
+      Settlement.find({ group: groupId }),
+    ]);
+    const confirmedSettlements = allSettlements.filter((item) => !item.status || item.status === "confirmed");
+    const pendingBetweenUs = allSettlements.filter(
+      (item) => item.status === "pending" && item.from?.toString() === req.user.id && item.to?.toString() === toUserId,
+    );
+    const debtEdge = simplifyDebts(expenses, confirmedSettlements)
+      .find((item) => item.from === req.user.id && item.to === toUserId);
+    if (!debtEdge || debtEdge.amount <= 0) {
+      return res.status(400).json({ message: "You do not currently owe this member in the group's simplified balances" });
+    }
+
+    const pendingPaise = pendingBetweenUs.reduce((sum, item) => sum + Math.round(item.amount * 100), 0);
+    const availablePaise = Math.round(debtEdge.amount * 100) - pendingPaise;
+    const requestedPaise = Math.round(amount * 100);
+    if (requestedPaise > availablePaise || availablePaise <= 0) {
+      return res.status(400).json({ message: "Schedule amount exceeds the outstanding debt available to this member" });
+    }
+
+    const schedule = await SettlementSchedule.create({
+      group: groupId, from: req.user.id, to: toUserId, amount,
+      dueDate: parsedDueDate, status: "proposed", active: true,
+    });
+    const populated = await SettlementSchedule.findById(schedule._id)
+      .populate("from", "name email upiId")
+      .populate("to", "name email upiId");
+
+    safeEmit(groupId, "schedule_proposed", populated);
+    await ActivityLog.create({
+      group: groupId, actor: req.user.id, type: "schedule_proposed",
+      meta: { amount, toId: toUserId, dueDate },
+    });
+    res.status(201).json(populated);
+  } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({ message: "An active payment schedule already exists for this member" });
+    }
+    console.error("Error creating payment schedule:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+router.post("/schedule/:scheduleId/respond", async (req, res) => {
+  try {
+    const { action, reason } = req.body;
+    if (!["accept", "reject"].includes(action)) {
+      return res.status(400).json({ message: "Action must be accept or reject" });
+    }
+    const update = action === "accept"
+      ? { $set: { status: "accepted", respondedAt: new Date() } }
+      : { $set: { status: "rejected", active: false, respondedAt: new Date(), responseReason: String(reason || "Declined").slice(0, 240) } };
+    const schedule = await SettlementSchedule.findOneAndUpdate(
+      { _id: req.params.scheduleId, to: req.user.id, status: "proposed", active: true },
+      update,
+      { new: true },
+    ).populate("from to", "name email upiId");
+    if (!schedule) {
+      return res.status(404).json({ message: "No proposed payment schedule found for you to respond to" });
+    }
+
+    safeEmit(schedule.group.toString(), action === "accept" ? "schedule_accepted" : "schedule_rejected", schedule);
+    await ActivityLog.create({
+      group: schedule.group, actor: req.user.id,
+      type: action === "accept" ? "schedule_accepted" : "schedule_rejected",
+      meta: { amount: schedule.amount, fromId: schedule.from?._id, toId: schedule.to?._id, dueDate: schedule.dueDate.toISOString().slice(0, 10) },
+    });
+    res.json(schedule);
+  } catch (error) {
+    console.error("Error responding to payment schedule:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+router.post("/schedule/:scheduleId/cancel", async (req, res) => {
+  try {
+    const schedule = await SettlementSchedule.findOneAndUpdate(
+      {
+        _id: req.params.scheduleId,
+        $or: [{ from: req.user.id }, { to: req.user.id }],
+        active: true,
+        status: { $in: ["proposed", "accepted"] },
+      },
+      { $set: { status: "cancelled", active: false, respondedAt: new Date() } },
+      { new: true },
+    ).populate("from to", "name email upiId");
+    if (!schedule) return res.status(404).json({ message: "No cancellable payment schedule found" });
+
+    safeEmit(schedule.group.toString(), "schedule_cancelled", schedule);
+    await ActivityLog.create({
+      group: schedule.group, actor: req.user.id, type: "schedule_cancelled",
+      meta: { amount: schedule.amount, fromId: schedule.from?._id, toId: schedule.to?._id },
+    });
+    res.json(schedule);
+  } catch (error) {
+    console.error("Error cancelling payment schedule:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
