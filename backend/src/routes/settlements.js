@@ -36,6 +36,13 @@ export async function autoExpirePendingSettlements(groupId = null) {
       item.status = "expired";
       await item.save();
 
+      // A payment attempt that expires was never confirmed; restore its
+      // accepted schedule so the payer can retry without renegotiating.
+      await SettlementSchedule.updateOne(
+        { paymentSettlement: item._id, status: "payment_pending", active: true },
+        { $set: { status: "accepted", paymentSettlement: null } },
+      );
+
       await ActivityLog.create({
         group: item.group,
         actor: item.from,
