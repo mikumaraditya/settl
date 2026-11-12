@@ -9,6 +9,7 @@ import UserFinancialProfile from "../models/UserFinancialProfile.js";
 import { sanitizePromptText } from "../utils/sanitizeInput.js";
 import { computeMentorReport } from "../utils/financialMentor.js";
 import simplifyDebts, { computeBalances } from "../utils/debtSimplify.js";
+import { buildGroupBalanceEvidence } from "../utils/financialReconciliation.js";
 
 const round = (val) => Math.round(Number(val || 0) * 100) / 100;
 
@@ -227,6 +228,13 @@ export const MENTOR_TOOLS_REGISTRY = [
           userNetBalance: round(myBal),
           simplifiedDebts: myDebts,
           pendingRequests: pendingInGroup,
+          balanceEvidence: buildGroupBalanceEvidence({
+            group,
+            expenses: groupExpenses,
+            settlements: groupSettlements,
+            userId,
+            limit: 30,
+          }),
         });
       }
 
