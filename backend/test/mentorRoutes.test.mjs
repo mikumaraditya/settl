@@ -86,6 +86,16 @@ describe("Mentor Routes Supertest Suite", () => {
     assert.ok(res.body.message.includes("500 characters"));
   });
 
+  it("POST /api/mentor/chat - rejects non-string message values", async () => {
+    for (const message of [123, { text: "hello" }, ["hello"]]) {
+      const res = await request(app)
+        .post("/api/mentor/chat")
+        .set("Authorization", `Bearer ${authToken}`)
+        .send({ message });
+      assert.strictEqual(res.status, 400);
+    }
+  });
+
   it("POST /api/mentor/chat 200 with a valid message returns a reply", async () => {
     const res = await request(app)
       .post("/api/mentor/chat")
@@ -140,6 +150,15 @@ describe("Mentor Routes Supertest Suite", () => {
     assert.strictEqual(res.body.monthlyIncome, 45000);
     assert.strictEqual(res.body.monthlySavingsTarget, 9000);
     assert.strictEqual(res.body.consentToUseForMentor, true);
+  });
+
+  it("PUT /api/mentor/profile - only boolean true enables data consent", async () => {
+    const res = await request(app)
+      .put("/api/mentor/profile")
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({ consentToUseForMentor: "false" });
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.consentToUseForMentor, false);
   });
 
   it("DELETE /api/mentor/profile - 200 deletes profile data", async () => {
