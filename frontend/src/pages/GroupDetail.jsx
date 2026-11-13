@@ -228,13 +228,16 @@ export default function GroupDetail() {
       setExactAmounts(initialExact);
     }
     setShowAddExpense(true);
-  }, [group]);
+  }, [group, setShowAddExpense]);
 
   // Home can deep-link into the existing add-expense flow without duplicating the form.
   useEffect(() => {
-    if (!group || searchParams.get('action') !== 'add-expense') return
-    openAddExpenseModal()
-    setSearchParams({}, { replace: true })
+    if (!group || searchParams.get('action') !== 'add-expense') return undefined
+    const timer = window.setTimeout(() => {
+      openAddExpenseModal()
+      setSearchParams({}, { replace: true })
+    }, 0)
+    return () => window.clearTimeout(timer)
   }, [group, searchParams, setSearchParams, openAddExpenseModal])
 
   const handleSliderChange = (changedUserId, newValue) => {
