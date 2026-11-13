@@ -1598,3 +1598,23 @@ button:disabled { cursor: not-allowed; }
 .toast-error-close:hover { background: color-mix(in srgb,var(--app-red) 10%,transparent); }
 .toast-error-progress { background: var(--app-red); animation: toast-progress linear forwards; }
 @keyframes toast-progress { from { width: 100%; } to { width: 0%; } }
+
+
+:root:not(.dark) .app-page .app-card [class*="bg-white/"][class*="text-white"],
+:root:not(.dark) .app-page .glass-card [class*="bg-white/"][class*="text-white"] {
+  color: var(--on-surface) !important;
+}
+:root:not(.dark) .app-page .app-card [class*="text-white/"],
+:root:not(.dark) .app-page .glass-card [class*="text-white/"] {
+  color: var(--on-surface-variant) !important;
+}
+:root:not(.dark) .app-page input[class*="bg-white/"]::placeholder,
+:root:not(.dark) .app-page textarea[class*="bg-white/"]::placeholder {
+  color: var(--app-muted) !important;
+  opacity: .85 !important;
+}
+:root:not(.dark) .app-page [class*="text-slate-300"],
+:root:not(.dark) .app-page [class*="text-slate-400"],
+:root:not(.dark) .app-page [class*="text-slate-500"] {
+  color: var(--on-surface-variant);
+}
