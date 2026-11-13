@@ -5,15 +5,17 @@ export default function AuthShell({ eyebrow, title, description, children, foote
   return (
     <div className="auth-shell">
       <aside className="auth-visual hidden lg:flex">
-        <Link to="/" className="auth-brand" aria-label="Settl home">
-          <span className="app-brand-mark auth-brand-mark">
-            <span className="material-symbols-outlined">account_balance_wallet</span>
-          </span>
-          <span className="auth-brand-word">settl<span>.</span></span>
-        </Link>
+        <div className="auth-brand-lockup">
+          <Link to="/" className="auth-brand" aria-label="Settl home">
+            <span className="app-brand-mark auth-brand-mark">
+              <span className="material-symbols-outlined">account_balance_wallet</span>
+            </span>
+            <span className="auth-brand-word">settl<span>.</span></span>
+          </Link>
+          <p className="auth-brand-tagline">Shared money, made simple.</p>
+        </div>
 
         <div className="auth-visual-copy">
-          <p className="auth-visual-eyebrow">Shared money, made simple</p>
           <h2>Everyone on the same page.<br /><span>Every rupee accounted for.</span></h2>
           <p>Keep group expenses clear, understand who owes whom, and settle directly with the people you know.</p>
         </div>
@@ -58,10 +60,6 @@ export default function AuthShell({ eyebrow, title, description, children, foote
 
       <main className="auth-main">
         <div className="auth-topbar">
-          <Link to="/" className="auth-mobile-brand lg:hidden" aria-label="Settl home">
-            <span className="app-brand-mark auth-brand-mark"><span className="material-symbols-outlined">account_balance_wallet</span></span>
-            <span className="auth-brand-word">settl<span>.</span></span>
-          </Link>
           <div className="auth-top-actions">
             <Link to="/" className="auth-home-link"><span className="material-symbols-outlined">arrow_back</span> Home</Link>
             <ThemeToggle className="auth-theme-toggle" />
