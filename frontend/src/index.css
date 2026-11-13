@@ -1528,9 +1528,9 @@ button:disabled { cursor: not-allowed; }
 :root:not(.dark) .app-page textarea[class*="placeholder:text-white"] {
   --tw-placeholder-opacity: 1;
 }
-:root:not(.dark) .app-page .hover\\:text-white:hover { color: var(--on-surface) !important; }
-:root:not(.dark) .app-page .hover\\:bg-white\\/5:hover { background-color: var(--surface-container) !important; }
-:root:not(.dark) .app-page .hover\\:bg-white\\/10:hover { background-color: var(--surface-container-high) !important; }
+:root:not(.dark) .app-page .hover\:text-white:hover { color: var(--on-surface) !important; }
+:root:not(.dark) .app-page .hover\:bg-white\\/5:hover { background-color: var(--surface-container) !important; }
+:root:not(.dark) .app-page .hover\:bg-white\\/10:hover { background-color: var(--surface-container-high) !important; }
 
 /* Modal surfaces and alerts should match the selected theme too. */
 .upi-confirm-modal {
