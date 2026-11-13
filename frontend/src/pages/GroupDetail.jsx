@@ -767,7 +767,7 @@ export default function GroupDetail() {
   if (loading) return (
     <div className="app-page min-h-screen flex flex-col md:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
       <Navbar />
-      <main className="flex-1 w-full max-w-6xl mx-auto px-6 md:px-8 py-8 flex flex-col gap-6 md:gap-8">
+      <main className="app-main flex flex-col gap-6 md:gap-8">
         {/* Back navigation skeleton */}
         <div className="h-4 bg-white/5 rounded w-20 animate-pulse" />
         
@@ -837,7 +837,7 @@ export default function GroupDetail() {
 
   // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-background flex flex-col md:pl-20 lg:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
+    <div className="app-page min-h-screen flex flex-col md:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
       <Navbar />
 
       <main className="app-main flex flex-col gap-6">
