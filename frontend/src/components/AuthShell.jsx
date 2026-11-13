@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import ThemeToggle from './ThemeToggle'
+import LoginHeroArtwork from './LoginHeroArtwork'
 
 export default function AuthShell({ eyebrow, title, description, children, footer, variant = 'default' }) {
   return (
@@ -18,42 +19,48 @@ export default function AuthShell({ eyebrow, title, description, children, foote
           <p>{variant === 'login' ? 'A calmer way to manage shared expenses. See the split, understand every balance and settle directly with your people.' : 'Keep group expenses clear, understand who owes whom, and settle directly with the people you know.'}</p>
         </div>
 
-        <div className="auth-preview-card">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="auth-preview-kicker">Example group</p>
-              <p className="auth-preview-title">Goa Trip</p>
+        {variant === 'login' ? (
+          <LoginHeroArtwork />
+        ) : (
+          <>
+            <div className="auth-preview-card">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="auth-preview-kicker">Example group</p>
+                  <p className="auth-preview-title">Goa Trip</p>
+                </div>
+                <span className="auth-preview-status"><span /> In balance</span>
+              </div>
+              <div className="auth-preview-rule" />
+              <div className="auth-preview-row">
+                <span className="auth-avatar auth-avatar-blue">A</span>
+                <span className="flex-1 min-w-0"><strong>Aditya</strong><small>Paid for dinner</small></span>
+                <b>₹2,400</b>
+              </div>
+              <div className="auth-preview-row">
+                <span className="auth-avatar auth-avatar-violet">R</span>
+                <span className="flex-1 min-w-0"><strong>Rahul</strong><small>Share of expenses</small></span>
+                <b className="auth-preview-debit">Owes ₹800</b>
+              </div>
+              <div className="auth-preview-row">
+                <span className="auth-avatar auth-avatar-green">S</span>
+                <span className="flex-1 min-w-0"><strong>Sara</strong><small>Share of expenses</small></span>
+                <b className="auth-preview-credit">Owes ₹400</b>
+              </div>
+              <div className="auth-preview-note">
+                <span className="material-symbols-outlined">auto_awesome</span>
+                Settl simplifies group balances into fewer payments.
+              </div>
             </div>
-            <span className="auth-preview-status"><span /> In balance</span>
-          </div>
-          <div className="auth-preview-rule" />
-          <div className="auth-preview-row">
-            <span className="auth-avatar auth-avatar-blue">A</span>
-            <span className="flex-1 min-w-0"><strong>Aditya</strong><small>Paid for dinner</small></span>
-            <b>₹2,400</b>
-          </div>
-          <div className="auth-preview-row">
-            <span className="auth-avatar auth-avatar-violet">R</span>
-            <span className="flex-1 min-w-0"><strong>Rahul</strong><small>Share of expenses</small></span>
-            <b className="auth-preview-debit">Owes ₹800</b>
-          </div>
-          <div className="auth-preview-row">
-            <span className="auth-avatar auth-avatar-green">S</span>
-            <span className="flex-1 min-w-0"><strong>Sara</strong><small>Share of expenses</small></span>
-            <b className="auth-preview-credit">Owes ₹400</b>
-          </div>
-          <div className="auth-preview-note">
-            <span className="material-symbols-outlined">auto_awesome</span>
-            Settl simplifies group balances into fewer payments.
-          </div>
-        </div>
 
-        <div className="auth-benefits">
-          <span><span className="material-symbols-outlined">receipt_long</span> Clear expense splits</span>
-          <span><span className="material-symbols-outlined">account_balance_wallet</span> Direct UPI handoff</span>
-          <span><span className="material-symbols-outlined">history</span> Transparent payment history</span>
-        </div>
-        <p className="auth-visual-footnote">{variant === 'login' ? 'Less awkward maths. More good moments.' : 'Split now. Settl later.'}</p>
+            <div className="auth-benefits">
+              <span><span className="material-symbols-outlined">receipt_long</span> Clear expense splits</span>
+              <span><span className="material-symbols-outlined">account_balance_wallet</span> Direct UPI handoff</span>
+              <span><span className="material-symbols-outlined">history</span> Transparent payment history</span>
+            </div>
+            <p className="auth-visual-footnote">Split now. Settl later.</p>
+          </>
+        )}
       </aside>
 
       <main className="auth-main">
@@ -63,7 +70,7 @@ export default function AuthShell({ eyebrow, title, description, children, foote
             <span className="auth-brand-word">settl<span>.</span></span>
           </Link>
           <div className="auth-top-actions">
-            <Link to="/" className="auth-home-link"><span className="material-symbols-outlined">arrow_back</span> Home</Link>
+            {variant !== 'login' &&             <Link to="/" className="auth-home-link"><span className="material-symbols-outlined">arrow_back</span> Home</Link>}
             <ThemeToggle className="auth-theme-toggle" />
           </div>
         </div>
