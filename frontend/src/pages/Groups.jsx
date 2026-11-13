@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import axios from '../api/axios'
 import Navbar from '../components/Navbar'
 import { useAuth } from '../context/AuthContext'
@@ -18,6 +18,7 @@ const groupIcon = (name = '') => {
 export default function Groups() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [groups, setGroups] = useState([])
   const [balances, setBalances] = useState({})
   const [loading, setLoading] = useState(true)
@@ -58,6 +59,13 @@ export default function Groups() {
   }
 
   useEffect(() => { loadGroups() }, [])
+
+  useEffect(() => {
+    if (searchParams.get('create') === '1') {
+      setShowCreate(true)
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   const visibleGroups = useMemo(() => {
     const query = search.trim().toLowerCase()
