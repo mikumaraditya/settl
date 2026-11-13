@@ -110,7 +110,7 @@ export default function GoogleLoginButton({ onLoginSuccess, onError }) {
       window.google.accounts.id.renderButton(
         buttonNode,
         {
-          theme: 'outline', // Subtler outlined button that integrates cleanly with our premium dark layout
+          theme: 'outline', // Official Google button with neutral styling across both themes
           size: 'large',
           text: 'signin_with',
           shape: 'pill',
@@ -128,20 +128,11 @@ export default function GoogleLoginButton({ onLoginSuccess, onError }) {
   const clampedWidth = Math.max(200, Math.min(400, containerWidth - 32))
 
   return (
-    <div className="w-full flex flex-col items-center">
-      {/* Refined Premium Divider with Gradient Line Fades */}
-      <div className="w-full flex items-center gap-4 my-5 select-none">
-        <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent to-on-surface-variant/10 dark:to-white/10" />
-        <span className="text-on-surface-variant/60 text-[9px] font-extrabold uppercase tracking-[0.2em] leading-none">
-          or continue with
-        </span>
-        <div className="h-[1px] flex-1 bg-gradient-to-l from-transparent to-on-surface-variant/10 dark:to-white/10" />
-      </div>
-
+    <div className="google-login-wrap w-full flex flex-col items-center">
       {/* Glassmorphic Centered Social Login Container with Inner Highlight & Refined Glow */}
       <div 
         ref={containerRef} 
-        className="w-full p-4 rounded-2xl border border-slate-200/80 dark:border-white/5 bg-gradient-to-b from-slate-50/50 to-white/30 dark:from-white/[0.04] dark:to-white/[0.01] backdrop-blur-md shadow-[0_8px_32px_0_rgba(0,0,0,0.15)] dark:shadow-[0_8px_32px_0_rgba(0,0,0,0.37)] hover:border-slate-300 dark:hover:border-white/15 hover:scale-[1.01] active:scale-[0.99] hover:shadow-[0_8px_32px_0_rgba(59,130,246,0.1)] transition-all duration-300 flex flex-col items-center justify-center gap-3 relative overflow-hidden group"
+        className="google-login-card w-full px-3 py-2.5 rounded-2xl border border-slate-200/80 dark:border-white/5 bg-gradient-to-b from-slate-50/50 to-white/30 dark:from-white/[0.04] dark:to-white/[0.01] backdrop-blur-md flex flex-col items-center justify-center gap-2 relative overflow-hidden group"
       >
         {/* Shimmer CSS Style Injection */}
         <style>{`
