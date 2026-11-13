@@ -752,6 +752,17 @@ export default function GroupDetail() {
     }
   }, [activeTab]);
 
+  const currentUserId = user?._id?.toString?.() || user?._id
+  const amountYouOwe = transactions.reduce((sum, transaction) => {
+    const fromId = transaction.from?._id?.toString?.() || transaction.from?._id
+    return fromId === currentUserId ? sum + Number(transaction.amount || 0) : sum
+  }, 0)
+  const amountOwedToYou = transactions.reduce((sum, transaction) => {
+    const toId = transaction.to?._id?.toString?.() || transaction.to?._id
+    return toId === currentUserId ? sum + Number(transaction.amount || 0) : sum
+  }, 0)
+  const netGroupPosition = amountOwedToYou - amountYouOwe
+
   // ── Loading screen ────────────────────────────────────────────────────────────
   if (loading) return (
     <div className="app-page min-h-screen flex flex-col md:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
@@ -891,6 +902,25 @@ export default function GroupDetail() {
                 <span className="material-symbols-outlined text-[18px]">payments</span> Settle Up
               </button>
             </div>
+          </div>
+        </section>
+
+        {/* At-a-glance group finances */}
+        <section className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="app-card p-4 sm:p-5">
+            <p className="app-stat-label">You owe</p>
+            <p className="app-stat-value app-balance-negative mt-2">{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(amountYouOwe)}</p>
+            <p className="text-[10px] app-muted mt-2">Your outstanding payments</p>
+          </div>
+          <div className="app-card p-4 sm:p-5">
+            <p className="app-stat-label">Owed to you</p>
+            <p className="app-stat-value app-balance-positive mt-2">{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(amountOwedToYou)}</p>
+            <p className="text-[10px] app-muted mt-2">Pending from other members</p>
+          </div>
+          <div className="app-card p-4 sm:p-5 bg-[var(--app-blue-soft)] border-[color-mix(in_srgb,var(--secondary)_14%,transparent)]">
+            <p className="app-stat-label">Your net position</p>
+            <p className="app-stat-value mt-2">{netGroupPosition > 0.005 ? '+' : netGroupPosition < -0.005 ? '−' : ''}{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(Math.abs(netGroupPosition))}</p>
+            <p className="text-[10px] app-muted mt-2">{transactions.length} simplified payment path{transactions.length === 1 ? '' : 's'} open</p>
           </div>
         </section>
 
