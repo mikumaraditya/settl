@@ -58,13 +58,18 @@ export default function Groups() {
     }
   }, [user?._id])
 
-  useEffect(() => { loadGroups() }, [loadGroups])
+  useEffect(() => {
+    const timer = window.setTimeout(() => loadGroups(), 0)
+    return () => window.clearTimeout(timer)
+  }, [loadGroups])
 
   useEffect(() => {
-    if (searchParams.get('create') === '1') {
+    if (searchParams.get('create') !== '1') return undefined
+    const timer = window.setTimeout(() => {
       setShowCreate(true)
       setSearchParams({}, { replace: true })
-    }
+    }, 0)
+    return () => window.clearTimeout(timer)
   }, [searchParams, setSearchParams])
 
   const visibleGroups = useMemo(() => {
