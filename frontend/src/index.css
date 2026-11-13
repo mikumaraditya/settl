@@ -1639,3 +1639,23 @@ button:disabled { cursor: not-allowed; }
   background: var(--surface) !important;
   border-color: var(--app-border) !important;
 }
+
+.public-theme-toggle {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--app-border);
+  border-radius: 11px;
+  color: var(--on-surface-variant);
+  background: var(--surface-container-low);
+  transition: color .18s ease, background .18s ease, transform .18s ease;
+}
+.public-theme-toggle:hover { color: var(--on-surface); background: var(--surface-container); }
+.public-theme-toggle:focus-visible { outline: 2px solid var(--secondary); outline-offset: 2px; }
+.public-theme-toggle .material-symbols-outlined { font-size: 18px; }
+@media (max-width: 420px) {
+  .public-theme-toggle { width: 32px; height: 32px; border-radius: 10px; }
+}
