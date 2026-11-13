@@ -1621,3 +1621,14 @@ button:disabled { cursor: not-allowed; }
 
 :root:not(.dark) .public-page .hover\:text-white:hover { color: var(--on-surface) !important; }
 :root:not(.dark) .public-page .hover\:bg-white\/10:hover { background-color: var(--surface-container-high) !important; }
+
+@media (max-width: 420px) {
+  .public-nav { padding: 9px 12px; gap: 8px; }
+  .public-nav > div:last-child { gap: 8px; }
+  .public-nav .app-brand-mark { width: 32px; height: 32px; border-radius: 10px; }
+  .public-nav .app-brand-mark .material-symbols-outlined { font-size: 17px; }
+  .public-nav > a > span:last-child { font-size: 18px; }
+  .public-nav > div:last-child > button:first-child { width: 32px; height: 32px; }
+  .public-nav > div:last-child > button:nth-child(2) { font-size: 10px; }
+  .public-nav > div:last-child > button:last-child { padding: 8px 10px; font-size: 9px; }
+}
