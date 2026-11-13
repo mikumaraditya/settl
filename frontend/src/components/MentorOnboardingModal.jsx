@@ -180,7 +180,7 @@ export default function MentorOnboardingModal({ isOpen, onClose, onSaved }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="mentor-onboarding-title"
-        className="glass-card w-full max-w-lg rounded-3xl border border-white/10 p-6 shadow-2xl flex flex-col gap-5 relative overflow-hidden bg-zinc-900/90 text-white"
+        className="mentor-onboarding-card glass-card w-full max-w-lg rounded-3xl border border-white/10 p-6 shadow-2xl flex flex-col gap-5 relative overflow-hidden bg-zinc-900/90 text-white"
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/10 pb-4">
