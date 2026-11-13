@@ -167,7 +167,7 @@ export default function Groups() {
                     <div>
                       <p className="app-stat-label mb-1.5">Your position</p>
                       <p className={`text-sm font-bold tabular-nums ${balance > 0.005 ? 'app-balance-positive' : balance < -0.005 ? 'app-balance-negative' : ''}`}>
-                        {balance > 0.005 ? `You are owed ${money(balance)}` : balance < -0.005 ? `You owe ${money(balance)}` : 'All settled'}
+                        {balance > 0.005 ? `You receive ${money(balance)}` : balance < -0.005 ? `You pay ${money(balance)}` : 'All settled'}
                       </p>
                     </div>
                     <div className="flex -space-x-2 shrink-0">

@@ -38,8 +38,8 @@ export default function Login() {
   return (
     <AuthShell
       eyebrow="Welcome back"
-      title="Sign in to Settl"
-      description="Pick up where your group left off. Your expenses, balances and payment history are waiting."
+      title="Good to have you back."
+      description="Sign in to pick up right where your group left off."
       footer={<>New to Settl? <Link to="/register">Create your account</Link></>}
     >
       <form onSubmit={handleSubmit} className="auth-form">

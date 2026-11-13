@@ -153,7 +153,7 @@ export default function Dashboard() {
             <div className="relative z-10">
               <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-[10px] font-bold uppercase tracking-[.17em] text-white/55">Your net position</p><span className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-[10px] font-semibold text-white/70">Across {groups.length} {groups.length === 1 ? 'group' : 'groups'}</span></div>
               {loading ? <div className="h-12 w-48 bg-white/10 rounded-xl animate-pulse mt-4"/> : <p className="text-4xl sm:text-5xl font-extrabold tracking-[-.06em] tabular-nums mt-5">{netBalance < 0 ? '-' : netBalance > 0 ? '+' : ''}{currency(netBalance)}</p>}
-              <p className="text-xs text-white/60 mt-3">{netBalance > 0.005 ? 'Overall, people owe you more than you owe.' : netBalance < -0.005 ? 'Overall, you owe more than people owe you.' : 'You are all settled across your groups.'}</p>
+              <p className="text-xs text-white/60 mt-3">{netBalance > 0.005 ? 'You have more money coming in than going out.' : netBalance < -0.005 ? 'You have more money going out than coming in.' : 'You are all settled across your groups.'}</p>
               <div className="flex flex-wrap gap-2 mt-7">
                 <button onClick={() => setShowSettlePicker(true)} disabled={!groups.length || (totalOwed === 0 && totalOwe === 0)} className="min-h-10 px-4 rounded-xl bg-white text-[#172544] text-xs font-bold hover:bg-blue-50 disabled:opacity-50">Settle up <span aria-hidden>↗</span></button>
                 <button onClick={() => setShowExpensePicker(true)} disabled={!groups.length} className="min-h-10 px-4 rounded-xl border border-white/20 bg-white/5 text-white text-xs font-bold hover:bg-white/10 disabled:opacity-50">Add an expense</button>
@@ -163,11 +163,11 @@ export default function Dashboard() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-4">
             <div className="app-card p-5 flex items-center justify-between gap-3">
-              <div><p className="app-stat-label mb-2">Owed to you</p>{loading ? <div className="w-24 h-7 rounded bg-[var(--surface-container)] animate-pulse"/> : <p className="app-stat-value app-balance-positive">{currency(totalOwed)}</p>}<p className="text-[11px] app-muted mt-2">Money others need to pay you</p></div>
+              <div><p className="app-stat-label mb-2">You receive</p>{loading ? <div className="w-24 h-7 rounded bg-[var(--surface-container)] animate-pulse"/> : <p className="app-stat-value app-balance-positive">{currency(totalOwed)}</p>}<p className="text-[11px] app-muted mt-2">Money others need to pay you</p></div>
               <span className="w-11 h-11 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center"><span className="material-symbols-outlined">south_west</span></span>
             </div>
             <div className="app-card p-5 flex items-center justify-between gap-3">
-              <div><p className="app-stat-label mb-2">You owe</p>{loading ? <div className="w-24 h-7 rounded bg-[var(--surface-container)] animate-pulse"/> : <p className="app-stat-value app-balance-negative">{currency(totalOwe)}</p>}<p className="text-[11px] app-muted mt-2">{pendingCount ? `${pendingCount} payment requests awaiting confirmation` : 'Your outstanding payments'}</p></div>
+              <div><p className="app-stat-label mb-2">You pay</p>{loading ? <div className="w-24 h-7 rounded bg-[var(--surface-container)] animate-pulse"/> : <p className="app-stat-value app-balance-negative">{currency(totalOwe)}</p>}<p className="text-[11px] app-muted mt-2">{pendingCount ? `${pendingCount} payment requests awaiting confirmation` : 'Your outstanding payments'}</p></div>
               <span className="w-11 h-11 rounded-2xl bg-rose-500/10 text-rose-500 flex items-center justify-center"><span className="material-symbols-outlined">north_east</span></span>
             </div>
           </div>
@@ -184,7 +184,7 @@ export default function Dashboard() {
                   const balance = groupBalances[group._id]?.net || 0
                   return <Link key={group._id} to={`/group/${group._id}`} className="app-card app-card-hover p-4 flex items-center gap-3 group">
                     <span className="app-icon-tile shrink-0"><span className="material-symbols-outlined">{groupIcon(group.name)}</span></span>
-                    <span className="flex-1 min-w-0"><span className="block text-sm font-bold truncate group-hover:text-[var(--secondary)]">{group.name}</span><span className="block text-[10px] app-muted mt-1">{group.members?.length || 0} members</span><span className={`block text-[11px] font-bold mt-2 ${balance > 0.005 ? 'app-balance-positive' : balance < -0.005 ? 'app-balance-negative' : 'app-muted'}`}>{balance > 0.005 ? `Owed ${currency(balance)}` : balance < -0.005 ? `You owe ${currency(balance)}` : 'All settled'}</span></span>
+                    <span className="flex-1 min-w-0"><span className="block text-sm font-bold truncate group-hover:text-[var(--secondary)]">{group.name}</span><span className="block text-[10px] app-muted mt-1">{group.members?.length || 0} members</span><span className={`block text-[11px] font-bold mt-2 ${balance > 0.005 ? 'app-balance-positive' : balance < -0.005 ? 'app-balance-negative' : 'app-muted'}`}>{balance > 0.005 ? `You receive ${currency(balance)}` : balance < -0.005 ? `You pay ${currency(balance)}` : 'All settled'}</span></span>
                     <span className="material-symbols-outlined app-muted text-[18px]">arrow_outward</span>
                   </Link>
                 })}
