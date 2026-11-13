@@ -98,7 +98,10 @@ export default function Dashboard() {
     }
   }, [user?._id])
 
-  useEffect(() => { fetchOverview() }, [fetchOverview])
+  useEffect(() => {
+    const timer = window.setTimeout(() => fetchOverview(), 0)
+    return () => window.clearTimeout(timer)
+  }, [fetchOverview])
 
   const recentGroups = useMemo(() => {
     const ids = readRecentGroupIds()
