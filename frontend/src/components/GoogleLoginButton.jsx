@@ -165,7 +165,7 @@ export default function GoogleLoginButton({ onLoginSuccess, onError }) {
 
         {!isConfigured ? (
           /* Error State: Google Sign-In not configured */
-          <div className="w-full py-3.5 px-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-center flex flex-col items-center justify-center gap-2 select-text">
+          <div className="google-auth-error w-full py-3.5 px-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-center flex flex-col items-center justify-center gap-2 select-text">
             <span className="material-symbols-outlined text-rose-400 text-2xl">error</span>
             <p className="text-white text-xs font-bold uppercase tracking-wider">Google Sign-In is not configured</p>
             <p className="text-[10px] text-on-surface-variant/85 max-w-[280px] leading-relaxed">
@@ -174,7 +174,7 @@ export default function GoogleLoginButton({ onLoginSuccess, onError }) {
           </div>
         ) : scriptFailed ? (
           /* Error State: Google Script failed to load */
-          <div className="w-full py-3.5 px-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-center flex flex-col items-center justify-center gap-2">
+          <div className="google-auth-error w-full py-3.5 px-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-center flex flex-col items-center justify-center gap-2">
             <span className="material-symbols-outlined text-rose-400 text-2xl">error_outline</span>
             <p className="text-white text-xs font-bold uppercase tracking-wider">Failed to load Google Service</p>
             <p className="text-[10px] text-on-surface-variant/85 max-w-[280px] leading-relaxed">
@@ -186,7 +186,7 @@ export default function GoogleLoginButton({ onLoginSuccess, onError }) {
                 setScriptFailed(false)
                 setRetryTrigger(prev => prev + 1)
               }}
-              className="mt-1 px-3 py-1.5 bg-white/5 border border-white/10 hover:bg-white/10 active:scale-95 transition-all text-white rounded-lg text-[10px] font-bold uppercase tracking-wider cursor-pointer"
+              className="google-auth-retry mt-1 px-3 py-1.5 bg-white/5 border border-white/10 hover:bg-white/10 active:scale-95 transition-all text-white rounded-lg text-[10px] font-bold uppercase tracking-wider cursor-pointer"
             >
               Retry
             </button>
