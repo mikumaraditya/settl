@@ -1618,3 +1618,6 @@ button:disabled { cursor: not-allowed; }
 :root:not(.dark) .app-page [class*="text-slate-500"] {
   color: var(--on-surface-variant);
 }
+
+:root:not(.dark) .public-page .hover\\:text-white:hover { color: var(--on-surface) !important; }
+:root:not(.dark) .public-page .hover\\:bg-white\\/10:hover { background-color: var(--surface-container-high) !important; }
