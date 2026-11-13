@@ -73,11 +73,6 @@ export default function Activity() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (tab !== 'notifications') return
-    markAllRead()
-  }, [tab])
-
-  useEffect(() => {
     let cancelled = false
     const load = async () => {
       if (tab !== 'history') return
@@ -154,7 +149,7 @@ export default function Activity() {
           <section className="app-card overflow-hidden">
             <div className="px-5 sm:px-6 py-4 border-b app-divider flex items-center justify-between gap-3">
               <div><h2 className="font-bold text-sm">Notifications</h2><p className="app-muted text-xs mt-1">Payment requests, confirmations and group updates.</p></div>
-              {notifications.length > 0 && <button onClick={clearAll} className="text-xs font-bold text-[var(--secondary)] hover:underline">Clear all</button>}
+              {notifications.length > 0 && <div className="flex items-center gap-3"><button onClick={markAllRead} className="text-xs font-bold text-[var(--secondary)] hover:underline">Mark all read</button><button onClick={clearAll} className="text-xs font-bold app-muted hover:text-rose-500">Clear all</button></div>}
             </div>
             {notifications.length === 0 ? (
               <div className="px-6 py-16 text-center">
