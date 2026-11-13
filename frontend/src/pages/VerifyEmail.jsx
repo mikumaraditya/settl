@@ -1,150 +1,76 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import axios from '../api/axios'
 import { useAuth } from '../context/AuthContext'
+import AuthShell from '../components/AuthShell'
 
 export default function VerifyEmail() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const { markEmailVerified, login } = useAuth()
-
+  const { markEmailVerified, login, user } = useAuth()
   const token = searchParams.get('token')
-  const [status, setStatus] = useState(() => token ? 'verifying' : 'error') // 'verifying' | 'success' | 'error'
-  const [errorMsg, setErrorMsg] = useState(() => token ? '' : 'No verification token found in the link.')
-
-  // Guard against React StrictMode double-invoking useEffect in dev,
-  // which would consume the one-time token on the first call and cause
-  // the second call to return "Invalid or expired".
+  const [status, setStatus] = useState(() => token ? 'verifying' : 'error')
+  const [errorMsg, setErrorMsg] = useState(() => token ? '' : 'No verification token was found in this link.')
   const called = useRef(false)
 
   useEffect(() => {
-    if (!token) return
-    if (called.current) return
+    if (!token || called.current) return
     called.current = true
+    let redirectTimer
 
-    axios
-      .get(`/auth/verify-email?token=${token}`)
+    axios.get(`/auth/verify-email?token=${encodeURIComponent(token)}`)
       .then(({ data }) => {
-        // If the backend returns a full user object (logged-in flow),
-        // persist it so the dashboard is accessible immediately.
-        if (data?.token) {
-          login(data)
-        } else {
-          // Already logged in — just mark email verified in context
-          markEmailVerified()
-        }
+        if (data?.token) login(data)
+        else markEmailVerified()
         setStatus('success')
-        // Auto-redirect to dashboard after 3 seconds
-        setTimeout(() => navigate('/dashboard'), 3000)
+        redirectTimer = window.setTimeout(() => navigate('/dashboard', { replace: true }), 3000)
       })
-      .catch((err) => {
+      .catch(err => {
         setStatus('error')
-        setErrorMsg(
-          err.response?.data?.message || 'Verification failed. The link may have expired.'
-        )
+        setErrorMsg(err.response?.data?.message || 'Verification failed. The link may have expired.')
       })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+    return () => {
+      if (redirectTimer) window.clearTimeout(redirectTimer)
+    }
+  }, [token, login, markEmailVerified, navigate])
 
   return (
-    <div className="login-bg-pattern min-h-screen flex flex-col justify-center items-center px-4 py-12 relative overflow-hidden">
-      {/* Premium Decorative Glow Spheres */}
-      <div className="fixed top-[20%] -right-24 w-[380px] h-[380px] bg-secondary/15 rounded-full blur-[100px] pointer-events-none -z-10 animate-pulse-glow"></div>
-      <div className="fixed bottom-[10%] -left-16 w-[320px] h-[320px] bg-[#fbbf24]/10 rounded-full blur-[100px] pointer-events-none -z-10 animate-pulse-glow"></div>
-
-      <div className="w-full max-w-[440px] z-10 animate-in fade-in slide-in-from-bottom-4 duration-300">
-        <div className="flex flex-col items-center mb-8">
-          <div className="flex items-center gap-3">
-            <div className="inline-flex items-center justify-center w-10 h-10 bg-gradient-to-tr from-secondary to-blue-600 rounded-xl shadow-md shadow-secondary/20">
-              <span className="material-symbols-outlined text-white text-[20px] font-bold">account_balance_wallet</span>
+    <AuthShell
+      eyebrow="Account security"
+      title={status === 'success' ? 'Your email is verified' : status === 'error' ? 'We could not verify that link' : 'Confirming your email'}
+      description={status === 'success' ? 'Your Settl account is ready. You can continue to your group workspace.' : status === 'error' ? 'The verification link may be expired or already used. You can return to sign in and request another verification email if needed.' : 'We are checking your secure verification link. This usually takes just a moment.'}
+      footer={status === 'success' ? <>Taking you to your workspace… <Link to="/dashboard">Continue now</Link></> : status === 'error' ? <>Need to try again? <Link to={user ? '/profile' : '/login'}>{user ? 'Return to your profile' : 'Go to sign in'}</Link></> : null}
+    >
+      <div className="auth-state-panel">
+        {status === 'verifying' && (
+          <>
+            <span className="auth-state-icon auth-state-info"><span className="material-symbols-outlined animate-spin">progress_activity</span></span>
+            <h2>Verifying link</h2>
+            <p>Please keep this page open while we confirm your email address.</p>
+            <div className="auth-progress-track"><span /></div>
+          </>
+        )}
+        {status === 'success' && (
+          <>
+            <span className="auth-state-icon auth-state-success"><span className="material-symbols-outlined">check_circle</span></span>
+            <h2>Email verified successfully</h2>
+            <p>Your email address is confirmed. Your account can now use Settl without email-verification restrictions.</p>
+            <Link to="/dashboard" className="auth-submit">Go to dashboard <span className="material-symbols-outlined">arrow_forward</span></Link>
+          </>
+        )}
+        {status === 'error' && (
+          <>
+            <span className="auth-state-icon auth-state-error"><span className="material-symbols-outlined">error</span></span>
+            <h2>Verification unsuccessful</h2>
+            <p className="auth-state-error-copy">{errorMsg}</p>
+            <div className="auth-state-actions">
+              {user && <Link to="/profile" className="auth-submit">Back to profile</Link>}
+              <Link to="/login" className="auth-secondary-action">Back to sign in</Link>
             </div>
-            <h1 className="text-3xl font-extrabold text-primary tracking-tight flex items-center gap-1 leading-none">
-              <span>Settl</span><span className="w-2.5 h-2.5 rounded-full bg-secondary"></span>
-            </h1>
-          </div>
-          <p className="text-xs text-on-surface-variant font-semibold uppercase tracking-wider mt-2.5">Split now · Settl later</p>
-        </div>
-
-        {/* Authentication Card */}
-        <div className="glass-card rounded-3xl p-8 shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-secondary to-blue-500" />
-
-          {/* VERIFYING */}
-          {status === 'verifying' && (
-            <div className="flex flex-col items-center gap-5 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-secondary/10 flex items-center justify-center border border-secondary/20 animate-pulse-glow">
-                <span className="material-symbols-outlined text-secondary text-[32px]">mark_email_unread</span>
-              </div>
-              <div>
-                <h2 className="text-white text-lg font-bold uppercase tracking-wider">Verifying Email</h2>
-                <p className="text-xs text-on-surface-variant mt-2 leading-relaxed">Checking token verification. This will only take a moment.</p>
-              </div>
-              <div className="flex gap-1.5 mt-2">
-                <span className="w-2 h-2 rounded-full bg-secondary animate-bounce [animation-delay:-0.3s]" />
-                <span className="w-2 h-2 rounded-full bg-secondary animate-bounce [animation-delay:-0.15s]" />
-                <span className="w-2 h-2 rounded-full bg-secondary animate-bounce" />
-              </div>
-            </div>
-          )}
-
-          {/* SUCCESS */}
-          {status === 'success' && (
-            <div className="flex flex-col items-center gap-5 text-center animate-in zoom-in-95 duration-200">
-              <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
-                <span className="material-symbols-outlined text-emerald-400 text-[36px]" style={{ fontVariationSettings: "'FILL' 1" }}>
-                  check_circle
-                </span>
-              </div>
-              <div>
-                <h2 className="text-white text-lg font-bold uppercase tracking-wider">Email Verified! 🎉</h2>
-                <p className="text-xs text-on-surface-variant mt-2 leading-relaxed">
-                  Your email has been successfully verified. You're all set to use Settl without any restrictions.
-                </p>
-              </div>
-              <div className="w-full bg-emerald-500/5 border border-emerald-500/15 rounded-xl px-4 py-3 mt-1">
-                <p className="text-[11px] text-emerald-400 font-bold uppercase tracking-wider">
-                  Redirecting to dashboard…
-                </p>
-              </div>
-              <Link
-                to="/dashboard"
-                className="w-full py-3.5 bg-gradient-to-r from-secondary to-blue-600 text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:brightness-110 active:scale-[0.98] transition-all text-center cursor-pointer block shadow-lg shadow-secondary/20"
-              >
-                Go to Dashboard
-              </Link>
-            </div>
-          )}
-
-          {/* ERROR */}
-          {status === 'error' && (
-            <div className="flex flex-col items-center gap-5 text-center animate-in zoom-in-95 duration-200">
-              <div className="w-16 h-16 rounded-2xl bg-[#f87171]/10 flex items-center justify-center border border-[#f87171]/20">
-                <span className="material-symbols-outlined text-[#f87171] text-[36px]" style={{ fontVariationSettings: "'FILL' 1" }}>
-                  cancel
-                </span>
-              </div>
-              <div>
-                <h2 className="text-white text-lg font-bold uppercase tracking-wider">Verification Failed</h2>
-                <p className="text-xs text-[#fca5a5] mt-2 leading-relaxed bg-[#f87171]/5 border border-[#f87171]/10 rounded-xl p-3">{errorMsg}</p>
-              </div>
-              <div className="flex flex-col gap-3 w-full mt-2">
-                <Link
-                  to="/dashboard"
-                  className="w-full py-3.5 bg-gradient-to-r from-secondary to-blue-600 text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:brightness-110 active:scale-[0.98] transition-all text-center cursor-pointer block"
-                >
-                  Go to Dashboard
-                </Link>
-                <Link
-                  to="/login"
-                  className="w-full py-3.5 border border-outline-variant/30 text-primary font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-surface-container transition-all text-center cursor-pointer block"
-                >
-                  Back to Login
-                </Link>
-              </div>
-            </div>
-          )}
-
-        </div>
+          </>
+        )}
       </div>
-    </div>
+    </AuthShell>
   )
 }
