@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import axios from '../api/axios'
 import Navbar from '../components/Navbar'
@@ -30,7 +30,7 @@ export default function Groups() {
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
 
-  const loadGroups = async () => {
+  const loadGroups = useCallback(async () => {
     setLoading(true)
     try {
       const { data } = await axios.get('/groups')
@@ -56,9 +56,9 @@ export default function Groups() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [user?._id])
 
-  useEffect(() => { loadGroups() }, [])
+  useEffect(() => { loadGroups() }, [loadGroups])
 
   useEffect(() => {
     if (searchParams.get('create') === '1') {
