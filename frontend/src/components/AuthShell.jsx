@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom'
 import ThemeToggle from './ThemeToggle'
 
-export default function AuthShell({ eyebrow, title, description, children, footer }) {
+export default function AuthShell({ eyebrow, title, description, children, footer, variant = 'default' }) {
   return (
-    <div className="auth-shell">
+    <div className={`auth-shell auth-shell--${variant}`}>
       <aside className="auth-visual hidden lg:flex">
         <Link to="/" className="auth-brand" aria-label="Settl home">
           <span className="app-brand-mark auth-brand-mark">
@@ -13,9 +13,9 @@ export default function AuthShell({ eyebrow, title, description, children, foote
         </Link>
 
         <div className="auth-visual-copy">
-          <p className="auth-visual-eyebrow">Shared money, made simple</p>
-          <h2>Everyone on the same page.<br /><span>Every rupee accounted for.</span></h2>
-          <p>Keep group expenses clear, understand who owes whom, and settle directly with the people you know.</p>
+          <p className="auth-visual-eyebrow">GROUP FINANCE, WITHOUT THE FRICTION</p>
+          <h2>Money stays clear.<br /><span>Friendships stay easy.</span></h2>
+          <p>A calmer way to manage shared expenses. See the split, understand every balance and settle directly with your people.</p>
         </div>
 
         <div className="auth-preview-card">
@@ -53,7 +53,7 @@ export default function AuthShell({ eyebrow, title, description, children, foote
           <span><span className="material-symbols-outlined">account_balance_wallet</span> Direct UPI handoff</span>
           <span><span className="material-symbols-outlined">history</span> Transparent payment history</span>
         </div>
-        <p className="auth-visual-footnote">Split now. Settl later.</p>
+        <p className="auth-visual-footnote">Less awkward maths. More good moments.</p>
       </aside>
 
       <main className="auth-main">
