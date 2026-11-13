@@ -911,12 +911,12 @@ export default function GroupDetail() {
         {/* At-a-glance group finances */}
         <section className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="app-card p-4 sm:p-5">
-            <p className="app-stat-label">You owe</p>
+            <p className="app-stat-label">You pay</p>
             <p className="app-stat-value app-balance-negative mt-2">{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(amountYouOwe)}</p>
             <p className="text-[10px] app-muted mt-2">Your outstanding payments</p>
           </div>
           <div className="app-card p-4 sm:p-5">
-            <p className="app-stat-label">Owed to you</p>
+            <p className="app-stat-label">You receive</p>
             <p className="app-stat-value app-balance-positive mt-2">{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(amountOwedToYou)}</p>
             <p className="text-[10px] app-muted mt-2">Pending from other members</p>
           </div>
@@ -1132,8 +1132,8 @@ export default function GroupDetail() {
                                             : 'bg-red-500/10 text-[#f87171] border-red-500/25'
                                         }`}>
                                           {iPaid
-                                            ? `You are owed ₹${(expense.amount - myShare.amount).toLocaleString('en-IN')}`
-                                            : `You owe ₹${myShare.amount.toLocaleString('en-IN')}`}
+                                            ? `You receive ₹${(expense.amount - myShare.amount).toLocaleString('en-IN')}`
+                                            : `You pay ₹${myShare.amount.toLocaleString('en-IN')}`}
                                         </span>
                                       )}
                                     </div>
@@ -2155,7 +2155,7 @@ export default function GroupDetail() {
                           </div>
                           <div>
                             <p className="font-bold text-white">{m.user?._id === user._id ? 'You' : m.user?.name}</p>
-                            <p className="text-[9px] text-on-surface-variant/70 font-semibold">{m.user?._id === user._id ? 'Paid full amount' : 'Owes split'}</p>
+                            <p className="text-[9px] text-on-surface-variant/70 font-semibold">{m.user?._id === user._id ? 'Paid full amount' : 'Share assigned'}</p>
                           </div>
                         </div>
                         <span className="font-bold text-white/80">
