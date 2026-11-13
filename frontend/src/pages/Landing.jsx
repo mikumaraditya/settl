@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import BrandMark from '../components/BrandMark'
 import { Link } from 'react-router-dom'
 import ThemeToggle from '../components/ThemeToggle'
 import { useNavigate } from 'react-router-dom'
@@ -142,7 +143,7 @@ export default function Landing() {
       <nav className="public-nav fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 py-3.5 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2.5" aria-label="Settl home">
           <span className="app-brand-mark w-9 h-9 rounded-xl flex items-center justify-center">
-            <span className="material-symbols-outlined text-[19px]">account_balance_wallet</span>
+            <BrandMark size={19} />
           </span>
           <span className="text-xl font-black tracking-tight flex items-center gap-0.5 text-[var(--on-surface)]">
             Settl<span className="w-1.5 h-1.5 rounded-full bg-secondary"></span>
@@ -307,7 +308,7 @@ export default function Landing() {
                     return (
                       <div className="space-y-2">
                         <div className="flex items-center justify-between text-xs border-b border-white/5 pb-2">
-                          <span className="text-slate-400 font-medium">Each owes:</span>
+                          <span className="text-slate-400 font-medium">Each pays:</span>
                           <span className="text-emerald-400 font-black">₹{share}</span>
                         </div>
                         <div className="space-y-2 pt-1">
@@ -351,14 +352,14 @@ export default function Landing() {
                               <span className="w-4 h-4 rounded-full bg-pink-500/10 border border-pink-500/20 text-pink-400 text-[8px] flex items-center justify-center font-bold">K</span>
                               Kabir
                             </span>
-                            <span className="text-rose-400 font-bold">Owes 50% (₹{kabirOwes})</span>
+                            <span className="text-rose-400 font-bold">Share: 50% (₹{kabirOwes})</span>
                           </div>
                           <div className="flex justify-between text-[11px] text-slate-300">
                             <span className="flex items-center gap-1.5">
                               <span className="w-4 h-4 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 text-[8px] flex items-center justify-center font-bold">S</span>
                               Sara
                             </span>
-                            <span className="text-rose-400 font-bold">Owes 30% (₹{saraOwes})</span>
+                            <span className="text-rose-400 font-bold">Share: 30% (₹{saraOwes})</span>
                           </div>
                           {numFriends === 4 && (
                             <div className="flex justify-between text-[11px] text-slate-300">
