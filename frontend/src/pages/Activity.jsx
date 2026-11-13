@@ -71,6 +71,12 @@ export default function Activity() {
   const [typeFilter, setTypeFilter] = useState('all')
   const [dateFilter, setDateFilter] = useState('30')
   const [error, setError] = useState('')
+  const [now, setNow] = useState(null)
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setNow(Date.now()), 0)
+    return () => window.clearTimeout(timer)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -102,7 +108,7 @@ export default function Activity() {
   }, [tab])
 
   const visibleItems = useMemo(() => {
-    const cutoff = dateFilter === 'all' ? 0 : Date.now() - Number(dateFilter) * 86400000
+    const cutoff = dateFilter === 'all' || now === null ? 0 : now - Number(dateFilter) * 86400000
     return items.filter(item => {
       if (groupFilter !== 'all' && item.groupId !== groupFilter) return false
       if (typeFilter !== 'all') {
@@ -113,7 +119,7 @@ export default function Activity() {
       }
       return new Date(item.createdAt).getTime() >= cutoff
     })
-  }, [items, groupFilter, typeFilter, dateFilter])
+  }, [items, groupFilter, typeFilter, dateFilter, now]
 
   const groupedItems = useMemo(() => {
     const map = new Map()
