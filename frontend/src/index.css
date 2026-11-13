@@ -1733,13 +1733,12 @@ button:disabled { cursor: not-allowed; }
   margin: 0 auto;
   overflow: visible;
 }
-.auth-hero-illustration img {
+.auth-hero-illustration .auth-hero-art {
   display: block;
   width: 100%;
   max-height: min(48vh, 500px);
-  height: 100%;
-  object-fit: contain;
-  object-position: center;
+  height: auto;
+  overflow: visible;
   filter: drop-shadow(0 22px 45px rgba(0, 0, 0, .22));
 }
 .auth-benefits {
