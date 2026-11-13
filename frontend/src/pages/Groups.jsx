@@ -145,7 +145,7 @@ export default function Groups() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {visibleGroups.map((group, index) => {
+            {visibleGroups.map(group => {
               const balance = balances[group._id] || 0
               const members = group.members || []
               return (
