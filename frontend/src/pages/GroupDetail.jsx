@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import axios, { SOCKET_URL } from '../api/axios'
 import Navbar from '../components/Navbar'
 import { useAuth } from '../context/AuthContext'
@@ -40,9 +40,22 @@ const generateOptimisticId = () => `optimistic-${Date.now()}`;
 
 export default function GroupDetail() {
   const { id } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuth()
   const { joinGroup } = useNotifications()
   const navigate = useNavigate()
+
+  // Remember a small, privacy-friendly list of recently visited groups for Home quick access.
+  useEffect(() => {
+    if (!id) return
+    try {
+      const existing = JSON.parse(localStorage.getItem('settl_recent_groups') || '[]')
+      const recent = [id, ...existing.filter(groupId => groupId !== id)].slice(0, 8)
+      localStorage.setItem('settl_recent_groups', JSON.stringify(recent))
+    } catch {
+      localStorage.setItem('settl_recent_groups', JSON.stringify([id]))
+    }
+  }, [id])
 
   // ── Core state ──────────────────────────────────────────────────────────────
   const [group, setGroup]     = useState(null)
@@ -216,6 +229,13 @@ export default function GroupDetail() {
     }
     setShowAddExpense(true);
   };
+
+  // Home can deep-link into the existing add-expense flow without duplicating the form.
+  useEffect(() => {
+    if (!group || searchParams.get('action') !== 'add-expense') return
+    openAddExpenseModal()
+    setSearchParams({}, { replace: true })
+  }, [group, searchParams, setSearchParams])
 
   const handleSliderChange = (changedUserId, newValue) => {
     setSplitPercentages(prev => {
@@ -734,7 +754,7 @@ export default function GroupDetail() {
 
   // ── Loading screen ────────────────────────────────────────────────────────────
   if (loading) return (
-    <div className="min-h-screen bg-background flex flex-col md:pl-20 lg:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
+    <div className="app-page min-h-screen flex flex-col md:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
       <Navbar />
       <main className="flex-1 w-full max-w-6xl mx-auto px-6 md:px-8 py-8 flex flex-col gap-6 md:gap-8">
         {/* Back navigation skeleton */}
@@ -809,19 +829,19 @@ export default function GroupDetail() {
     <div className="min-h-screen bg-background flex flex-col md:pl-20 lg:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
       <Navbar />
 
-      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col gap-5 sm:gap-6">
+      <main className="app-main flex flex-col gap-6">
 
         {/* Back navigation */}
         <button
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate('/groups')}
           className="text-on-surface-variant hover:text-primary text-sm font-semibold flex items-center gap-1.5 transition-colors cursor-pointer self-start rounded-lg px-1 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-secondary"
         >
           <span className="material-symbols-outlined text-[18px]">arrow_back</span>
-          Back to Dashboard
+          All groups
         </button>
 
         {/* Hero Header Card */}
-        <section className="glass-card p-5 sm:p-6 md:p-8 rounded-3xl shadow-lg relative overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300 border border-white/10">
+        <section className="app-card p-5 sm:p-6 md:p-8 relative overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">
           <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.01)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.01)_1px,transparent_1px)] bg-[size:16px_16px] pointer-events-none" />
           <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
             <span className="material-symbols-outlined text-[140px]" style={{ fontVariationSettings: "'FILL' 1" }}>
@@ -881,7 +901,7 @@ export default function GroupDetail() {
           <div className="lg:col-span-8 flex flex-col gap-4 order-2 lg:order-1">
 
             {/* Tab bar */}
-            <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-white/5 overflow-x-auto hide-scrollbar flex-nowrap w-full bg-background/90 backdrop-blur-xl rounded-t-2xl px-1">
+            <div className="sticky top-14 md:top-0 z-20 flex items-center gap-1 border-b app-divider overflow-x-auto hide-scrollbar flex-nowrap w-full bg-[var(--background)]/95 backdrop-blur-xl rounded-t-2xl px-1">
               {/* Expenses tab */}
               <button
                 onClick={() => handleTabChange('expenses')}
