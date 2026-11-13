@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import ThemeToggle from './ThemeToggle'
 import BrandMark from './BrandMark'
+import AuthHeroIllustration from './AuthHeroIllustration'
 
 export default function AuthShell({ eyebrow, title, description, children, footer }) {
   return (
@@ -23,11 +24,7 @@ export default function AuthShell({ eyebrow, title, description, children, foote
         </div>
 
         <div className="auth-hero-illustration">
-          <img
-            src="/auth-hero-illustration.webp"
-            alt="Settl app preview showing a group expense snapshot, shared balances and simple payment directions"
-            fetchPriority="high"
-          />
+          <AuthHeroIllustration />
         </div>
 
         <div className="auth-benefits">
