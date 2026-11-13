@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import axios, { SOCKET_URL } from '../api/axios'
 import Navbar from '../components/Navbar'
@@ -215,7 +215,7 @@ export default function GroupDetail() {
     }, 0)
   }, [expenseForm.amount, expenseForm.splitType, group?.members])
 
-  const openAddExpenseModal = () => {
+  const openAddExpenseModal = useCallback(() => {
     if (group?.members?.length > 0) {
       const equalShare = 100 / group.members.length;
       const initial = {};
@@ -228,14 +228,14 @@ export default function GroupDetail() {
       setExactAmounts(initialExact);
     }
     setShowAddExpense(true);
-  };
+  }, [group]);
 
   // Home can deep-link into the existing add-expense flow without duplicating the form.
   useEffect(() => {
     if (!group || searchParams.get('action') !== 'add-expense') return
     openAddExpenseModal()
     setSearchParams({}, { replace: true })
-  }, [group, searchParams, setSearchParams])
+  }, [group, searchParams, setSearchParams, openAddExpenseModal])
 
   const handleSliderChange = (changedUserId, newValue) => {
     setSplitPercentages(prev => {
