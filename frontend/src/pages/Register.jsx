@@ -24,7 +24,7 @@ export default function Register() {
     return /[A-Z]/.test(pass) && /[a-z]/.test(pass) && /[0-9]/.test(pass) && /[!@#$%^&*(),.?":{}|<>]/.test(pass)
   }
 
-  const validateUpi = (upi) => /^[a-zA-Z0-9.\\-_]{2,256}@[a-zA-Z]{2,64}$/.test(upi)
+  const validateUpi = (upi) => /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z]{2,64}$/.test(upi)
 
   const handleSubmit = (event) => {
     event.preventDefault()
