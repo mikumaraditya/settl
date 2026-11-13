@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import axios, { SOCKET_URL } from '../api/axios'
 import Navbar from '../components/Navbar'
 import { useAuth } from '../context/AuthContext'
@@ -40,9 +40,22 @@ const generateOptimisticId = () => `optimistic-${Date.now()}`;
 
 export default function GroupDetail() {
   const { id } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuth()
   const { joinGroup } = useNotifications()
   const navigate = useNavigate()
+
+  // Remember a small, privacy-friendly list of recently visited groups for Home quick access.
+  useEffect(() => {
+    if (!id) return
+    try {
+      const existing = JSON.parse(localStorage.getItem('settl_recent_groups') || '[]')
+      const recent = [id, ...existing.filter(groupId => groupId !== id)].slice(0, 8)
+      localStorage.setItem('settl_recent_groups', JSON.stringify(recent))
+    } catch {
+      localStorage.setItem('settl_recent_groups', JSON.stringify([id]))
+    }
+  }, [id])
 
   // ── Core state ──────────────────────────────────────────────────────────────
   const [group, setGroup]     = useState(null)
@@ -56,7 +69,7 @@ export default function GroupDetail() {
   const [loadingMore, setLoadingMore]       = useState(false)
 
   // ── Tab state ────────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState('expenses')
+  const [activeTab, setActiveTab] = useState('overview')
   const [messages, setMessages] = useState([])
   const [chatLoading, setChatLoading] = useState(false)
   const [messageText, setMessageText] = useState('')
@@ -202,7 +215,7 @@ export default function GroupDetail() {
     }, 0)
   }, [expenseForm.amount, expenseForm.splitType, group?.members])
 
-  const openAddExpenseModal = () => {
+  const openAddExpenseModal = useCallback(() => {
     if (group?.members?.length > 0) {
       const equalShare = 100 / group.members.length;
       const initial = {};
@@ -215,7 +228,17 @@ export default function GroupDetail() {
       setExactAmounts(initialExact);
     }
     setShowAddExpense(true);
-  };
+  }, [group, setShowAddExpense]);
+
+  // Home can deep-link into the existing add-expense flow without duplicating the form.
+  useEffect(() => {
+    if (!group || searchParams.get('action') !== 'add-expense') return undefined
+    const timer = window.setTimeout(() => {
+      openAddExpenseModal()
+      setSearchParams({}, { replace: true })
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [group, searchParams, setSearchParams, openAddExpenseModal])
 
   const handleSliderChange = (changedUserId, newValue) => {
     setSplitPercentages(prev => {
@@ -732,11 +755,22 @@ export default function GroupDetail() {
     }
   }, [activeTab]);
 
+  const currentUserId = user?._id?.toString?.() || user?._id
+  const amountYouOwe = transactions.reduce((sum, transaction) => {
+    const fromId = transaction.from?._id?.toString?.() || transaction.from?._id
+    return fromId === currentUserId ? sum + Number(transaction.amount || 0) : sum
+  }, 0)
+  const amountOwedToYou = transactions.reduce((sum, transaction) => {
+    const toId = transaction.to?._id?.toString?.() || transaction.to?._id
+    return toId === currentUserId ? sum + Number(transaction.amount || 0) : sum
+  }, 0)
+  const netGroupPosition = amountOwedToYou - amountYouOwe
+
   // ── Loading screen ────────────────────────────────────────────────────────────
   if (loading) return (
-    <div className="min-h-screen bg-background flex flex-col md:pl-20 lg:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
+    <div className="app-page min-h-screen flex flex-col md:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
       <Navbar />
-      <main className="flex-1 w-full max-w-6xl mx-auto px-6 md:px-8 py-8 flex flex-col gap-6 md:gap-8">
+      <main className="app-main flex flex-col gap-6 md:gap-8">
         {/* Back navigation skeleton */}
         <div className="h-4 bg-white/5 rounded w-20 animate-pulse" />
         
@@ -806,22 +840,22 @@ export default function GroupDetail() {
 
   // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-background flex flex-col md:pl-20 lg:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
+    <div className="app-page min-h-screen flex flex-col md:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
       <Navbar />
 
-      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col gap-5 sm:gap-6">
+      <main className="app-main flex flex-col gap-6">
 
         {/* Back navigation */}
         <button
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate('/groups')}
           className="text-on-surface-variant hover:text-primary text-sm font-semibold flex items-center gap-1.5 transition-colors cursor-pointer self-start rounded-lg px-1 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-secondary"
         >
           <span className="material-symbols-outlined text-[18px]">arrow_back</span>
-          Back to Dashboard
+          All groups
         </button>
 
         {/* Hero Header Card */}
-        <section className="glass-card p-5 sm:p-6 md:p-8 rounded-3xl shadow-lg relative overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300 border border-white/10">
+        <section className="app-card p-5 sm:p-6 md:p-8 relative overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">
           <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.01)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.01)_1px,transparent_1px)] bg-[size:16px_16px] pointer-events-none" />
           <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
             <span className="material-symbols-outlined text-[140px]" style={{ fontVariationSettings: "'FILL' 1" }}>
@@ -874,6 +908,25 @@ export default function GroupDetail() {
           </div>
         </section>
 
+        {/* At-a-glance group finances */}
+        <section className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="app-card p-4 sm:p-5">
+            <p className="app-stat-label">You owe</p>
+            <p className="app-stat-value app-balance-negative mt-2">{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(amountYouOwe)}</p>
+            <p className="text-[10px] app-muted mt-2">Your outstanding payments</p>
+          </div>
+          <div className="app-card p-4 sm:p-5">
+            <p className="app-stat-label">Owed to you</p>
+            <p className="app-stat-value app-balance-positive mt-2">{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(amountOwedToYou)}</p>
+            <p className="text-[10px] app-muted mt-2">Pending from other members</p>
+          </div>
+          <div className="app-card p-4 sm:p-5 bg-[var(--app-blue-soft)] border-[color-mix(in_srgb,var(--secondary)_14%,transparent)]">
+            <p className="app-stat-label">Your net position</p>
+            <p className="app-stat-value mt-2">{netGroupPosition > 0.005 ? '+' : netGroupPosition < -0.005 ? '−' : ''}{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(Math.abs(netGroupPosition))}</p>
+            <p className="text-[10px] app-muted mt-2">{transactions.length} simplified payment path{transactions.length === 1 ? '' : 's'} open</p>
+          </div>
+        </section>
+
         {/* Main grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
@@ -881,7 +934,16 @@ export default function GroupDetail() {
           <div className="lg:col-span-8 flex flex-col gap-4 order-2 lg:order-1">
 
             {/* Tab bar */}
-            <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-white/5 overflow-x-auto hide-scrollbar flex-nowrap w-full bg-background/90 backdrop-blur-xl rounded-t-2xl px-1">
+            <div className="sticky top-14 md:top-0 z-20 flex items-center gap-1 border-b app-divider overflow-x-auto hide-scrollbar flex-nowrap w-full bg-[var(--background)]/95 backdrop-blur-xl rounded-t-2xl px-1">
+              {/* Overview tab */}
+              <button
+                onClick={() => handleTabChange('overview')}
+                className={`px-5 py-3.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer -mb-px flex-shrink-0 ${activeTab === 'overview' ? 'border-secondary text-secondary bg-secondary/5 rounded-t-xl' : 'border-transparent text-on-surface-variant hover:text-primary'}`}
+              >
+                <span className="material-symbols-outlined text-[18px]">space_dashboard</span>
+                Overview
+              </button>
+
               {/* Expenses tab */}
               <button
                 onClick={() => handleTabChange('expenses')}
@@ -945,6 +1007,47 @@ export default function GroupDetail() {
                 )}
               </button>
             </div>
+
+            {/* ── OVERVIEW TAB ─────────────────────────────────────────────── */}
+            {activeTab === 'overview' && (
+              <div className="flex flex-col gap-5 animate-in fade-in duration-200">
+                <section className="app-card p-5 sm:p-6">
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <div>
+                      <p className="app-page-kicker mb-1.5">Group overview</p>
+                      <h3 className="text-base font-bold">Recent expenses</h3>
+                    </div>
+                    <button onClick={() => handleTabChange('expenses')} className="text-xs font-bold text-[var(--secondary)] hover:underline whitespace-nowrap">View all</button>
+                  </div>
+                  {expenses.length === 0 ? (
+                    <div className="app-empty-state p-8 text-center">
+                      <span className="app-icon-tile w-11 h-11 mx-auto rounded-xl"><span className="material-symbols-outlined">receipt_long</span></span>
+                      <p className="text-sm font-bold mt-3">No expenses yet</p>
+                      <p className="text-xs app-muted mt-1.5">Add the first shared expense to get this group going.</p>
+                      <button onClick={openAddExpenseModal} className="app-button-primary mt-4"><span className="material-symbols-outlined text-[17px]">add</span>Add expense</button>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-[var(--app-border)]">
+                      {expenses.slice(0, 4).map(expense => (
+                        <button key={expense._id} onClick={() => handleTabChange('expenses')} className="w-full flex items-center gap-3 py-3.5 text-left hover:bg-[var(--surface-container-low)] rounded-xl px-2 -mx-2">
+                          <span className="app-icon-tile w-9 h-9 rounded-xl shrink-0"><span className="material-symbols-outlined text-[18px]">{categoryIconMap[expense.category] || 'receipt_long'}</span></span>
+                          <span className="flex-1 min-w-0"><span className="block text-xs font-bold truncate">{expense.description}</span><span className="block text-[10px] app-muted mt-1">{expense.paidBy?.name ? `Paid by ${expense.paidBy.name}` : 'Group expense'} · {new Date(expense.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span></span>
+                          <span className="text-sm font-bold tabular-nums whitespace-nowrap">{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(expense.amount || 0)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </section>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button onClick={() => handleTabChange('expenses')} className="app-card app-card-hover p-4 text-left flex items-center gap-3"><span className="app-icon-tile"><span className="material-symbols-outlined">receipt_long</span></span><span className="flex-1"><span className="block text-sm font-bold">Expenses</span><span className="block text-[10px] app-muted mt-1">Browse and manage shared costs</span></span><span className="material-symbols-outlined app-muted">arrow_forward</span></button>
+                  <button onClick={() => navigate(`/settle/${id}`)} className="app-card app-card-hover p-4 text-left flex items-center gap-3"><span className="app-icon-tile"><span className="material-symbols-outlined">payments</span></span><span className="flex-1"><span className="block text-sm font-bold">Settle Up</span><span className="block text-[10px] app-muted mt-1">Review balances and payments</span></span><span className="material-symbols-outlined app-muted">arrow_forward</span></button>
+                  <button onClick={() => handleTabChange('activity')} className="app-card app-card-hover p-4 text-left flex items-center gap-3"><span className="app-icon-tile"><span className="material-symbols-outlined">history</span></span><span className="flex-1"><span className="block text-sm font-bold">Group activity</span><span className="block text-[10px] app-muted mt-1">See recent group updates</span></span><span className="material-symbols-outlined app-muted">arrow_forward</span></button>
+                  {group?.members.find(member => member.user?._id === user?._id)?.role === 'admin' && (
+                    <button onClick={() => setShowAddMember(true)} className="app-card app-card-hover p-4 text-left flex items-center gap-3"><span className="app-icon-tile"><span className="material-symbols-outlined">person_add</span></span><span className="flex-1"><span className="block text-sm font-bold">Invite members</span><span className="block text-[10px] app-muted mt-1">Bring someone into this group</span></span><span className="material-symbols-outlined app-muted">arrow_forward</span></button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* ── EXPENSES TAB ─────────────────────────────────────────────── */}
             {activeTab === 'expenses' && (

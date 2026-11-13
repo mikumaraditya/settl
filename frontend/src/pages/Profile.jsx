@@ -98,14 +98,14 @@ export default function Profile() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-white flex flex-col relative overflow-hidden md:pl-20 lg:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
+    <div className="app-page min-h-screen text-[var(--on-surface)] flex flex-col relative overflow-hidden md:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
       {/* Background Orbs */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full bg-blue-500/10 blur-3xl pointer-events-none" />
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none" />
       
       <Navbar />
 
-      <main className="flex-1 w-full max-w-3xl mx-auto px-6 py-8 flex flex-col gap-6 relative z-10">
+      <main className="app-main max-w-3xl flex flex-col gap-6 relative z-10">
 
         {/* Back */}
         <button
@@ -117,7 +117,7 @@ export default function Profile() {
         </button>
 
         {/* Header */}
-        <div className="glass-card p-6 rounded-3xl border border-white/5 flex items-center gap-5 relative overflow-hidden">
+        <div className="app-card p-6 flex items-center gap-5 relative overflow-hidden">
           <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-blue-500/5 blur-xl pointer-events-none" />
           
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black text-2xl shadow-md flex-shrink-0">
@@ -151,7 +151,7 @@ export default function Profile() {
 
 
         {/* ── Edit Profile Card ─────────────────────────────────────────── */}
-        <div className="glass-card rounded-3xl border border-white/5 overflow-hidden">
+        <div className="app-card overflow-hidden">
           <div className="px-6 py-4 border-b border-white/5 flex items-center gap-3 bg-white/[0.01]">
             <div className="w-8 h-8 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
               <span className="material-symbols-outlined text-[16px] text-blue-400">person</span>

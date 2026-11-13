@@ -8,6 +8,8 @@ import SettleUp from './pages/SettleUp'
 import VerifyEmail from './pages/VerifyEmail'
 import Profile from './pages/Profile'
 import Landing from './pages/Landing'
+import Groups from './pages/Groups'
+import Activity from './pages/Activity'
 
 import FinancialMentorWidget from './components/FinancialMentorWidget'
 
@@ -36,6 +38,8 @@ export default function App() {
       <Route path="/register" element={<Register />} />
       <Route path="/verify-email" element={<VerifyEmail />} />
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      <Route path="/groups" element={<ProtectedRoute><Groups /></ProtectedRoute>} />
+      <Route path="/activity" element={<ProtectedRoute><Activity /></ProtectedRoute>} />
       <Route path="/group/:id" element={<ProtectedRoute><GroupDetail /></ProtectedRoute>} />
       <Route path="/settle/:id" element={<ProtectedRoute><SettleUp /></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />

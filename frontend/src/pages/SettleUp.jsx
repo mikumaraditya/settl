@@ -206,7 +206,7 @@ export default function SettleUp() {
   }, [id])
 
   if (loading) return (
-    <div className="min-h-screen bg-background text-white flex flex-col relative overflow-hidden md:pl-20 lg:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
+    <div className="app-page min-h-screen text-[var(--on-surface)] flex flex-col relative overflow-hidden md:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
       {/* Background orbs */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full bg-blue-500/10 blur-3xl pointer-events-none" />
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none" />
@@ -227,14 +227,14 @@ export default function SettleUp() {
   const totalPayments = transactions.length + pendingRequests.length
 
   return (
-    <div className="min-h-screen bg-background text-white flex flex-col relative overflow-hidden md:pl-20 lg:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
+    <div className="app-page min-h-screen flex flex-col relative overflow-hidden md:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
       {/* Background Orbs */}
       <div className="absolute top-0 right-1/4 w-96 h-96 rounded-full bg-blue-500/5 blur-3xl pointer-events-none" />
       <div className="absolute bottom-10 left-1/4 w-96 h-96 rounded-full bg-indigo-500/5 blur-3xl pointer-events-none" />
 
       <Navbar />
       
-      <main className="flex-1 w-full max-w-4xl mx-auto px-6 py-8 flex flex-col gap-6 relative z-10">
+      <main className="app-main max-w-4xl flex flex-col gap-6 relative z-10">
         {/* Back Button */}
         <button
           onClick={() => navigate(`/group/${id}`)}
@@ -308,7 +308,7 @@ export default function SettleUp() {
                     const cancelKey  = `cancel-${p.to?._id}`
                     const confirmKey = `confirm-${p.from?._id}`
                     return (
-                      <div key={p._id || index} className="glass-card border border-amber-500/20 rounded-3xl p-6 shadow-md flex flex-col gap-4 relative overflow-hidden">
+                      <div key={p._id || index} className="app-card border border-amber-500/20 p-5 sm:p-6 flex flex-col gap-4 relative overflow-hidden">
                         <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-amber-500/5 blur-xl pointer-events-none" />
                         
                         <div className="flex items-center justify-between gap-3 border-b border-white/5 pb-4">
