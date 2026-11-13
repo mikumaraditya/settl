@@ -793,3 +793,18 @@ input[type="number"] {
   animation: laser-scan 3.5s infinite ease-in-out;
   pointer-events: none;
 }
+
+
+/* Light-theme compatibility for legacy group and settlement components that
+   still use the former dark-theme text utility classes. */
+:root:not(.dark) .app-page .text-white:not([class*="bg-"]) {
+  color: var(--on-surface) !important;
+}
+:root:not(.dark) .app-page button.text-white,
+:root:not(.dark) .app-page button.text-white * {
+  color: #ffffff !important;
+}
+:root:not(.dark) .app-page .upi-payment-modal .text-white,
+:root:not(.dark) .app-page .upi-payment-modal .text-white * {
+  color: #ffffff !important;
+}
