@@ -1,17 +1,7 @@
-import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import ThemeToggle from './ThemeToggle'
 
 export default function AuthShell({ eyebrow, title, description, children, footer }) {
-  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains('dark'))
-
-  const toggleTheme = () => {
-    const next = !isDark
-    document.documentElement.classList.toggle('dark', next)
-    document.documentElement.classList.toggle('light', !next)
-    localStorage.setItem('theme', next ? 'dark' : 'light')
-    setIsDark(next)
-  }
-
   return (
     <div className="auth-shell">
       <aside className="auth-visual hidden lg:flex">
@@ -74,9 +64,7 @@ export default function AuthShell({ eyebrow, title, description, children, foote
           </Link>
           <div className="auth-top-actions">
             <Link to="/" className="auth-home-link"><span className="material-symbols-outlined">arrow_back</span> Home</Link>
-            <button type="button" onClick={toggleTheme} className="auth-theme-toggle" aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'} aria-pressed={isDark}>
-              <span className="material-symbols-outlined">{isDark ? 'light_mode' : 'dark_mode'}</span>
-            </button>
+            <ThemeToggle className="auth-theme-toggle" />
           </div>
         </div>
 
