@@ -1632,3 +1632,10 @@ button:disabled { cursor: not-allowed; }
   .public-nav > div:last-child > button:nth-child(2) { font-size: 10px; }
   .public-nav > div:last-child > button:last-child { padding: 8px 10px; font-size: 9px; }
 }
+
+:root:not(.dark) .auth-card .google-auth-error p.text-white { color: var(--app-red) !important; }
+:root:not(.dark) .auth-card .google-auth-retry {
+  color: var(--on-surface) !important;
+  background: var(--surface) !important;
+  border-color: var(--app-border) !important;
+}
