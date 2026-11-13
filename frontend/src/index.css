@@ -1547,3 +1547,54 @@ button:disabled { cursor: not-allowed; }
 .upi-confirm-cancel { color: var(--on-surface) !important; border-color: var(--app-border) !important; }
 :root:not(.dark) .upi-confirm-modal .text-white { color: var(--on-surface) !important; }
 :root:not(.dark) .upi-confirm-modal button.bg-blue-500 { color: #fff !important; }
+
+
+/* UPI/payment confirmation surfaces adapt to the active appearance. */
+.payment-modal-surface {
+  background: var(--surface) !important;
+  color: var(--on-surface) !important;
+  border-color: var(--app-border) !important;
+}
+.payment-modal-surface [class*="text-slate-400"],
+.payment-modal-surface [class*="text-slate-500"] {
+  color: var(--on-surface-variant) !important;
+}
+.payment-modal-surface [class*="border-white/"] { border-color: var(--app-border) !important; }
+.payment-modal-surface [class*="bg-white/"] { background-color: var(--surface-container-low) !important; }
+:root:not(.dark) .payment-modal-surface .text-white:not([class*="bg-"]) { color: var(--on-surface) !important; }
+:root:not(.dark) .payment-modal-surface [class*="bg-white/"][class*="text-white"] { color: var(--on-surface) !important; }
+:root:not(.dark) .payment-modal-surface .text-white\/90 { color: var(--on-surface) !important; }
+
+/* Finn profile setup is a first-class form, not a dark-only utility island. */
+:root:not(.dark) .mentor-onboarding-card {
+  background: var(--surface) !important;
+  color: var(--on-surface) !important;
+  border-color: var(--app-border) !important;
+}
+:root:not(.dark) .mentor-onboarding-card .text-white:not([class*="bg-"]) { color: var(--on-surface) !important; }
+:root:not(.dark) .mentor-onboarding-card [class*="text-zinc-300"],
+:root:not(.dark) .mentor-onboarding-card [class*="text-zinc-400"] { color: var(--on-surface-variant) !important; }
+:root:not(.dark) .mentor-onboarding-card [class*="bg-zinc-900"],
+:root:not(.dark) .mentor-onboarding-card [class*="bg-zinc-800"] {
+  color: var(--on-surface) !important;
+  background: var(--surface-container-low) !important;
+}
+:root:not(.dark) .mentor-onboarding-card [class*="border-white/"] { border-color: var(--app-border) !important; }
+:root:not(.dark) .mentor-onboarding-card input,
+:root:not(.dark) .mentor-onboarding-card select {
+  color: var(--on-surface) !important;
+  background: var(--surface-container-low) !important;
+  border-color: var(--app-border) !important;
+}
+:root:not(.dark) .mentor-onboarding-card option { color: #182230; background: #fff; }
+
+/* Error toasts use semantic colours but share surface and border tokens. */
+.toast-error {
+  color: var(--app-red);
+  background: var(--surface);
+  border-color: color-mix(in srgb,var(--app-red) 30%,var(--app-border));
+}
+.toast-error-close { color: var(--app-red); }
+.toast-error-close:hover { background: color-mix(in srgb,var(--app-red) 10%,transparent); }
+.toast-error-progress { background: var(--app-red); animation: toast-progress linear forwards; }
+@keyframes toast-progress { from { width: 100%; } to { width: 0%; } }
