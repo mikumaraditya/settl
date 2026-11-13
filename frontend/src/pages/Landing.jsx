@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useNavigate } from 'react-router-dom'
 
 const getInitialsBg = (name) => {
@@ -154,14 +155,14 @@ export default function Landing() {
 
       {/* Navigation */}
       <nav className="public-nav fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 py-3.5 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center justify-center w-8 h-8 bg-gradient-to-tr from-secondary to-blue-600 rounded-xl shadow-md">
-            <span className="material-symbols-outlined text-white text-[18px] font-bold">account_balance_wallet</span>
-          </div>
-          <span className="text-xl font-black text-white tracking-tight flex items-center gap-0.5">
+        <Link to="/" className="flex items-center gap-2.5" aria-label="Settl home">
+          <span className="app-brand-mark w-9 h-9 rounded-xl flex items-center justify-center">
+            <span className="material-symbols-outlined text-[19px]">account_balance_wallet</span>
+          </span>
+          <span className="text-xl font-black tracking-tight flex items-center gap-0.5 text-[var(--on-surface)]">
             Settl<span className="w-1.5 h-1.5 rounded-full bg-secondary"></span>
           </span>
-        </div>
+        </Link>
         <div className="hidden md:flex items-center gap-8 text-xs font-bold uppercase tracking-wider text-slate-400">
           <a href="#features" className="hover:text-white transition-colors">Features</a>
           <a href="#how-it-works" className="hover:text-white transition-colors">How it works</a>
