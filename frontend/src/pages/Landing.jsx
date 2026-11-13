@@ -138,7 +138,7 @@ export default function Landing() {
     },
     {
       q: 'Can I edit an expense after adding it?',
-      a: 'No, in-place expense editing is not supported. However, the person who paid for/logged the expense can delete it within 2 hours of creation and re-add it. After 2 hours, the expense entry is locked.'
+      a: 'Expense changes need to respect the payment history. When a change could affect a confirmed payment, Settl keeps the original record auditable and may require a separate correction instead of silently rewriting the transaction.'
     },
     {
       q: 'Is my payment data secure?',
@@ -147,13 +147,13 @@ export default function Landing() {
   ];
 
   return (
-    <div className="relative min-h-screen bg-background text-on-surface flex flex-col font-sans overflow-hidden selection:bg-secondary/35 selection:text-white w-full">
+    <div className="public-page app-page relative min-h-screen flex flex-col font-sans overflow-hidden w-full">
       {/* Decorative Blur Orbs */}
       <div className="absolute top-[10%] left-[-15%] w-[350px] sm:w-[500px] h-[350px] sm:h-[500px] bg-secondary/5 rounded-full blur-[130px] pointer-events-none -z-10 animate-pulse-glow" />
       <div className="absolute bottom-[30%] right-[-15%] w-[300px] sm:w-[450px] h-[300px] sm:h-[450px] bg-blue-500/5 rounded-full blur-[120px] pointer-events-none -z-10 animate-pulse-glow" />
 
       {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 glass-card px-6 py-4 flex items-center justify-between border-b border-white/5 bg-[#0b1326]/70 backdrop-blur-xl">
+      <nav className="public-nav fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 py-3.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="inline-flex items-center justify-center w-8 h-8 bg-gradient-to-tr from-secondary to-blue-600 rounded-xl shadow-md">
             <span className="material-symbols-outlined text-white text-[18px] font-bold">account_balance_wallet</span>
