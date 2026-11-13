@@ -1124,3 +1124,6 @@ button:disabled { cursor: not-allowed; }
     transition: none !important;
   }
 }
+
+.app-brand-mark,
+.app-brand-mark * { color: #ffffff !important; }
