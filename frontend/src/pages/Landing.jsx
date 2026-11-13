@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import ThemeToggle from '../components/ThemeToggle'
 import { useNavigate } from 'react-router-dom'
 
 const getInitialsBg = (name) => {
@@ -25,8 +26,6 @@ const getInitialsBg = (name) => {
 
 export default function Landing() {
   const navigate = useNavigate()
-  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains('dark'))
-
   // Interactive Split Calculator State
   const [billAmount, setBillAmount] = useState(1200)
   const [numFriends, setNumFriends] = useState(3)
@@ -34,20 +33,6 @@ export default function Landing() {
 
   // FAQ Accordion State
   const [expandedFaq, setExpandedFaq] = useState(null)
-
-  const toggleTheme = () => {
-    if (isDark) {
-      document.documentElement.classList.remove('dark')
-      document.documentElement.classList.add('light')
-      localStorage.setItem('theme', 'light')
-      setIsDark(false)
-    } else {
-      document.documentElement.classList.remove('light')
-      document.documentElement.classList.add('dark')
-      localStorage.setItem('theme', 'dark')
-      setIsDark(true)
-    }
-  }
 
   const features = [
     {
@@ -170,15 +155,7 @@ export default function Landing() {
           <a href="#faq" className="hover:text-white transition-colors">FAQ</a>
         </div>
         <div className="flex items-center gap-4">
-          <button 
-            onClick={toggleTheme}
-            className="w-9 h-9 rounded-lg flex items-center justify-center border border-white/5 text-slate-400 hover:text-white transition-all active:scale-95 cursor-pointer flex-shrink-0"
-            aria-label="Toggle dark mode"
-          >
-            <span className="material-symbols-outlined text-[18px]">
-              {isDark ? 'light_mode' : 'dark_mode'}
-            </span>
-          </button>
+          <ThemeToggle className="public-theme-toggle" />
           <button 
             onClick={() => navigate('/login')} 
             className="text-xs font-extrabold uppercase tracking-wider text-slate-400 hover:text-white transition-colors cursor-pointer"
