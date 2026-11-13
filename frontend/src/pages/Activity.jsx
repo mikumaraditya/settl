@@ -119,7 +119,7 @@ export default function Activity() {
       }
       return new Date(item.createdAt).getTime() >= cutoff
     })
-  }, [items, groupFilter, typeFilter, dateFilter, now]
+  }, [items, groupFilter, typeFilter, dateFilter, now])
 
   const groupedItems = useMemo(() => {
     const map = new Map()
