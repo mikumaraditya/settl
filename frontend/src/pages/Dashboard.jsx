@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import axios from '../api/axios'
 import Navbar from '../components/Navbar'
@@ -44,7 +44,7 @@ export default function Dashboard() {
   const firstName = (user?.name || 'there').trim().split(/\s+/)[0]
   const netBalance = totalOwed - totalOwe
 
-  const fetchOverview = async () => {
+  const fetchOverview = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
@@ -96,9 +96,9 @@ export default function Dashboard() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [user?._id])
 
-  useEffect(() => { fetchOverview() }, [user?._id])
+  useEffect(() => { fetchOverview() }, [fetchOverview])
 
   const recentGroups = useMemo(() => {
     const ids = readRecentGroupIds()
