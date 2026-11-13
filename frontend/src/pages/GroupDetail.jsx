@@ -69,7 +69,7 @@ export default function GroupDetail() {
   const [loadingMore, setLoadingMore]       = useState(false)
 
   // ── Tab state ────────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState('expenses')
+  const [activeTab, setActiveTab] = useState('overview')
   const [messages, setMessages] = useState([])
   const [chatLoading, setChatLoading] = useState(false)
   const [messageText, setMessageText] = useState('')
@@ -935,6 +935,15 @@ export default function GroupDetail() {
 
             {/* Tab bar */}
             <div className="sticky top-14 md:top-0 z-20 flex items-center gap-1 border-b app-divider overflow-x-auto hide-scrollbar flex-nowrap w-full bg-[var(--background)]/95 backdrop-blur-xl rounded-t-2xl px-1">
+              {/* Overview tab */}
+              <button
+                onClick={() => handleTabChange('overview')}
+                className={`px-5 py-3.5 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer -mb-px flex-shrink-0 ${activeTab === 'overview' ? 'border-secondary text-secondary bg-secondary/5 rounded-t-xl' : 'border-transparent text-on-surface-variant hover:text-primary'}`}
+              >
+                <span className="material-symbols-outlined text-[18px]">space_dashboard</span>
+                Overview
+              </button>
+
               {/* Expenses tab */}
               <button
                 onClick={() => handleTabChange('expenses')}
@@ -998,6 +1007,45 @@ export default function GroupDetail() {
                 )}
               </button>
             </div>
+
+            {/* ── OVERVIEW TAB ─────────────────────────────────────────────── */}
+            {activeTab === 'overview' && (
+              <div className="flex flex-col gap-5 animate-in fade-in duration-200">
+                <section className="app-card p-5 sm:p-6">
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <div>
+                      <p className="app-page-kicker mb-1.5">Group overview</p>
+                      <h3 className="text-base font-bold">Recent expenses</h3>
+                    </div>
+                    <button onClick={() => handleTabChange('expenses')} className="text-xs font-bold text-[var(--secondary)] hover:underline whitespace-nowrap">View all</button>
+                  </div>
+                  {expenses.length === 0 ? (
+                    <div className="app-empty-state p-8 text-center">
+                      <span className="app-icon-tile w-11 h-11 mx-auto rounded-xl"><span className="material-symbols-outlined">receipt_long</span></span>
+                      <p className="text-sm font-bold mt-3">No expenses yet</p>
+                      <p className="text-xs app-muted mt-1.5">Add the first shared expense to get this group going.</p>
+                      <button onClick={openAddExpenseModal} className="app-button-primary mt-4"><span className="material-symbols-outlined text-[17px]">add</span>Add expense</button>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-[var(--app-border)]">
+                      {expenses.slice(0, 4).map(expense => (
+                        <button key={expense._id} onClick={() => handleTabChange('expenses')} className="w-full flex items-center gap-3 py-3.5 text-left hover:bg-[var(--surface-container-low)] rounded-xl px-2 -mx-2">
+                          <span className="app-icon-tile w-9 h-9 rounded-xl shrink-0"><span className="material-symbols-outlined text-[18px]">{categoryIconMap[expense.category] || 'receipt_long'}</span></span>
+                          <span className="flex-1 min-w-0"><span className="block text-xs font-bold truncate">{expense.description}</span><span className="block text-[10px] app-muted mt-1">{expense.paidBy?.name ? `Paid by ${expense.paidBy.name}` : 'Group expense'} · {new Date(expense.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span></span>
+                          <span className="text-sm font-bold tabular-nums whitespace-nowrap">{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(expense.amount || 0)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </section>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button onClick={() => handleTabChange('expenses')} className="app-card app-card-hover p-4 text-left flex items-center gap-3"><span className="app-icon-tile"><span className="material-symbols-outlined">receipt_long</span></span><span className="flex-1"><span className="block text-sm font-bold">Expenses</span><span className="block text-[10px] app-muted mt-1">Browse and manage shared costs</span></span><span className="material-symbols-outlined app-muted">arrow_forward</span></button>
+                  <button onClick={() => navigate(`/settle/${id}`)} className="app-card app-card-hover p-4 text-left flex items-center gap-3"><span className="app-icon-tile"><span className="material-symbols-outlined">payments</span></span><span className="flex-1"><span className="block text-sm font-bold">Settle Up</span><span className="block text-[10px] app-muted mt-1">Review balances and payments</span></span><span className="material-symbols-outlined app-muted">arrow_forward</span></button>
+                  <button onClick={() => handleTabChange('activity')} className="app-card app-card-hover p-4 text-left flex items-center gap-3"><span className="app-icon-tile"><span className="material-symbols-outlined">history</span></span><span className="flex-1"><span className="block text-sm font-bold">Group activity</span><span className="block text-[10px] app-muted mt-1">See recent group updates</span></span><span className="material-symbols-outlined app-muted">arrow_forward</span></button>
+                  <button onClick={() => setShowAddMember(true)} className="app-card app-card-hover p-4 text-left flex items-center gap-3"><span className="app-icon-tile"><span className="material-symbols-outlined">person_add</span></span><span className="flex-1"><span className="block text-sm font-bold">Invite members</span><span className="block text-[10px] app-muted mt-1">Bring someone into this group</span></span><span className="material-symbols-outlined app-muted">arrow_forward</span></button>
+                </div>
+              </div>
+            )}
 
             {/* ── EXPENSES TAB ─────────────────────────────────────────────── */}
             {activeTab === 'expenses' && (
