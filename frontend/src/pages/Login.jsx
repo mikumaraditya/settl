@@ -37,6 +37,7 @@ export default function Login() {
 
   return (
     <AuthShell
+      compact
       eyebrow="Welcome back"
       title="Good to have you back."
       description="Sign in to pick up right where your group left off."
