@@ -1918,7 +1918,7 @@ button:disabled { cursor: not-allowed; }
     font-size: 11px;
   }
   .auth-shell-compact .auth-hero-illustration .auth-hero-art {
-    max-height: 33vh;
+    max-height: 27vh;
   }
   .auth-shell-compact .auth-benefits span {
     font-size: 9px;
