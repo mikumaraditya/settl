@@ -8,6 +8,7 @@ export default function LandingHero() {
   const [numFriends, setNumFriends] = useState(3)
   const [splitType, setSplitType] = useState('equal')
   const equalShare = Math.round(billAmount / numFriends)
+  const unequalShares = numFriends === 2 ? [45, 55] : numFriends === 3 ? [20, 50, 30] : [10, 30, 25, 35]
 
   return (
     <>
@@ -110,13 +111,22 @@ export default function LandingHero() {
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  <div className="flex justify-between gap-3 text-[10px] font-extrabold uppercase tracking-wider pb-2 border-b"><span className="home-demo-result-label">Member</span><span className="home-demo-result-label">Assigned share</span></div>
-                  <div className="home-demo-transfer flex items-center justify-between gap-3 text-xs"><span className="flex items-center gap-2"><span className="home-demo-avatar home-demo-avatar-0">A</span>Amit (paid)</span><strong className="home-demo-transfer-amount">20% · ₹{Math.round(billAmount * 0.2).toLocaleString('en-IN')}</strong></div>
-                  <div className="home-demo-transfer flex items-center justify-between gap-3 text-xs"><span className="flex items-center gap-2"><span className="home-demo-avatar home-demo-avatar-1">K</span>Kabir</span><strong className="home-demo-transfer-amount">50% · ₹{Math.round(billAmount * 0.5).toLocaleString('en-IN')}</strong></div>
-                  <div className="home-demo-transfer flex items-center justify-between gap-3 text-xs"><span className="flex items-center gap-2"><span className="home-demo-avatar home-demo-avatar-2">S</span>Sara</span><strong className="home-demo-transfer-amount">30% · ₹{Math.round(billAmount * 0.3).toLocaleString('en-IN')}</strong></div>
-                  {numFriends === 4 && <div className="home-demo-transfer flex items-center justify-between gap-3 text-xs"><span className="flex items-center gap-2"><span className="home-demo-avatar home-demo-avatar-3">P</span>Priya</span><strong className="home-demo-result-label">Not assigned yet</strong></div>}
+                  <div className="flex justify-between gap-3 text-[10px] font-extrabold uppercase tracking-wider pb-2 border-b">
+                    <span className="home-demo-result-label">Member</span>
+                    <span className="home-demo-result-label">Assigned share</span>
+                  </div>
+                  {friendNames.slice(0, numFriends).map((name, index) => (
+                    <div key={name} className="home-demo-transfer flex items-center justify-between gap-3 text-xs">
+                      <span className="flex items-center gap-2">
+                        <span className={index === 0 ? 'home-demo-avatar home-demo-avatar-0' : index === 1 ? 'home-demo-avatar home-demo-avatar-1' : index === 2 ? 'home-demo-avatar home-demo-avatar-2' : 'home-demo-avatar home-demo-avatar-3'}>{name[0]}</span>
+                        {name}{index === 0 ? ' (paid)' : ''}
+                      </span>
+                      <strong className="home-demo-transfer-amount tabular-nums">{unequalShares[index]}% · ₹{Math.round(billAmount * unequalShares[index] / 100).toLocaleString('en-IN')}</strong>
+                    </div>
+                  ))}
                   <p className="home-demo-note text-[10px] leading-relaxed pt-2 border-t">Settl can simplify the resulting group balances into fewer transfers.</p>
                 </div>
+
               )}
             </div>
             <p className="home-demo-footnote text-[10px] text-center">A preview of how shared costs can be organised before anyone settles up.</p>
