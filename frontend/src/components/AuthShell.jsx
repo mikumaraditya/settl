@@ -3,9 +3,9 @@ import ThemeToggle from './ThemeToggle'
 import BrandMark from './BrandMark'
 import AuthHeroIllustration from './AuthHeroIllustration'
 
-export default function AuthShell({ eyebrow, title, description, children, footer }) {
+export default function AuthShell({ eyebrow, title, description, children, footer, compact = false }) {
   return (
-    <div className="auth-shell">
+    <div className={`auth-shell${compact ? ' auth-shell-compact' : ''}`}>
       <aside className="auth-visual hidden lg:flex">
         <div className="auth-brand-lockup">
           <Link to="/" className="auth-brand" aria-label="Settl home">
