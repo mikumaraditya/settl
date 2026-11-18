@@ -273,9 +273,9 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#f8fafc] dark:bg-[#0a0f1d] overflow-hidden text-slate-800 dark:text-slate-100">
+    <div className="finn-chat flex flex-col h-full overflow-hidden text-slate-800 dark:text-slate-100">
       {/* Messages List */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-3.5 sm:p-4 space-y-4">
+      <div className="finn-message-list flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-5 space-y-5">
         {fetchingHistory ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-500 dark:text-slate-400">
             <span className="material-symbols-outlined text-[28px] text-indigo-500 animate-spin">sync</span>
@@ -295,7 +295,7 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
                   {isUser ? (
                     /* User Message Bubble */
                     <div className="max-w-[85%] sm:max-w-[80%] flex flex-col items-end">
-                      <div className="px-4 py-2.5 rounded-2xl rounded-br-xs bg-gradient-to-r from-indigo-600 via-indigo-600 to-violet-600 text-white shadow-sm text-[14.5px] leading-[1.6] font-normal break-words overflow-wrap-anywhere">
+                      <div className="finn-user-message px-4 py-3 rounded-2xl text-white text-[14.5px] leading-[1.65] font-normal break-words overflow-wrap-anywhere">
                         <p className="whitespace-pre-wrap">{msg.content}</p>
                       </div>
                       <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium px-1 mt-1">
@@ -306,7 +306,7 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
                     /* Finn Assistant Message Container */
                     <div className="w-full max-w-full sm:max-w-[94%] md:max-w-[92%] flex flex-col items-start">
                       <div
-                        className={`w-full rounded-2xl rounded-tl-xs p-3.5 sm:p-4 shadow-xs transition-all ${
+                        className={`finn-assistant-message w-full rounded-2xl p-4 sm:p-5 shadow-xs transition-all ${
                           msg.isError
                             ? 'bg-rose-500/10 border border-rose-500/25 text-rose-500 dark:text-rose-400'
                             : 'bg-white dark:bg-[#131c31] border border-slate-200/90 dark:border-white/10 text-slate-800 dark:text-slate-100'
@@ -315,7 +315,7 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
                         {/* Assistant Header Row: Avatar, Name, Badge, Timestamp, Copy Button */}
                         <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-200/60 dark:border-white/5">
                           <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-600 flex-shrink-0 flex items-center justify-center text-white text-[11px] font-black shadow-xs">
+                            <div className="finn-mini-avatar w-7 h-7 rounded-xl flex-shrink-0 flex items-center justify-center text-white text-[11px] font-black">
                               F
                             </div>
                             <span className="text-xs font-bold text-slate-900 dark:text-white">
@@ -512,7 +512,7 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
             {loading && (
               <div className="w-full max-w-[85%] sm:max-w-[75%] flex flex-col items-start animate-in fade-in duration-200">
                 <div className="px-4 py-3 rounded-2xl rounded-tl-xs bg-white dark:bg-[#131c31] border border-slate-200/80 dark:border-white/10 text-[13px] shadow-xs flex items-center gap-3">
-                  <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-600 flex-shrink-0 flex items-center justify-center text-white text-[11px] font-black shadow-xs">
+                  <div className="finn-mini-avatar w-7 h-7 rounded-xl flex-shrink-0 flex items-center justify-center text-white text-[11px] font-black">
                     F
                   </div>
                   <div className="flex items-center gap-2">
@@ -536,8 +536,8 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
 
       {/* Suggested Quick Prompts */}
       {!loading && messages.length <= 4 && (
-        <div className="px-4 py-2 border-t border-slate-200/60 dark:border-white/5 bg-slate-50/70 dark:bg-white/[0.01]">
-          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+        <div className="finn-suggestions px-4 py-3">
+          <p className="finn-suggestions-label text-[10px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1">
             <span className="material-symbols-outlined text-[12px] text-indigo-500">lightbulb</span>
             Suggested questions
           </p>
@@ -546,7 +546,7 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
               <button
                 key={idx}
                 onClick={() => handleSend(item.query)}
-                className="text-[11px] font-medium whitespace-nowrap bg-white dark:bg-[#1e293b] hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:border-indigo-500/40 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-white/10 px-3 py-1.5 rounded-full transition-all cursor-pointer shadow-xs active:scale-95"
+                className="finn-prompt-chip text-[11px] font-semibold whitespace-nowrap px-3.5 py-2 rounded-full transition-all cursor-pointer active:scale-95"
               >
                 {item.label}
               </button>
@@ -564,13 +564,13 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
       )}
 
       {/* Composer & Controls */}
-      <div className="p-3 sm:p-3.5 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] border-t border-slate-200 dark:border-white/10 bg-white dark:bg-[#0a0f1d]">
+      <div className="finn-composer p-3 sm:p-4 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
         <form
           onSubmit={(e) => {
             e.preventDefault();
             handleSend();
           }}
-          className="flex items-end gap-2 bg-slate-100/90 dark:bg-[#131c31]/90 border border-slate-200 dark:border-white/10 rounded-2xl p-2 sm:p-2.5 focus-within:border-indigo-500/80 dark:focus-within:border-indigo-400/80 focus-within:ring-2 focus-within:ring-indigo-500/20 dark:focus-within:ring-indigo-400/20 transition-all duration-200 shadow-xs"
+          className="finn-composer-form flex items-end gap-2 rounded-2xl p-2.5 sm:p-3 transition-all duration-200"
         >
           <div className="flex-1 flex flex-col min-w-0 py-0.5">
             <textarea
@@ -623,7 +623,7 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
             aria-disabled={!input.trim()}
             aria-label="Send message"
             title="Send message"
-            className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-200 self-end ${
+            className={`finn-send-button w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-200 self-end ${
               !input.trim() || loading
                 ? 'bg-slate-200 dark:bg-white/10 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-50'
                 : 'bg-gradient-to-r from-indigo-600 via-indigo-600 to-violet-600 text-white shadow-sm hover:shadow-md hover:scale-[1.02] active:scale-95 cursor-pointer'
