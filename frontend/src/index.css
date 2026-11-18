@@ -2760,3 +2760,295 @@ button:disabled { cursor: not-allowed; }
   outline: 3px solid rgba(49, 89, 215, .35);
   outline-offset: -3px;
 }
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   DASHBOARD — light-mode contrast and layout polish
+   Scoped to the signed-in overview so other app surfaces are not affected.
+   ───────────────────────────────────────────────────────────────────────────── */
+.dashboard-page {
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse at 72% 0%, rgba(74, 105, 247, .055), transparent 34rem),
+    var(--background);
+}
+.dashboard-main {
+  max-width: 1560px;
+  padding-top: 38px;
+}
+.dashboard-page-header {
+  align-items: center;
+  margin-bottom: 34px;
+}
+.dashboard-page-header .app-page-title {
+  font-size: clamp(2rem, 3vw, 2.65rem);
+  letter-spacing: -.065em;
+}
+.dashboard-page-header .app-page-subtitle {
+  margin-top: 10px;
+  font-size: 14px;
+}
+.dashboard-overview-grid {
+  gap: 18px;
+  margin-bottom: 34px;
+}
+
+/* The primary balance card deliberately stays dark in both themes.
+   These explicit colors take precedence over legacy light-mode text overrides. */
+.dashboard-balance-card {
+  isolation: isolate;
+  color: #f8fbff;
+  background:
+    radial-gradient(ellipse at 94% 10%, rgba(81, 119, 255, .28), transparent 34%),
+    linear-gradient(118deg, #14213f 0%, #192d52 58%, #1d3764 100%);
+  border: 1px solid rgba(117, 150, 225, .22);
+  box-shadow: 0 20px 48px rgba(21, 42, 82, .17);
+  min-height: 270px;
+  display: flex;
+  align-items: center;
+}
+.dashboard-balance-card::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  width: 210px;
+  height: 210px;
+  right: 16%;
+  bottom: -154px;
+  border-radius: 50%;
+  background: rgba(83, 125, 255, .2);
+  filter: blur(42px);
+  pointer-events: none;
+}
+.dashboard-balance-orbit {
+  border-color: rgba(208, 221, 255, .10);
+}
+.dashboard-balance-orbit--large {
+  border-color: rgba(208, 221, 255, .14);
+}
+.dashboard-balance-glow {
+  background: rgba(76, 112, 255, .25);
+}
+.dashboard-balance-card .dashboard-balance-eyebrow {
+  color: #b8c8e7 !important;
+  letter-spacing: .17em;
+}
+.dashboard-balance-count {
+  color: #dce7ff !important;
+  background: rgba(255, 255, 255, .075);
+  border: 1px solid rgba(216, 229, 255, .18);
+}
+.dashboard-balance-card .dashboard-balance-value {
+  color: #ffffff !important;
+  font-size: clamp(2.65rem, 4vw, 3.55rem);
+  line-height: 1.05;
+  letter-spacing: -.065em;
+  text-shadow: 0 2px 18px rgba(6, 15, 35, .18);
+}
+.dashboard-balance-card .dashboard-balance-description {
+  color: #c1cee5 !important;
+  font-size: 13px;
+  line-height: 1.55;
+  max-width: 450px;
+}
+.dashboard-action-primary {
+  color: #172747 !important;
+  background: #ffffff;
+  box-shadow: 0 7px 18px rgba(4, 13, 32, .12);
+}
+.dashboard-action-primary:hover {
+  background: #edf3ff;
+  transform: translateY(-1px);
+}
+.dashboard-action-primary:disabled {
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.dashboard-action-secondary {
+  color: #edf3ff !important;
+  border: 1px solid rgba(223, 233, 255, .23);
+  background: rgba(255, 255, 255, .075);
+}
+.dashboard-action-secondary:hover {
+  color: #ffffff !important;
+  border-color: rgba(223, 233, 255, .38);
+  background: rgba(255, 255, 255, .13);
+}
+.dashboard-balance-card .animate-pulse {
+  background: rgba(255, 255, 255, .14);
+}
+
+/* Receive/pay summaries: distinct semantic accents on calm, bright surfaces. */
+.dashboard-stat-card {
+  min-height: 132px;
+  padding: 22px 23px;
+  border-radius: 22px;
+  box-shadow: 0 10px 30px rgba(20, 34, 58, .045);
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+.dashboard-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 34px rgba(20, 34, 58, .075);
+}
+.dashboard-stat-card--receive {
+  background: linear-gradient(135deg, #ffffff 0%, #f6fffc 100%);
+  border-color: #dcefe9;
+}
+.dashboard-stat-card--pay {
+  background: linear-gradient(135deg, #ffffff 0%, #fff8f9 100%);
+  border-color: #f1e2e6;
+}
+.dashboard-stat-card .app-stat-label {
+  color: #66758b;
+  font-size: 10px;
+  letter-spacing: .14em;
+}
+.dashboard-stat-card .app-stat-value {
+  font-size: clamp(1.65rem, 2.2vw, 2rem);
+  letter-spacing: -.055em;
+}
+.dashboard-stat-card .app-muted {
+  color: #718096 !important;
+  font-size: 11px;
+}
+.dashboard-stat-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+}
+.dashboard-stat-icon--receive {
+  color: #078765;
+  background: #e1f7ef;
+}
+.dashboard-stat-icon--pay {
+  color: #d34b60;
+  background: #ffebef;
+}
+.dashboard-stat-icon .material-symbols-outlined {
+  font-size: 23px;
+}
+
+/* Quick access and activity get a consistent surface, rhythm and hover response. */
+.dashboard-content-grid {
+  gap: 34px;
+}
+.dashboard-content-grid h2 {
+  color: var(--on-surface);
+  letter-spacing: -.04em;
+  font-size: 19px;
+}
+.dashboard-group-card {
+  min-height: 106px;
+  border-radius: 19px;
+  box-shadow: 0 7px 22px rgba(20, 34, 58, .035);
+}
+.dashboard-group-card .app-icon-tile {
+  width: 46px;
+  height: 46px;
+  border-radius: 15px;
+}
+.dashboard-group-card .app-muted {
+  color: var(--on-surface-variant);
+}
+.dashboard-shortcut-card {
+  min-height: 88px;
+  border-radius: 19px;
+  box-shadow: 0 7px 22px rgba(20, 34, 58, .035);
+}
+.dashboard-shortcut-card:hover {
+  border-color: color-mix(in srgb, var(--secondary) 28%, var(--app-border));
+  background: #ffffff;
+}
+.dashboard-shortcut-card .app-icon-tile {
+  width: 46px;
+  height: 46px;
+  border-radius: 15px;
+}
+.dashboard-activity-card {
+  border-radius: 20px;
+  box-shadow: 0 8px 24px rgba(20, 34, 58, .035);
+}
+.dashboard-activity-card > button:last-child {
+  border-bottom: 0;
+}
+.dashboard-activity-card > button:hover {
+  background: #f7f9fe;
+}
+.dashboard-insight-card {
+  background: linear-gradient(135deg, #eef3ff 0%, #f7f8ff 100%);
+  border-color: #dce5fb;
+  box-shadow: 0 8px 24px rgba(40, 74, 150, .045);
+}
+.dashboard-insight-card h3 {
+  color: #1d3158;
+}
+.dashboard-insight-card p {
+  color: #596b8a !important;
+  line-height: 1.7;
+}
+.dashboard-content-grid .app-empty-state {
+  border-color: #dce4f0;
+  background: rgba(255,255,255,.72);
+}
+
+.dark .dashboard-page {
+  background:
+    radial-gradient(ellipse at 72% 0%, rgba(74, 105, 247, .10), transparent 34rem),
+    var(--background);
+}
+.dark .dashboard-balance-card {
+  box-shadow: 0 22px 56px rgba(0, 0, 0, .25);
+}
+.dark .dashboard-stat-card--receive {
+  background: linear-gradient(135deg, #132c2a, #142522);
+  border-color: rgba(52, 211, 153, .16);
+}
+.dark .dashboard-stat-card--pay {
+  background: linear-gradient(135deg, #30202b, #241b29);
+  border-color: rgba(251, 113, 133, .16);
+}
+.dark .dashboard-stat-card .app-stat-label,
+.dark .dashboard-stat-card .app-muted {
+  color: #aebbd0 !important;
+}
+.dark .dashboard-shortcut-card:hover,
+.dark .dashboard-activity-card > button:hover {
+  background: var(--surface-container-low);
+}
+.dark .dashboard-insight-card {
+  background: linear-gradient(135deg, #172644, #172033);
+  border-color: rgba(119, 150, 255, .18);
+}
+.dark .dashboard-insight-card h3 { color: #edf3ff; }
+.dark .dashboard-insight-card p { color: #b7c5df !important; }
+.dark .dashboard-content-grid .app-empty-state {
+  background: rgba(255,255,255,.025);
+  border-color: var(--outline-variant);
+}
+
+@media (max-width: 1279px) {
+  .dashboard-overview-grid { gap: 14px; }
+  .dashboard-content-grid { gap: 26px; }
+}
+@media (max-width: 767px) {
+  .dashboard-main { padding: 25px 17px 38px; }
+  .dashboard-page-header { align-items: flex-start; margin-bottom: 26px; }
+  .dashboard-page-header .app-page-title { font-size: clamp(1.85rem, 8vw, 2.25rem); }
+  .dashboard-page-header .app-page-subtitle { font-size: 12px; }
+  .dashboard-overview-grid { margin-bottom: 30px; }
+  .dashboard-balance-card { min-height: 250px; border-radius: 23px; }
+  .dashboard-balance-card .dashboard-balance-value { font-size: clamp(2.4rem, 10vw, 3rem); }
+  .dashboard-stat-card { min-height: 116px; padding: 18px; border-radius: 19px; }
+  .dashboard-content-grid { gap: 30px; }
+  .dashboard-shortcut-card { min-height: 78px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-stat-card { transition: none; }
+  .dashboard-stat-card:hover { transform: none; }
+}
+
+
+/* Keep the balance-card loading shimmer visible despite legacy global light overrides. */
+:root:not(.dark) .dashboard-balance-card .bg-white\\/10 {
+  background-color: rgba(255, 255, 255, .14) !important;
+}
