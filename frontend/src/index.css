@@ -2024,3 +2024,63 @@ button:disabled { cursor: not-allowed; }
     width: min(100%, 500px);
   }
 }
+
+
+/* Refined proportions: a slightly narrower form column with a taller,
+   roomier card, and a larger illustration that fills more of the left panel. */
+@media (min-width: 1024px) {
+  .auth-shell-compact .auth-content {
+    width: min(100%, clamp(480px, 36vw, 600px));
+    max-width: 600px;
+  }
+  .auth-shell-compact .auth-card {
+    padding: 30px clamp(26px, 2.8vw, 38px);
+  }
+  .auth-shell-compact .auth-form {
+    gap: 18px;
+  }
+  .auth-shell-compact .auth-field {
+    gap: 7px;
+  }
+  .auth-shell-compact .auth-input-wrap input {
+    height: 52px;
+  }
+  .auth-shell-compact .auth-submit {
+    min-height: 52px;
+  }
+  .auth-shell-compact .auth-security-note {
+    margin-top: 17px;
+    line-height: 1.55;
+  }
+  .auth-shell-compact .auth-footer {
+    margin-top: 18px;
+  }
+  .auth-shell-compact .auth-legal-note {
+    margin-top: 16px;
+    line-height: 1.45;
+  }
+}
+
+@media (min-width: 1200px) and (min-height: 761px) {
+  .auth-shell-compact .auth-hero-illustration {
+    width: calc(100% + clamp(32px, 6vw, 96px));
+    max-width: 1080px;
+    margin-inline: auto;
+  }
+  .auth-shell-compact .auth-hero-illustration .auth-hero-art {
+    width: 100%;
+    max-height: min(60vh, 600px);
+  }
+}
+
+@media (min-width: 1024px) and (max-width: 1199px) {
+  .auth-shell-compact .auth-content {
+    width: min(100%, 480px);
+  }
+}
+
+/* Give the Google option the same comfortable vertical rhythm as the form. */
+.auth-shell-compact .google-auth-button,
+.auth-shell-compact .google-login-container {
+  min-height: 48px;
+}
