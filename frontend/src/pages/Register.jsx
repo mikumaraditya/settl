@@ -64,6 +64,7 @@ export default function Register() {
   return (
     <>
       <AuthShell
+        variant="signup"
         eyebrow="Create your workspace"
         title="Make shared spending simpler"
         description="Create your Settl account. Add your details once, then start organising expenses with your groups."

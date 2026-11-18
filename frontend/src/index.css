@@ -2087,3 +2087,127 @@ button:disabled { cursor: not-allowed; }
 .auth-shell-compact .google-login-container {
   min-height: 48px;
 }
+
+
+/* Signup page: related to login, with its own visual and a deliberately
+   modest desktop scroll so the complete registration flow has breathing room. */
+.auth-visual .auth-brand-word {
+  color: #F8FAFF !important;
+}
+.auth-visual .auth-brand-word span {
+  color: #9DB4FF !important;
+}
+.auth-visual .auth-visual-copy h2 {
+  color: #F8FAFF !important;
+}
+.auth-visual .auth-visual-copy h2 span {
+  color: #9DB4FF !important;
+}
+.auth-visual .auth-visual-eyebrow {
+  color: #A8BBFF !important;
+}
+.auth-visual .auth-visual-copy > p:last-child {
+  color: rgba(226, 234, 250, .82) !important;
+}
+.auth-visual .auth-brand-tagline {
+  color: rgba(219, 228, 255, .82) !important;
+}
+.auth-shell-signup {
+  min-height: calc(100svh + 72px);
+  min-height: calc(100dvh + 72px);
+}
+.auth-shell-signup .auth-visual {
+  min-height: 100%;
+  background:
+    radial-gradient(ellipse at 16% 82%, rgba(66, 104, 245, .28), transparent 34rem),
+    radial-gradient(ellipse at 84% 32%, rgba(126, 87, 255, .14), transparent 28rem),
+    linear-gradient(145deg, #0B1732, #111D3D 55%, #141B45);
+}
+.auth-shell-signup .auth-visual-copy {
+  margin-top: clamp(16px, 2.2vh, 28px);
+  max-width: 660px;
+}
+.auth-shell-signup .auth-visual-copy h2 {
+  font-size: clamp(2.2rem, 3.4vw, 3.7rem);
+}
+.auth-shell-signup .auth-visual-copy > p:last-child {
+  max-width: 530px;
+}
+.auth-shell-signup .auth-hero-illustration {
+  flex: 1 1 auto;
+  min-height: 260px;
+  width: 100%;
+  max-width: 920px;
+}
+.auth-shell-signup .signup-hero-art {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: min(53vh, 500px);
+  overflow: visible;
+  filter: drop-shadow(0 22px 40px rgba(0, 0, 0, .22));
+}
+.auth-shell-signup .signup-auth-benefits {
+  margin-top: 0;
+  padding-top: 2px;
+  gap: 12px 18px;
+}
+.auth-shell-signup .signup-auth-benefits span {
+  color: rgba(226, 233, 250, .85);
+  font-size: 10px;
+}
+.auth-shell-signup .signup-auth-benefits .material-symbols-outlined {
+  color: #A5B8FF;
+}
+.auth-shell-signup .auth-visual-footnote {
+  color: rgba(189, 202, 232, .68);
+}
+@media (min-width: 1024px) {
+  .auth-shell-signup {
+    overflow-x: clip;
+    overflow-y: auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .auth-shell-signup .auth-visual,
+  .auth-shell-signup .auth-main {
+    min-width: 0;
+    min-height: calc(100dvh + 72px);
+    box-sizing: border-box;
+  }
+  .auth-shell-signup .auth-visual {
+    padding: clamp(28px, 3.2vw, 44px);
+    gap: clamp(16px, 2vh, 24px);
+  }
+  .auth-shell-signup .auth-main {
+    overflow: visible;
+    padding: 12px clamp(26px, 4vw, 64px) 34px;
+  }
+  .auth-shell-signup .auth-content {
+    width: min(100%, 520px);
+    max-width: 520px;
+    padding-block: 24px 38px;
+  }
+  .auth-shell-signup .auth-heading {
+    margin-bottom: 22px;
+  }
+}
+@media (max-width: 1023px) {
+  .auth-shell-signup {
+    min-height: 100svh;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .auth-shell-signup .auth-main {
+    min-height: 100svh;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .auth-shell-signup .auth-visual {
+    display: none;
+  }
+}
+@media (max-width: 600px) {
+  .auth-shell-signup .auth-content {
+    padding-top: 22px;
+  }
+}
