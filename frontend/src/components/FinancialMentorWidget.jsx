@@ -252,8 +252,10 @@ export default function FinancialMentorWidget() {
         {isOpen ? (
           <span className="material-symbols-outlined text-[24px] md:text-[28px]">close</span>
         ) : (
-          <span className="finn-launcher-mark">F</span>
-          <span className="finn-launcher-sparkle material-symbols-outlined" aria-hidden="true">auto_awesome</span>
+          <>
+            <span className="finn-launcher-mark">F</span>
+            <span className="finn-launcher-sparkle material-symbols-outlined" aria-hidden="true">auto_awesome</span>
+          </>
         )}
 
         <span className="finn-launcher-tooltip hidden md:block">Ask {MENTOR_NAME}</span>
