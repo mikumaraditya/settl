@@ -2250,53 +2250,6 @@ button:disabled { cursor: not-allowed; }
   background: linear-gradient(120deg, #4268f5, #3154db) !important;
   box-shadow: 0 8px 22px rgba(49, 92, 245, .2);
 }
-.home-menu-toggle {
-  width: 40px;
-  height: 40px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 12px;
-  border: 1px solid var(--app-border);
-  background: var(--surface-container-low);
-  color: var(--on-surface);
-}
-.home-menu-toggle .material-symbols-outlined { font-size: 21px; }
-.home-mobile-menu {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 16px;
-  width: min(280px, calc(100vw - 32px));
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 9px;
-  border: 1px solid var(--app-border);
-  border-radius: 18px;
-  background: var(--surface);
-  box-shadow: 0 22px 55px rgba(10, 24, 48, .18);
-}
-.home-mobile-menu a,
-.home-mobile-menu button {
-  min-height: 42px;
-  display: flex;
-  align-items: center;
-  padding: 0 13px;
-  border-radius: 11px;
-  color: var(--on-surface);
-  text-align: left;
-  font-size: 12px;
-  font-weight: 750;
-}
-.home-mobile-menu a:hover,
-.home-mobile-menu button:hover { background: var(--surface-container-low); }
-.home-mobile-menu button {
-  color: var(--secondary);
-  border-top: 1px solid var(--app-border);
-  margin-top: 4px;
-  border-radius: 0 0 11px 11px;
-}
-
 .home-hero {
   isolation: isolate;
   min-height: 700px;
