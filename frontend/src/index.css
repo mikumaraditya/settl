@@ -2570,3 +2570,141 @@ button:disabled { cursor: not-allowed; }
 .home-primary-cta .material-symbols-outlined {
   color: #fff !important;
 }
+
+/* Homepage light-theme contrast pass.
+   Keep these rules scoped to the public homepage so signed-in app and auth
+   screens retain their existing theme palettes. */
+:root:not(.dark) .public-page .home-section h2,
+:root:not(.dark) .public-page .home-section h3,
+:root:not(.dark) .public-page .home-cta-section h2,
+:root:not(.dark) .public-page .home-faq-trigger {
+  color: #0b1c30 !important;
+}
+
+:root:not(.dark) .public-page .home-section .glass-card {
+  color: #0b1c30;
+  background-color: #ffffff !important;
+  background-image: none !important;
+  border-color: #d8e1ee !important;
+}
+
+:root:not(.dark) .public-page .home-section .glass-card h3 {
+  color: #0b1c30 !important;
+}
+
+:root:not(.dark) .public-page .home-section .glass-card p {
+  color: #46556b !important;
+}
+
+:root:not(.dark) .public-page .home-section .glass-card .text-slate-400,
+:root:not(.dark) .public-page .home-section .glass-card .text-slate-500,
+:root:not(.dark) .public-page .home-section .glass-card .text-slate-600 {
+  color: #59677d !important;
+}
+
+:root:not(.dark) .public-page .home-hero-gradient {
+  background-image: linear-gradient(105deg, #3159d7 5%, #5145ba 55%, #6846c6 100%);
+}
+
+:root:not(.dark) .public-page .home-nav-signin {
+  color: #40516a !important;
+}
+
+:root:not(.dark) .public-page .home-nav-signin:hover {
+  color: #0b1c30 !important;
+}
+
+:root:not(.dark) .public-page .home-nav-cta,
+:root:not(.dark) .public-page .home-primary-cta,
+:root:not(.dark) .public-page .home-cta-section button {
+  color: #ffffff !important;
+}
+
+:root:not(.dark) .public-page .home-demo-card {
+  color: #0b1c30;
+  background-color: #ffffff !important;
+  background-image: radial-gradient(ellipse at 100% 0%, rgba(74, 105, 247, .06), transparent 48%) !important;
+  border-color: #d8e1ee !important;
+}
+
+:root:not(.dark) .public-page .home-demo-title,
+:root:not(.dark) .public-page .home-demo-amount {
+  color: #0b1c30 !important;
+}
+
+:root:not(.dark) .public-page .home-demo-subtitle,
+:root:not(.dark) .public-page .home-demo-label,
+:root:not(.dark) .public-page .home-demo-result-label {
+  color: #46556b !important;
+}
+
+:root:not(.dark) .public-page .home-demo-range-labels,
+:root:not(.dark) .public-page .home-demo-footnote,
+:root:not(.dark) .public-page .home-demo-transfer-arrow {
+  color: #59677d !important;
+}
+
+:root:not(.dark) .public-page .home-demo-amount-panel {
+  background: #f0f4ff !important;
+  border-color: #d8e2f6 !important;
+}
+
+:root:not(.dark) .public-page .home-demo-result {
+  background: #f5f7fc !important;
+  border-color: #d8e1ee !important;
+}
+
+:root:not(.dark) .public-page .home-demo-share,
+:root:not(.dark) .public-page .home-demo-badge {
+  color: #087653 !important;
+}
+
+:root:not(.dark) .public-page .home-demo-note {
+  color: #46556b !important;
+  border-color: #d8e1ee !important;
+}
+
+:root:not(.dark) .public-page .home-demo-float {
+  color: #0b1c30;
+  background: #ffffff;
+  border-color: #d8e1ee;
+}
+
+:root:not(.dark) .public-page .home-demo-float small {
+  color: #59677d !important;
+}
+
+:root:not(.dark) .public-page .home-demo-float strong {
+  color: #0b1c30 !important;
+}
+
+:root:not(.dark) .public-page .home-value-item {
+  background: #ffffff;
+  border-color: #d8e1ee;
+}
+
+:root:not(.dark) .public-page .home-value-item strong {
+  color: #0b1c30 !important;
+}
+
+:root:not(.dark) .public-page .home-value-item span:last-child,
+:root:not(.dark) .public-page .home-proof-item {
+  color: #46556b !important;
+}
+
+:root:not(.dark) .public-page .home-faq-answer p {
+  color: #46556b !important;
+}
+
+:root:not(.dark) .public-page .home-cta-section {
+  background: #eff4ff !important;
+}
+
+:root:not(.dark) .public-page .home-footer {
+  background: #eff4ff !important;
+}
+
+:root:not(.dark) .public-page .home-footer .text-slate-500,
+:root:not(.dark) .public-page .home-footer .text-slate-600 {
+  color: #59677d !important;
+}
