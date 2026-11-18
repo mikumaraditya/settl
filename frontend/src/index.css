@@ -2175,17 +2175,17 @@ button:disabled { cursor: not-allowed; }
     box-sizing: border-box;
   }
   .auth-shell-signup .auth-visual {
-    padding: clamp(28px, 3.8vw, 58px);
+    padding: clamp(28px, 3.2vw, 44px);
     gap: clamp(16px, 2vh, 24px);
   }
   .auth-shell-signup .auth-main {
     overflow: visible;
-    padding: 18px clamp(26px, 4vw, 64px) 34px;
+    padding: 12px clamp(26px, 4vw, 64px) 34px;
   }
   .auth-shell-signup .auth-content {
     width: min(100%, 520px);
     max-width: 520px;
-    padding-block: 30px 38px;
+    padding-block: 24px 38px;
   }
   .auth-shell-signup .auth-heading {
     margin-bottom: 22px;
