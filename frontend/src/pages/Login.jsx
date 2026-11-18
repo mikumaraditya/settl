@@ -85,7 +85,6 @@ export default function Login() {
         </button>
       </form>
 
-      <div className="auth-divider"><span>Or continue with</span></div>
       <GoogleLoginButton
         onLoginSuccess={data => { login(data); navigate('/dashboard') }}
         onError={message => setError(message)}
