@@ -1830,7 +1830,7 @@ button:disabled { cursor: not-allowed; }
     min-height: 0;
   }
   .auth-shell-compact .auth-hero-illustration .auth-hero-art {
-    max-height: min(45vh, 410px);
+    max-height: min(66vh, 620px);
     width: 100%;
   }
   .auth-shell-compact .auth-benefits {
@@ -1927,7 +1927,7 @@ button:disabled { cursor: not-allowed; }
     font-size: 11px;
   }
   .auth-shell-compact .auth-hero-illustration .auth-hero-art {
-    max-height: 27vh;
+    max-height: 48vh;
   }
   .auth-shell-compact .auth-benefits span {
     font-size: 9px;
@@ -2072,7 +2072,7 @@ button:disabled { cursor: not-allowed; }
   }
   .auth-shell-compact .auth-hero-illustration .auth-hero-art {
     width: 100%;
-    max-height: min(60vh, 600px);
+    max-height: min(68vh, 680px);
   }
 }
 
