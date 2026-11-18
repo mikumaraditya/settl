@@ -3049,7 +3049,7 @@ button:disabled { cursor: not-allowed; }
 
 
 /* Keep the balance-card loading shimmer visible despite legacy global light overrides. */
-:root:not(.dark) .dashboard-balance-card .bg-white\\/10 {
+:root:not(.dark) .dashboard-balance-card [class~="bg-white/10"] {
   background-color: rgba(255, 255, 255, .14) !important;
 }
 
