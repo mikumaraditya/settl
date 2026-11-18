@@ -1795,6 +1795,7 @@ button:disabled { cursor: not-allowed; }
     height: 100svh;
     min-height: 0;
     overflow: hidden;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
   .auth-shell-compact .auth-visual,
   .auth-shell-compact .auth-main {
@@ -1802,31 +1803,31 @@ button:disabled { cursor: not-allowed; }
     min-height: 0;
   }
   .auth-shell-compact .auth-visual {
-    padding: clamp(22px, 3vw, 44px);
-    gap: clamp(10px, 1.5vh, 16px);
+    padding: clamp(24px, 3.2vw, 48px);
+    gap: clamp(12px, 1.7vh, 19px);
   }
   .auth-shell-compact .auth-visual-copy {
     margin-top: 2px;
   }
   .auth-shell-compact .auth-visual-copy h2 {
-    font-size: clamp(2rem, 3vw, 3.15rem);
+    font-size: clamp(2.1rem, 3.1vw, 3.3rem);
     line-height: 1.02;
   }
   .auth-shell-compact .auth-visual-copy > p:last-child {
-    margin-top: 10px;
-    font-size: 12px;
-    line-height: 1.5;
+    margin-top: 12px;
+    font-size: 13px;
+    line-height: 1.55;
   }
   .auth-shell-compact .auth-hero-illustration {
     min-height: 0;
   }
   .auth-shell-compact .auth-hero-illustration .auth-hero-art {
-    max-height: min(39vh, 350px);
+    max-height: min(45vh, 410px);
     width: 100%;
   }
   .auth-shell-compact .auth-benefits {
     padding-top: 0;
-    gap: 8px 16px;
+    gap: 10px 18px;
   }
   .auth-shell-compact .auth-visual-footnote {
     font-size: 9px;
@@ -1840,54 +1841,54 @@ button:disabled { cursor: not-allowed; }
     min-height: 34px;
   }
   .auth-shell-compact .auth-content {
-    max-width: 480px;
+    max-width: 540px;
     margin: auto;
-    padding: 5px 0;
+    padding: 8px 0;
   }
   .auth-shell-compact .auth-heading {
-    margin-bottom: 13px;
+    margin-bottom: 17px;
   }
   .auth-shell-compact .auth-heading h1 {
-    margin-top: 6px;
-    font-size: clamp(1.9rem, 2.5vw, 2.45rem);
-    line-height: 1.04;
+    margin-top: 7px;
+    font-size: clamp(2rem, 2.65vw, 2.65rem);
+    line-height: 1.06;
   }
   .auth-shell-compact .auth-heading > p:last-child {
-    margin-top: 7px;
-    font-size: 12px;
-    line-height: 1.45;
+    margin-top: 8px;
+    font-size: 13px;
+    line-height: 1.5;
   }
   .auth-shell-compact .auth-card {
-    padding: 19px clamp(20px, 2.4vw, 28px);
-    border-radius: 20px;
+    padding: 24px clamp(24px, 2.7vw, 36px);
+    border-radius: 22px;
   }
   .auth-shell-compact .auth-form {
-    gap: 12px;
+    gap: 15px;
   }
   .auth-shell-compact .auth-field {
-    gap: 5px;
+    gap: 6px;
   }
   .auth-shell-compact .auth-field > label,
   .auth-shell-compact .auth-label-row > label {
-    font-size: 10px;
+    font-size: 11px;
   }
   .auth-shell-compact .auth-input-wrap input {
-    height: 45px;
+    height: 49px;
   }
   .auth-shell-compact .auth-submit {
-    min-height: 45px;
+    min-height: 49px;
   }
   .auth-shell-compact .auth-security-note {
-    margin-top: 11px;
-    font-size: 9px;
+    margin-top: 14px;
+    font-size: 10px;
     line-height: 1.45;
   }
   .auth-shell-compact .auth-footer {
-    margin-top: 13px;
+    margin-top: 16px;
   }
   .auth-shell-compact .auth-legal-note {
-    margin-top: 11px;
-    font-size: 8px;
+    margin-top: 14px;
+    font-size: 9px;
     line-height: 1.35;
   }
 }
@@ -1895,7 +1896,7 @@ button:disabled { cursor: not-allowed; }
 @media (min-width: 1024px) and (max-height: 760px) {
   .auth-shell-compact .auth-visual {
     padding-block: 18px;
-    gap: 9px;
+    gap: 11px;
   }
   .auth-shell-compact .auth-brand-mark {
     width: 36px;
@@ -1917,7 +1918,7 @@ button:disabled { cursor: not-allowed; }
     font-size: 11px;
   }
   .auth-shell-compact .auth-hero-illustration .auth-hero-art {
-    max-height: 29vh;
+    max-height: 33vh;
   }
   .auth-shell-compact .auth-benefits span {
     font-size: 9px;
@@ -1932,7 +1933,7 @@ button:disabled { cursor: not-allowed; }
     padding-block: 2px;
   }
   .auth-shell-compact .auth-heading {
-    margin-bottom: 9px;
+    margin-bottom: 11px;
   }
   .auth-shell-compact .auth-heading h1 {
     font-size: 1.9rem;
@@ -1941,19 +1942,19 @@ button:disabled { cursor: not-allowed; }
     margin-top: 5px;
   }
   .auth-shell-compact .auth-card {
-    padding-block: 14px;
+    padding-block: 17px;
   }
   .auth-shell-compact .auth-form {
-    gap: 8px;
+    gap: 10px;
   }
   .auth-shell-compact .auth-input-wrap input {
-    height: 41px;
+    height: 44px;
   }
   .auth-shell-compact .auth-submit {
-    min-height: 42px;
+    min-height: 45px;
   }
   .auth-shell-compact .auth-security-note {
-    margin-top: 8px;
+    margin-top: 10px;
   }
   .auth-shell-compact .auth-footer,
   .auth-shell-compact .auth-legal-note {
