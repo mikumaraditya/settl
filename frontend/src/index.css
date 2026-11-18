@@ -2087,3 +2087,18 @@ button:disabled { cursor: not-allowed; }
 .auth-shell-compact .google-login-container {
   min-height: 48px;
 }
+
+/* The left auth panel always uses a dark navy background, even in light mode.
+   Keep its brand and hero headings light instead of inheriting theme text tokens. */
+.auth-visual .auth-brand-word {
+  color: #f8faff !important;
+}
+.auth-visual .auth-brand-word span {
+  color: #9db4ff !important;
+}
+.auth-visual .auth-visual-copy h2 {
+  color: #f8faff !important;
+}
+.auth-visual .auth-visual-copy h2 span {
+  color: #9db4ff !important;
+}
