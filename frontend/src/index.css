@@ -2708,3 +2708,55 @@ button:disabled { cursor: not-allowed; }
 :root:not(.dark) .public-page .home-footer .text-slate-600 {
   color: #59677d !important;
 }
+
+/* Explicit FAQ light-mode surfaces and typography.
+   Keep question rows visible on pale backgrounds and make expanded answers
+   equally readable without changing the dark theme. */
+:root:not(.dark) .public-page .home-faq-section {
+  background: #f6f8fc !important;
+}
+
+:root:not(.dark) .public-page .home-faq-section > div > div:first-child h2 {
+  color: #102039 !important;
+}
+
+:root:not(.dark) .public-page .home-faq-section .glass-card {
+  background: #ffffff !important;
+  background-image: none !important;
+  border: 1px solid #d8e1ee !important;
+  box-shadow: 0 8px 24px rgba(24, 43, 74, .055) !important;
+}
+
+:root:not(.dark) .public-page .home-faq-section .home-faq-trigger {
+  color: #172943 !important;
+  background: #ffffff !important;
+  opacity: 1 !important;
+}
+
+:root:not(.dark) .public-page .home-faq-section .home-faq-trigger > span:first-child {
+  color: #172943 !important;
+  opacity: 1 !important;
+}
+
+:root:not(.dark) .public-page .home-faq-section .home-faq-trigger .material-symbols-outlined {
+  color: #52647d !important;
+}
+
+:root:not(.dark) .public-page .home-faq-section .home-faq-trigger:hover {
+  background: #f2f6ff !important;
+}
+
+:root:not(.dark) .public-page .home-faq-section .home-faq-answer {
+  border-color: #d8e1ee !important;
+  background: #f8faff !important;
+}
+
+:root:not(.dark) .public-page .home-faq-section .home-faq-answer p {
+  color: #46556b !important;
+  opacity: 1 !important;
+}
+
+:root:not(.dark) .public-page .home-faq-section .home-faq-trigger:focus-visible {
+  outline: 3px solid rgba(49, 89, 215, .35);
+  outline-offset: -3px;
+}
