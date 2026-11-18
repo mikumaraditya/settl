@@ -9,7 +9,6 @@ export default function Landing() {
   const navigate = useNavigate()
   // Homepage interaction state
   const [expandedFaq, setExpandedFaq] = useState(null)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const features = [
     {
@@ -145,26 +144,7 @@ export default function Landing() {
           >
             Get Started
           </Link>
-          <button
-            type="button"
-            className="home-menu-toggle lg:hidden"
-            aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
-            aria-expanded={mobileMenuOpen}
-            aria-controls="home-mobile-menu"
-            onClick={() => setMobileMenuOpen(value => !value)}
-          >
-            <span className="material-symbols-outlined">{mobileMenuOpen ? 'close' : 'menu'}</span>
-          </button>
         </div>
-        {mobileMenuOpen && (
-          <div id="home-mobile-menu" className="home-mobile-menu lg:hidden">
-            <a href="#features" onClick={() => setMobileMenuOpen(false)}>Features</a>
-            <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)}>How it works</a>
-            <a href="#scenarios" onClick={() => setMobileMenuOpen(false)}>Use cases</a>
-            <a href="#faq" onClick={() => setMobileMenuOpen(false)}>FAQ</a>
-            <button type="button" onClick={() => navigate('/login')}>Sign in</button>
-          </div>
-        )}
       </nav>
 
       <LandingHero />
