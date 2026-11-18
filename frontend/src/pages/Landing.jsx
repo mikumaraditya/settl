@@ -3,37 +3,13 @@ import BrandMark from '../components/BrandMark'
 import { Link } from 'react-router-dom'
 import ThemeToggle from '../components/ThemeToggle'
 import { useNavigate } from 'react-router-dom'
-
-const getInitialsBg = (name) => {
-  const colors = [
-    'bg-blue-500/80 border-blue-400/30',
-    'bg-purple-500/80 border-purple-400/30',
-    'bg-indigo-500/80 border-indigo-400/30',
-    'bg-violet-500/80 border-violet-400/30',
-    'bg-fuchsia-500/80 border-fuchsia-400/30',
-    'bg-pink-500/80 border-pink-400/30',
-    'bg-emerald-500/80 border-emerald-400/30',
-    'bg-teal-500/80 border-teal-400/30',
-    'bg-cyan-500/80 border-cyan-400/30',
-    'bg-sky-500/80 border-sky-400/30'
-  ];
-  if (!name) return colors[0];
-  let sum = 0;
-  for (let i = 0; i < name.length; i++) {
-    sum += name.charCodeAt(i);
-  }
-  return colors[sum % colors.length];
-};
+import LandingHero from '../components/LandingHero'
 
 export default function Landing() {
   const navigate = useNavigate()
-  // Interactive Split Calculator State
-  const [billAmount, setBillAmount] = useState(1200)
-  const [numFriends, setNumFriends] = useState(3)
-  const [splitType, setSplitType] = useState('equal') // 'equal', 'unequal'
-
-  // FAQ Accordion State
+  // Homepage interaction state
   const [expandedFaq, setExpandedFaq] = useState(null)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const features = [
     {
@@ -140,7 +116,7 @@ export default function Landing() {
       <div className="absolute bottom-[30%] right-[-15%] w-[300px] sm:w-[450px] h-[300px] sm:h-[450px] bg-blue-500/5 rounded-full blur-[120px] pointer-events-none -z-10 animate-pulse-glow" />
 
       {/* Navigation */}
-      <nav className="public-nav fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 py-3.5 flex items-center justify-between">
+      <nav className="public-nav home-nav fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 py-3.5 flex items-center justify-between" aria-label="Primary navigation">
         <Link to="/" className="flex items-center gap-2.5" aria-label="Settl home">
           <span className="app-brand-mark w-9 h-9 rounded-xl flex items-center justify-center">
             <BrandMark size={19} />
@@ -149,244 +125,52 @@ export default function Landing() {
             Settl<span className="w-1.5 h-1.5 rounded-full bg-secondary"></span>
           </span>
         </Link>
-        <div className="hidden md:flex items-center gap-8 text-xs font-bold uppercase tracking-wider text-slate-400">
+        <div className="home-nav-links hidden lg:flex items-center gap-7 text-[11px] font-bold uppercase tracking-wider text-slate-400">
           <a href="#features" className="hover:text-white transition-colors">Features</a>
           <a href="#how-it-works" className="hover:text-white transition-colors">How it works</a>
-          <a href="#scenarios" className="hover:text-white transition-colors">Use Cases</a>
+          <a href="#scenarios" className="hover:text-white transition-colors">Use cases</a>
           <a href="#faq" className="hover:text-white transition-colors">FAQ</a>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2.5 sm:gap-4">
           <ThemeToggle className="public-theme-toggle" />
-          <button 
-            onClick={() => navigate('/login')} 
-            className="text-xs font-extrabold uppercase tracking-wider text-slate-400 hover:text-white transition-colors cursor-pointer"
+          <button
+            onClick={() => navigate('/login')}
+            className="home-nav-signin hidden sm:inline-flex text-xs font-extrabold uppercase tracking-wider text-slate-400 hover:text-white transition-colors cursor-pointer"
           >
             Sign in
           </button>
-          <button 
-            onClick={() => navigate('/register')} 
-            className="px-4 py-2.5 rounded-xl bg-secondary text-white text-xs font-extrabold uppercase tracking-wider hover:brightness-110 active:scale-95 transition-all cursor-pointer shadow-lg shadow-secondary/20"
+          <Link
+            to="/register"
+            className="home-nav-cta px-4 py-2.5 rounded-xl bg-secondary text-white text-xs font-extrabold uppercase tracking-wider hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-secondary/20"
           >
             Get Started
+          </Link>
+          <button
+            type="button"
+            className="home-menu-toggle lg:hidden"
+            aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-expanded={mobileMenuOpen}
+            aria-controls="home-mobile-menu"
+            onClick={() => setMobileMenuOpen(value => !value)}
+          >
+            <span className="material-symbols-outlined">{mobileMenuOpen ? 'close' : 'menu'}</span>
           </button>
         </div>
+        {mobileMenuOpen && (
+          <div id="home-mobile-menu" className="home-mobile-menu lg:hidden">
+            <a href="#features" onClick={() => setMobileMenuOpen(false)}>Features</a>
+            <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)}>How it works</a>
+            <a href="#scenarios" onClick={() => setMobileMenuOpen(false)}>Use cases</a>
+            <a href="#faq" onClick={() => setMobileMenuOpen(false)}>FAQ</a>
+            <button type="button" onClick={() => navigate('/login')}>Sign in</button>
+          </div>
+        )}
       </nav>
 
-      {/* Hero Section */}
-      <section className="pt-36 pb-24 px-6 sm:px-8 max-w-6xl mx-auto w-full flex flex-col lg:flex-row items-center justify-between gap-12 lg:gap-16">
-        <div className="flex flex-col items-start max-w-xl text-left animate-in fade-in slide-in-from-bottom-8 duration-500">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/5 mb-6">
-            <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse" />
-            <span className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400">AI-Powered • UPI-Native</span>
-          </div>
-
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-white leading-[1.15] tracking-tight mb-6">
-            Split costs.<br />
-            Settle up.<br />
-            <span className="text-secondary bg-clip-text">Stay friends.</span>
-          </h1>
-
-          <p className="text-sm sm:text-base text-on-surface-variant font-medium leading-relaxed mb-8 max-w-lg">
-            Settl is the AI-powered expense-sharing app for trips, roommates, and everything in between. 
-            Smart splitting, one-tap UPI settlements, and weekly insights that actually help.
-          </p>
-
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full sm:w-auto">
-            <button 
-              onClick={() => navigate('/register')} 
-              className="px-6 py-3.5 rounded-xl bg-gradient-to-r from-secondary to-blue-600 text-white text-xs font-extrabold uppercase tracking-wider hover:brightness-110 active:scale-95 transition-all cursor-pointer shadow-lg shadow-secondary/20 text-center"
-            >
-              Start splitting free
-            </button>
-            <button 
-              onClick={() => navigate('/login')} 
-              className="px-6 py-3.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-extrabold uppercase tracking-wider active:scale-95 transition-all cursor-pointer text-center"
-            >
-              I already have an account
-            </button>
-          </div>
-
-          {/* Stats Badges */}
-          <div className="flex items-center gap-6 mt-12 border-t border-white/5 pt-6 w-full">
-            <div className="flex flex-col">
-              <span className="text-white font-black text-lg">Keep every rupee</span>
-              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">No fees on any settlement</span>
-            </div>
-            <div className="h-8 w-px bg-white/5" />
-            <div className="flex flex-col">
-              <span className="text-white font-black text-lg">Minimum payments, always</span>
-              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Fewest transactions to settle any group</span>
-            </div>
-            <div className="h-8 w-px bg-white/5" />
-            <div className="flex flex-col">
-              <span className="text-white font-black text-lg">AI</span>
-              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">insights</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Supporting Visual (Interactive Split Calculator) */}
-        <div className="w-full lg:w-[400px] flex-none flex justify-center max-w-full animate-in fade-in slide-in-from-bottom-12 duration-700">
-          <div className="glass-card p-6 rounded-3xl border border-white/10 bg-gradient-to-b from-white/[0.04] to-white/[0.01] shadow-[0_20px_50px_rgba(0,0,0,0.3)] space-y-5 w-full select-none overflow-hidden hover:border-white/15 transition-all">
-            <div className="flex justify-between items-center border-b border-white/5 pb-2.5">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Interactive Split Demo</span>
-              </div>
-              <span className="text-[9px] bg-cyan-400/10 text-cyan-400 border border-cyan-400/25 px-2.5 py-0.5 rounded-full font-bold uppercase">Try It Live</span>
-            </div>
-
-            {/* Inputs */}
-            <div className="space-y-4">
-              {/* Bill Amount Slider */}
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs font-bold">
-                  <span className="text-on-surface-variant">Bill Amount</span>
-                  <span className="text-white font-black">₹{billAmount.toLocaleString('en-IN')}</span>
-                </div>
-                <input 
-                  type="range" 
-                  min="300" 
-                  max="6000" 
-                  step="300" 
-                  value={billAmount} 
-                  onChange={(e) => setBillAmount(Number(e.target.value))}
-                  className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-secondary"
-                />
-              </div>
-
-              {/* Friends Selector */}
-              <div className="space-y-2">
-                <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block">Number of Friends</span>
-                <div className="flex gap-2">
-                  {[2, 3, 4].map(n => (
-                    <button 
-                      key={n}
-                      onClick={() => setNumFriends(n)}
-                      className={`flex-1 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                        numFriends === n 
-                          ? 'bg-secondary text-white border-secondary/50 shadow-md shadow-secondary/15 scale-[1.03]' 
-                          : 'bg-white/5 text-slate-400 border-white/5 hover:bg-white/10'
-                      }`}
-                    >
-                      {n}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Split Type Selector */}
-              <div className="space-y-2">
-                <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block">Split Strategy</span>
-                <div className="flex gap-2">
-                  {['equal', 'unequal'].map(t => (
-                    <button 
-                      key={t}
-                      onClick={() => setSplitType(t)}
-                      className={`flex-1 py-1.5 rounded-xl text-xs font-bold border transition-all uppercase tracking-wider cursor-pointer ${
-                        splitType === t 
-                          ? 'bg-secondary text-white border-secondary/50 shadow-md shadow-secondary/15 scale-[1.03]' 
-                          : 'bg-white/5 text-slate-400 border-white/5 hover:bg-white/10'
-                      }`}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Results Visualizer */}
-            <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 space-y-3 relative overflow-hidden">
-              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block mb-1">Calculations & Simplified Transfers</span>
-
-              <div className="space-y-2.5 z-10 relative">
-                {splitType === 'equal' ? (
-                  (() => {
-                    const share = Math.round(billAmount / numFriends);
-                    const names = ['Amit', 'Sara', 'Kabir', 'Priya'].slice(0, numFriends);
-                    return (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-xs border-b border-white/5 pb-2">
-                          <span className="text-slate-400 font-medium">Each pays:</span>
-                          <span className="text-emerald-400 font-black">₹{share}</span>
-                        </div>
-                        <div className="space-y-2 pt-1">
-                          {names.slice(1).map((name, idx) => (
-                            <div key={idx} className="flex items-center justify-between text-[11px] text-slate-300">
-                              <span className="flex items-center gap-1.5">
-                                <span className={`w-4 h-4 rounded-full ${getInitialsBg(name)} text-white text-[8px] flex items-center justify-center font-bold`}>{name[0]}</span>
-                                {name}
-                              </span>
-                              <span className="material-symbols-outlined text-[12px] text-slate-500">arrow_forward</span>
-                              <span className="flex items-center gap-1.5">
-                                <span className="w-4 h-4 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[8px] flex items-center justify-center font-bold">A</span>
-                                Amit (Paid)
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )
-                  })()
-                ) : (
-                  (() => {
-                    const kabirOwes = Math.round(billAmount * 0.5);
-                    const saraOwes = Math.round(billAmount * 0.3);
-                    return (
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-[10px] text-slate-500 font-bold border-b border-white/5 pb-1.5">
-                          <span>MEMBERS</span>
-                          <span>SPENT SHARE</span>
-                        </div>
-                        <div className="space-y-1.5">
-                          <div className="flex justify-between text-[11px] text-slate-300">
-                            <span className="flex items-center gap-1.5">
-                              <span className="w-4 h-4 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[8px] flex items-center justify-center font-bold">A</span>
-                              Amit (Paid)
-                            </span>
-                            <span className="text-slate-400">Spent 20% (₹{Math.round(billAmount * 0.2)})</span>
-                          </div>
-                          <div className="flex justify-between text-[11px] text-slate-300">
-                            <span className="flex items-center gap-1.5">
-                              <span className="w-4 h-4 rounded-full bg-pink-500/10 border border-pink-500/20 text-pink-400 text-[8px] flex items-center justify-center font-bold">K</span>
-                              Kabir
-                            </span>
-                            <span className="text-rose-400 font-bold">Share: 50% (₹{kabirOwes})</span>
-                          </div>
-                          <div className="flex justify-between text-[11px] text-slate-300">
-                            <span className="flex items-center gap-1.5">
-                              <span className="w-4 h-4 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 text-[8px] flex items-center justify-center font-bold">S</span>
-                              Sara
-                            </span>
-                            <span className="text-rose-400 font-bold">Share: 30% (₹{saraOwes})</span>
-                          </div>
-                          {numFriends === 4 && (
-                            <div className="flex justify-between text-[11px] text-slate-300">
-                              <span className="flex items-center gap-1.5">
-                                <span className="w-4 h-4 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[8px] flex items-center justify-center font-bold">P</span>
-                                Priya
-                              </span>
-                              <span className="text-slate-400">Spent 0% (₹0)</span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="border-t border-white/5 pt-2 text-[10px] text-on-surface-variant leading-normal flex items-start gap-1">
-                          <span className="material-symbols-outlined text-[14px] text-secondary flex-shrink-0">insights</span>
-                          <span>Debt simplification resolves this so Kabir pays Amit ₹{kabirOwes} and Sara pays Amit ₹{saraOwes}.</span>
-                        </div>
-                      </div>
-                    )
-                  })()
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      <LandingHero />
 
       {/* Features Section */}
-      <section id="features" className="py-24 border-t border-white/5 bg-black/[0.05]">
+      <section id="features" className="home-section home-features-section py-24 border-t border-white/5 bg-black/[0.05]">
         <div className="max-w-6xl mx-auto px-6 sm:px-8 w-full">
           <div className="flex flex-col items-start text-left mb-16">
             <span className="text-[10px] font-bold uppercase tracking-widest text-secondary mb-3">/ 01 FEATURES</span>
@@ -426,7 +210,7 @@ export default function Landing() {
       </section>
 
       {/* How it Works Section */}
-      <section id="how-it-works" className="py-24 border-t border-white/5">
+      <section id="how-it-works" className="home-section home-steps-section py-24 border-t border-white/5">
         <div className="max-w-6xl mx-auto px-6 sm:px-8 w-full relative">
           <div className="flex flex-col items-start text-left mb-16">
             <span className="text-[10px] font-bold uppercase tracking-widest text-secondary mb-3">/ 02 HOW IT WORKS</span>
@@ -464,12 +248,12 @@ export default function Landing() {
       </section>
 
       {/* Built for Real Groups Scenarios */}
-      <section id="scenarios" className="py-24 border-t border-white/5 bg-black/[0.03]">
+      <section id="scenarios" className="home-section home-scenarios-section py-24 border-t border-white/5 bg-black/[0.03]">
         <div className="max-w-6xl mx-auto px-6 sm:px-8 w-full">
           <div className="flex flex-col items-start text-left mb-16">
             <span className="text-[10px] font-bold uppercase tracking-widest text-secondary mb-3">/ 03 USE CASES</span>
             <h2 className="text-3xl sm:text-4xl font-extrabold text-white leading-tight tracking-tight">
-              Built for real groups. <span className="text-slate-500 font-medium">Grounding everyday life.</span>
+              Built for real groups. <span className="text-slate-500 font-medium">Made for everyday life.</span>
             </h2>
           </div>
 
@@ -493,7 +277,7 @@ export default function Landing() {
       </section>
 
       {/* FAQ Section */}
-      <section id="faq" className="py-24 border-t border-white/5">
+      <section id="faq" className="home-section home-faq-section py-24 border-t border-white/5">
         <div className="max-w-4xl mx-auto px-6 sm:px-8 w-full">
           <div className="flex flex-col items-center text-center mb-16">
             <span className="text-[10px] font-bold uppercase tracking-widest text-secondary mb-3">/ 04 FAQ</span>
@@ -512,14 +296,16 @@ export default function Landing() {
                 >
                   <button 
                     onClick={() => setExpandedFaq(isExpanded ? null : idx)}
-                    className="w-full px-6 py-4.5 flex justify-between items-center text-left text-white font-bold text-sm sm:text-base hover:bg-white/[0.02] transition-colors cursor-pointer select-none"
+                    className="home-faq-trigger w-full px-6 py-4.5 flex justify-between items-center text-left text-white font-bold text-sm sm:text-base hover:bg-white/[0.02] transition-colors cursor-pointer select-none"
+                    aria-expanded={isExpanded}
+                    aria-controls={`home-faq-answer-${idx}`}
                   >
                     <span>{faq.q}</span>
                     <span className={`material-symbols-outlined text-slate-500 transition-transform duration-300 ${isExpanded ? 'rotate-180 text-secondary' : ''}`}>
                       keyboard_arrow_down
                     </span>
                   </button>
-                  <div className={`transition-all duration-300 ease-in-out ${isExpanded ? 'max-h-[200px] border-t border-white/5' : 'max-h-0'}`}>
+                  <div id={`home-faq-answer-${idx}`} className={`home-faq-answer transition-all duration-300 ease-in-out ${isExpanded ? 'max-h-[500px] border-t border-white/5' : 'max-h-0'}`}>
                     <p className="p-6 text-xs sm:text-sm text-on-surface-variant font-medium leading-relaxed">
                       {faq.a}
                     </p>
@@ -532,7 +318,7 @@ export default function Landing() {
       </section>
 
       {/* Closing CTA Section */}
-      <section className="py-24 border-t border-white/5 bg-surface-container-low/30 relative overflow-hidden">
+      <section className="home-cta-section py-24 border-t border-white/5 bg-surface-container-low/30 relative overflow-hidden">
         {/* Glow Sphere */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[350px] sm:w-[500px] h-[350px] sm:h-[500px] bg-secondary/5 rounded-full blur-[120px] pointer-events-none -z-10" />
         
@@ -554,11 +340,11 @@ export default function Landing() {
       </section>
 
       {/* Footer */}
-      <footer className="py-12 border-t border-white/5 bg-surface-container-low mt-auto">
+      <footer className="home-footer py-12 border-t border-white/5 bg-surface-container-low mt-auto">
         <div className="max-w-6xl mx-auto px-6 sm:px-8 w-full flex flex-col sm:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-2">
-            <div className="inline-flex items-center justify-center w-6 h-6 bg-gradient-to-tr from-secondary to-blue-600 rounded-lg">
-              <span className="material-symbols-outlined text-white text-[14px] font-bold">account_balance_wallet</span>
+            <div className="inline-flex items-center justify-center w-7 h-7 bg-gradient-to-tr from-secondary to-blue-600 rounded-lg text-white">
+              <BrandMark size={15} />
             </div>
             <span className="text-base font-black text-white tracking-tight flex items-center gap-0.5">
               Settl<span className="w-1 h-1 rounded-full bg-secondary" />
