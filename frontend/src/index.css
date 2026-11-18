@@ -2029,6 +2029,9 @@ button:disabled { cursor: not-allowed; }
 /* Refined proportions: a slightly narrower form column with a taller,
    roomier card, and a larger illustration that fills more of the left panel. */
 @media (min-width: 1024px) {
+  .auth-shell-compact .auth-visual-copy {
+    margin-top: clamp(10px, 1.5vh, 16px);
+  }
   .auth-shell-compact .auth-content {
     width: min(100%, clamp(480px, 36vw, 600px));
     max-width: 600px;
