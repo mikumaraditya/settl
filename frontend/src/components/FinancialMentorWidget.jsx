@@ -243,23 +243,20 @@ export default function FinancialMentorWidget() {
       <button
         ref={buttonRef}
         onClick={toggleOpen}
-        className="fixed bottom-20 md:bottom-8 right-4 md:right-8 w-14 h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 text-white flex items-center justify-center shadow-[0_0_30px_rgba(99,102,241,0.4)] hover:shadow-[0_0_45px_rgba(124,58,237,0.7)] hover:scale-105 active:scale-95 transition-all duration-300 cursor-pointer z-50 focus:outline-none ring-4 ring-indigo-500/20 hover:ring-indigo-500/40 group"
+        className="finn-launcher fixed bottom-20 md:bottom-8 right-4 md:right-8 z-50 group"
         aria-label={`Open ${MENTOR_NAME} AI Financial Mentor`}
         title={`Ask ${MENTOR_NAME}`}
       >
-        <span className="absolute inset-0 rounded-full bg-indigo-500/30 animate-pulse-ring pointer-events-none" />
+        <span className="finn-launcher-pulse absolute inset-0 rounded-full pointer-events-none" />
 
         {isOpen ? (
           <span className="material-symbols-outlined text-[24px] md:text-[28px]">close</span>
         ) : (
-          <span className="text-xl md:text-2xl font-black font-sans tracking-tight group-hover:scale-110 transition-transform">
-            F
-          </span>
+          <span className="finn-launcher-mark">F</span>
+          <span className="finn-launcher-sparkle material-symbols-outlined" aria-hidden="true">auto_awesome</span>
         )}
 
-        <span className="hidden md:group-hover:block absolute right-20 bg-slate-900 text-white text-xs font-semibold px-2.5 py-1 rounded-lg shadow-md whitespace-nowrap pointer-events-none border border-white/10 animate-in fade-in duration-150">
-          Ask {MENTOR_NAME}
-        </span>
+        <span className="finn-launcher-tooltip hidden md:block">Ask {MENTOR_NAME}</span>
       </button>
 
       {/* Floating Panel (Desktop/Tablet Panel or Mobile Bottom Sheet) */}
@@ -276,7 +273,7 @@ export default function FinancialMentorWidget() {
             height: isMobile ? 'calc(100% - 44px)' : '640px',
             maxHeight: isMobile ? 'calc(100% - 44px)' : 'calc(100vh - 100px)',
           }}
-          className={`fixed z-50 mentor-glass-panel bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-white/10 shadow-2xl shadow-indigo-950/40 overflow-hidden flex flex-col transition-[width,height,max-width,max-height,inset] duration-300 ease-in-out ${
+          className={`finn-panel fixed z-50 mentor-glass-panel overflow-hidden flex flex-col transition-[width,height,max-width,max-height,inset] duration-300 ease-in-out ${
             isMobile
               ? 'inset-x-0 bottom-0 top-11 rounded-t-3xl border-b-0'
               : 'bottom-24 right-4 md:right-8 rounded-3xl'
@@ -284,18 +281,18 @@ export default function FinancialMentorWidget() {
         >
           {/* Mobile Drag Indicator Bar */}
           {isMobile && (
-            <div className="pt-2 pb-0.5 flex justify-center items-center w-full bg-slate-50/95 dark:bg-[#0f172a]/95">
+            <div className="finn-mobile-grip pt-2 pb-2 flex justify-center items-center w-full">
               <div className="w-10 h-1 bg-slate-300 dark:bg-slate-600 rounded-full" />
             </div>
           )}
 
           {/* Single Consolidated Header Bar */}
-          <div className="px-4 pt-3 pb-3 border-b border-slate-200 dark:border-white/10 bg-slate-50/95 dark:bg-[#0f172a]/95 backdrop-blur-md flex flex-col gap-2.5">
+          <div className="finn-panel-header px-5 pt-4 pb-4 flex flex-col gap-3">
             {/* Row 1: Title, Avatar, Expand Toggle, Overflow Menu, Single Close Button */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="relative">
-                  <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-600 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 font-black text-sm">
+                  <div className="finn-avatar-mark w-10 h-10 rounded-2xl flex items-center justify-center text-white font-black text-base">
                     F
                   </div>
                   <span
@@ -305,14 +302,14 @@ export default function FinancialMentorWidget() {
                 </div>
                 <div>
                   <div className="flex items-center gap-1.5">
-                    <h2 id="mentor-widget-title" className="text-xs font-black text-slate-900 dark:text-white tracking-tight">
+                    <h2 id="mentor-widget-title" className="finn-title text-sm font-black tracking-tight">
                       {MENTOR_NAME}
                     </h2>
-                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 uppercase tracking-wider">
+                    <span className="finn-header-badge text-[9px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">
                       AI Mentor
                     </span>
                   </div>
-                  <p className="text-[9.5px] text-slate-500 dark:text-slate-400 font-medium">
+                  <p className="finn-status-line text-[11px] font-medium">
                     Live Financial Guidance
                   </p>
                 </div>
@@ -322,7 +319,7 @@ export default function FinancialMentorWidget() {
                 {/* Desktop-only Expand/Collapse Button */}
                 <button
                   onClick={toggleExpand}
-                  className="hidden md:flex p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer items-center justify-center"
+                  className="finn-icon-button hidden md:flex items-center justify-center"
                   title={isExpanded ? 'Collapse panel' : 'Expand panel'}
                   aria-label={isExpanded ? 'Collapse mentor panel' : 'Expand mentor panel'}
                 >
@@ -334,7 +331,7 @@ export default function FinancialMentorWidget() {
                 {/* 3-dots Overflow Menu */}
                 <button
                   onClick={() => setShowMenu((prev) => !prev)}
-                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer flex items-center justify-center"
+                  className="finn-icon-button p-1.5 flex items-center justify-center"
                   title="Menu Options"
                   aria-label="Mentor options menu"
                 >
@@ -344,7 +341,7 @@ export default function FinancialMentorWidget() {
                 {/* Single Close Button */}
                 <button
                   onClick={() => setIsOpen(false)}
-                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer flex items-center justify-center"
+                  className="finn-icon-button p-1.5 flex items-center justify-center"
                   aria-label="Close mentor panel"
                   title="Close"
                 >
@@ -353,7 +350,7 @@ export default function FinancialMentorWidget() {
 
                 {/* Dropdown Menu Items */}
                 {showMenu && (
-                  <div className="absolute right-0 top-10 z-50 w-56 rounded-2xl bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-white/10 shadow-xl py-1.5 text-xs animate-in fade-in duration-150">
+                  <div className="finn-menu absolute right-0 top-10 z-50 w-56 rounded-2xl py-1.5 text-xs animate-in fade-in duration-150">
                     <button
                       onClick={() => {
                         setShowMenu(false);
@@ -381,10 +378,10 @@ export default function FinancialMentorWidget() {
             </div>
 
             {/* Row 2: Tabs in a row under the Finn title */}
-            <div className="flex items-center bg-slate-200/60 dark:bg-white/5 p-1 rounded-xl border border-slate-300/40 dark:border-white/5 text-[11px] font-semibold">
+            <div className="finn-tabs flex items-center p-1 rounded-2xl text-[11px] font-semibold">
               <button
                 onClick={() => handleSwitchTab('chat')}
-                className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                className={`finn-tab flex-1 py-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 ${
                   activeTab === 'chat'
                     ? 'bg-white dark:bg-[#1e293b] text-indigo-600 dark:text-indigo-400 shadow-xs font-bold'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -395,7 +392,7 @@ export default function FinancialMentorWidget() {
               </button>
               <button
                 onClick={() => handleSwitchTab('report')}
-                className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                className={`finn-tab flex-1 py-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 ${
                   activeTab === 'report'
                     ? 'bg-white dark:bg-[#1e293b] text-indigo-600 dark:text-indigo-400 shadow-xs font-bold'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -418,7 +415,7 @@ export default function FinancialMentorWidget() {
             </div>
           ) : (
             /* TAB 2: Trust Score Report */
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-5 flex flex-col gap-4 text-slate-800 dark:text-slate-100">
+            <div className="finn-report-view flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-5 flex flex-col gap-4">
               {/* Header Score Card */}
               {loading ? (
                 <div className="flex flex-col items-center justify-center py-16 gap-3">
