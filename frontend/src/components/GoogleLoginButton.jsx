@@ -141,7 +141,7 @@ export default function GoogleLoginButton({ onLoginSuccess, onError, compact = f
       {/* Glassmorphic Centered Social Login Container with Inner Highlight & Refined Glow */}
       <div 
         ref={containerRef} 
-        className={`w-full ${compact ? 'p-3' : 'p-4'} rounded-2xl border border-slate-200/80 dark:border-white/5 bg-gradient-to-b from-slate-50/50 to-white/30 dark:from-white/[0.04] dark:to-white/[0.01] backdrop-blur-md shadow-[0_8px_32px_0_rgba(0,0,0,0.15)] dark:shadow-[0_8px_32px_0_rgba(0,0,0,0.37)] hover:border-slate-300 dark:hover:border-white/15 hover:scale-[1.01] active:scale-[0.99] hover:shadow-[0_8px_32px_0_rgba(59,130,246,0.1)] transition-all duration-300 flex flex-col items-center justify-center gap-3 relative overflow-hidden group`}
+        className={`w-full ${compact ? 'p-3.5' : 'p-4'} rounded-2xl border border-slate-200/80 dark:border-white/5 bg-gradient-to-b from-slate-50/50 to-white/30 dark:from-white/[0.04] dark:to-white/[0.01] backdrop-blur-md shadow-[0_8px_32px_0_rgba(0,0,0,0.15)] dark:shadow-[0_8px_32px_0_rgba(0,0,0,0.37)] hover:border-slate-300 dark:hover:border-white/15 hover:scale-[1.01] active:scale-[0.99] hover:shadow-[0_8px_32px_0_rgba(59,130,246,0.1)] transition-all duration-300 flex flex-col items-center justify-center gap-3 relative overflow-hidden group`}
       >
         {/* Shimmer CSS Style Injection */}
         <style>{`
