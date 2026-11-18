@@ -87,6 +87,7 @@ export default function Login() {
       </form>
 
       <GoogleLoginButton
+        compact
         onLoginSuccess={data => { login(data); navigate('/dashboard') }}
         onError={message => setError(message)}
       />
