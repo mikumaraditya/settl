@@ -232,10 +232,10 @@ export default function FinancialMentorWidget() {
   const panelWidth = isMobile
     ? '100%'
     : isExpanded
-    ? '720px'
+    ? '820px'
     : isTablet
-    ? '440px'
-    : '480px';
+    ? '480px'
+    : '540px';
 
   return (
     <>
@@ -270,7 +270,7 @@ export default function FinancialMentorWidget() {
             '--mentor-panel-width': panelWidth,
             width: isMobile ? '100%' : 'var(--mentor-panel-width)',
             maxWidth: isMobile ? '100%' : 'calc(100vw - 48px)',
-            height: isMobile ? 'calc(100% - 44px)' : '640px',
+            height: isMobile ? 'calc(100% - 44px)' : isExpanded ? 'min(780px, calc(100vh - 100px))' : 'min(720px, calc(100vh - 100px))',
             maxHeight: isMobile ? 'calc(100% - 44px)' : 'calc(100vh - 100px)',
           }}
           className={`finn-panel fixed z-50 mentor-glass-panel overflow-hidden flex flex-col transition-[width,height,max-width,max-height,inset] duration-300 ease-in-out ${
