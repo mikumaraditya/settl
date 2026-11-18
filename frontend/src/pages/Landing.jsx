@@ -333,7 +333,7 @@ export default function Landing() {
 
           <p className="text-[10px] font-medium text-slate-500 uppercase tracking-widest text-center sm:text-right leading-relaxed">
             &copy; {new Date().getFullYear()} Settl. All rights reserved.<br />
-            <span className="text-[8px] text-slate-600">Powered by Gemini AI Insights</span>
+            <span className="home-footer-tagline text-[9px] text-slate-600 normal-case tracking-normal">Shared expenses · Smart settlements · Real-time balances · AI insights</span>
           </p>
         </div>
       </footer>
