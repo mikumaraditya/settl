@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../context/NotificationContext'
+import BrandMark from './BrandMark'
 
 const NAV_ITEMS = [
   { label: 'Home', path: '/dashboard', icon: 'grid_view' },
@@ -44,7 +45,7 @@ export default function Navbar() {
       <header className="app-mobile-header md:hidden fixed top-0 inset-x-0 h-14 z-40 flex items-center justify-between px-4">
         <Link to="/dashboard" className="flex items-center gap-2.5" aria-label="Settl home">
           <span className="app-brand-mark w-8 h-8 rounded-xl flex items-center justify-center text-white">
-            <span className="material-symbols-outlined text-[19px]">account_balance_wallet</span>
+            <BrandMark size={19} />
           </span>
           <span className="text-[19px] font-extrabold tracking-[-0.06em] text-[var(--on-surface)]">settl<span className="text-[var(--secondary)]">.</span></span>
         </Link>
@@ -78,7 +79,7 @@ export default function Navbar() {
         <div>
           <Link to="/dashboard" className="flex items-center gap-3 px-2 mb-10" aria-label="Settl home">
             <span className="app-brand-mark w-10 h-10 rounded-[14px] flex items-center justify-center text-white">
-              <span className="material-symbols-outlined text-[22px]">account_balance_wallet</span>
+              <BrandMark size={22} />
             </span>
             <span className="text-[22px] font-extrabold tracking-[-0.065em] text-[var(--on-surface)]">settl<span className="text-[var(--secondary)]">.</span></span>
           </Link>

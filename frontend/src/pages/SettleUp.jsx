@@ -535,20 +535,20 @@ export default function SettleUp() {
                               {t.from?.name?.charAt(0).toUpperCase()}
                             </div>
                             <div className="min-w-0">
-                              <span className={`font-bold text-sm block truncate ${isMe ? 'text-rose-400' : 'text-white'}`}>{isMe ? 'You (Owe)' : t.from?.name}</span>
+                              <span className={`font-bold text-sm block truncate ${isMe ? 'text-rose-400' : 'text-white'}`}>{isMe ? 'You pay' : t.from?.name}</span>
                               <span className="text-on-surface-variant text-[10px] uppercase tracking-wider font-bold block mt-0.5">Payer</span>
                             </div>
                           </div>
                           
                           <div className="flex flex-col items-center flex-1 max-w-[80px]">
                             <span className="material-symbols-outlined text-on-surface-variant/40 text-[20px]">arrow_forward</span>
-                            <span className="text-[9px] font-bold text-on-surface-variant/50 uppercase tracking-widest mt-0.5">owes</span>
+                            <span className="text-[9px] font-bold text-on-surface-variant/50 uppercase tracking-widest mt-0.5">pays</span>
                           </div>
                           
                           <div className="flex items-center gap-3 text-right min-w-0">
                             <div className="min-w-0">
                               <span className={`font-bold text-sm block truncate ${t.to?._id === user._id ? 'text-emerald-400' : 'text-white'}`}>
-                                {t.to?._id === user._id ? 'You (Get)' : t.to?.name}
+                                {t.to?._id === user._id ? 'You receive' : t.to?.name}
                               </span>
                               <span className="text-on-surface-variant text-[10px] uppercase tracking-wider font-bold block mt-0.5">Receiver</span>
                             </div>

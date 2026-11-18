@@ -37,9 +37,10 @@ export default function Login() {
 
   return (
     <AuthShell
+      compact
       eyebrow="Welcome back"
-      title="Sign in to Settl"
-      description="Pick up where your group left off. Your expenses, balances and payment history are waiting."
+      title="Good to have you back."
+      description="Sign in to pick up right where your group left off."
       footer={<>New to Settl? <Link to="/register">Create your account</Link></>}
     >
       <form onSubmit={handleSubmit} className="auth-form">
@@ -85,8 +86,8 @@ export default function Login() {
         </button>
       </form>
 
-      <div className="auth-divider"><span>Or continue with</span></div>
       <GoogleLoginButton
+        compact
         onLoginSuccess={data => { login(data); navigate('/dashboard') }}
         onError={message => setError(message)}
       />

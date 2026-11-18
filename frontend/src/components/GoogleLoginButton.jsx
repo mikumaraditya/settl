@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import axios from '../api/axios'
 
-export default function GoogleLoginButton({ onLoginSuccess, onError }) {
+export default function GoogleLoginButton({ onLoginSuccess, onError, compact = false }) {
   const buttonRef = useRef(null)
   const containerRef = useRef(null)
   const [error, setError] = useState('')
@@ -130,7 +130,7 @@ export default function GoogleLoginButton({ onLoginSuccess, onError }) {
   return (
     <div className="w-full flex flex-col items-center">
       {/* Refined Premium Divider with Gradient Line Fades */}
-      <div className="w-full flex items-center gap-4 my-5 select-none">
+      <div className={`w-full flex items-center gap-3 ${compact ? 'my-3' : 'my-5'} select-none`}>
         <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent to-on-surface-variant/10 dark:to-white/10" />
         <span className="text-on-surface-variant/60 text-[9px] font-extrabold uppercase tracking-[0.2em] leading-none">
           or continue with
@@ -141,7 +141,7 @@ export default function GoogleLoginButton({ onLoginSuccess, onError }) {
       {/* Glassmorphic Centered Social Login Container with Inner Highlight & Refined Glow */}
       <div 
         ref={containerRef} 
-        className="w-full p-4 rounded-2xl border border-slate-200/80 dark:border-white/5 bg-gradient-to-b from-slate-50/50 to-white/30 dark:from-white/[0.04] dark:to-white/[0.01] backdrop-blur-md shadow-[0_8px_32px_0_rgba(0,0,0,0.15)] dark:shadow-[0_8px_32px_0_rgba(0,0,0,0.37)] hover:border-slate-300 dark:hover:border-white/15 hover:scale-[1.01] active:scale-[0.99] hover:shadow-[0_8px_32px_0_rgba(59,130,246,0.1)] transition-all duration-300 flex flex-col items-center justify-center gap-3 relative overflow-hidden group"
+        className={`w-full ${compact ? 'p-3.5' : 'p-4'} rounded-2xl border border-slate-200/80 dark:border-white/5 bg-gradient-to-b from-slate-50/50 to-white/30 dark:from-white/[0.04] dark:to-white/[0.01] backdrop-blur-md shadow-[0_8px_32px_0_rgba(0,0,0,0.15)] dark:shadow-[0_8px_32px_0_rgba(0,0,0,0.37)] hover:border-slate-300 dark:hover:border-white/15 hover:scale-[1.01] active:scale-[0.99] hover:shadow-[0_8px_32px_0_rgba(59,130,246,0.1)] transition-all duration-300 flex flex-col items-center justify-center gap-3 relative overflow-hidden group`}
       >
         {/* Shimmer CSS Style Injection */}
         <style>{`
@@ -195,7 +195,7 @@ export default function GoogleLoginButton({ onLoginSuccess, onError }) {
           /* Premium Shimmer Skeleton Loader */
           <div 
             style={{ maxWidth: `${clampedWidth}px` }} 
-            className="w-full h-10 border border-slate-200 dark:border-white/5 rounded-full animate-shimmer flex items-center justify-center gap-3"
+            className={`w-full ${compact ? 'h-9' : 'h-10'} border border-slate-200 dark:border-white/5 rounded-full animate-shimmer flex items-center justify-center gap-3`}
           >
             <div className="w-4 h-4 bg-slate-200 dark:bg-white/10 rounded-full" />
             <div className="h-3 bg-slate-200 dark:bg-white/10 rounded w-28" />
