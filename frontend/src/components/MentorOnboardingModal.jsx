@@ -180,10 +180,10 @@ export default function MentorOnboardingModal({ isOpen, onClose, onSaved }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="mentor-onboarding-title"
-        className="mentor-onboarding-card glass-card w-full max-w-lg rounded-3xl border border-white/10 p-6 shadow-2xl flex flex-col gap-5 relative overflow-hidden bg-zinc-900/90 text-white"
+        className="finn-onboarding-card mentor-onboarding-card glass-card w-full max-w-xl rounded-3xl p-6 sm:p-7 shadow-2xl flex flex-col gap-5 relative overflow-hidden"
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/10 pb-4">
+        <div className="finn-onboarding-header flex items-center justify-between pb-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
               <span className="material-symbols-outlined text-2xl">auto_awesome</span>
@@ -222,7 +222,7 @@ export default function MentorOnboardingModal({ isOpen, onClose, onSaved }) {
         ) : (
           <div className="flex flex-col gap-4 text-xs">
             {/* Step Indicators */}
-            <div className="flex items-center justify-between gap-2 border-b border-white/5 pb-3">
+            <div className="finn-onboarding-steps flex items-center justify-between gap-2 pb-3">
               {[1, 2, 3].map((num) => (
                 <button
                   key={num}
