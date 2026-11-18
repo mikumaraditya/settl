@@ -2613,3 +2613,7 @@ button:disabled { cursor: not-allowed; }
   .home-primary-cta:hover,
   .home-secondary-cta:hover { transform: none; }
 }
+.home-primary-cta,
+.home-primary-cta .material-symbols-outlined {
+  color: #fff !important;
+}
