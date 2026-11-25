@@ -1964,7 +1964,7 @@ export default function GroupDetail() {
               )}
 
               {/* Delete Group */}
-              {group?.members.find(m => m.user?._id === user._id)?.role === 'admin' && (
+              {String(group?.createdBy) === String(user?._id) && (
                 <div className="border-t border-white/5 pt-4 mt-1">
                   <button
                     onClick={() => setShowDeleteGroup(true)}
