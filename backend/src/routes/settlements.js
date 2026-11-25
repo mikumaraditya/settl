@@ -461,6 +461,9 @@ router.post("/settle", protect, async (req, res) => {
     reservedGroupId = null;
   } catch (error) {
     console.error("Error creating settlement request:", error);
+    if (error?.code === 11000) {
+      return res.status(409).json({ message: "Settlement request already sent. Waiting for receiver to confirm." });
+    }
     if (error.name === "CastError" || error.name === "ValidationError") {
       return res.status(400).json({ message: "Please check the settlement details and try again" });
     }
@@ -667,7 +670,7 @@ router.post("/reject", protect, async (req, res) => {
         },
       },
       { new: true },
-    );
+    ).populate("from", "name");
 
     if (!settlement) {
       return res.status(404).json({ message: "No pending settlement request found to reject" });
@@ -689,7 +692,7 @@ router.post("/reject", protect, async (req, res) => {
       meta: {
         amount: settlement.amount,
         fromId: fromUserId,
-        fromName: group.members.find(member => member.user.toString() === fromUserId)?.name,
+        fromName: settlement.from?.name,
         reason: settlement.rejectionReason,
       },
     }).catch(error => console.error("Could not record settlement-rejected activity:", error));
