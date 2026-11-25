@@ -150,6 +150,7 @@ export default function GroupDetail() {
   const [expenseToDelete, setExpenseToDelete] = useState(null)
   const [deletingExpense, setDeletingExpense] = useState(false)
   const [deleteExpenseError, setDeleteExpenseError] = useState('')
+  const [expenseError, setExpenseError] = useState('')
   const [memberEmail, setMemberEmail]         = useState('')
   const [expenseForm, setExpenseForm]         = useState({
     description: '', amount: '', category: 'food', splitType: 'equal'
@@ -216,6 +217,7 @@ export default function GroupDetail() {
   }, [expenseForm.amount, expenseForm.splitType, group?.members])
 
   const openAddExpenseModal = useCallback(() => {
+    setExpenseError('')
     if (group?.members?.length > 0) {
       const equalShare = 100 / group.members.length;
       const initial = {};
@@ -508,28 +510,46 @@ export default function GroupDetail() {
   // ── Expense helpers ───────────────────────────────────────────────────────────
   const handleAddExpense = async (e) => {
     e.preventDefault()
-    const parsedAmount = parseFloat(expenseForm.amount)
-    if (!expenseForm.description || !expenseForm.amount) return
-    if (isNaN(parsedAmount) || parsedAmount <= 0) return
+    const description = expenseForm.description.trim()
+    const parsedAmount = Number(expenseForm.amount)
+    const totalPaise = Math.round(parsedAmount * 100)
+
+    if (!description) {
+      setExpenseError('Enter a description for this expense.')
+      return
+    }
+    if (!Number.isFinite(parsedAmount) || !Number.isSafeInteger(totalPaise) || totalPaise <= 0 || Math.abs(parsedAmount * 100 - totalPaise) > 0.000001) {
+      setExpenseError('Enter an amount greater than ₹0.00 with up to two decimal places.')
+      return
+    }
+
     setAddingExpense(true)
+    setExpenseError('')
     try {
-      const payload = { ...expenseForm, amount: parsedAmount, groupId: id }
+      const payload = { ...expenseForm, description, amount: totalPaise / 100, groupId: id }
       if (expenseForm.splitType === 'percentage') {
         payload.splits = Object.entries(splitPercentages).map(([userId, pct]) => ({
           user: userId,
-          percentage: pct
-        }));
+          percentage: Number(pct),
+        }))
       } else if (expenseForm.splitType === 'exact') {
         payload.splits = Object.entries(exactAmounts).map(([userId, amt]) => ({
           user: userId,
-          amount: parseFloat(amt) || 0
-        }));
+          amount: Number(amt),
+        }))
       }
-      await axios.post('/expenses', payload)
+
+      const { data: createdExpense } = await axios.post('/expenses', payload)
+      setExpenses(prev => prev.some(item => item._id === createdExpense._id)
+        ? prev.map(item => item._id === createdExpense._id ? createdExpense : item)
+        : [createdExpense, ...prev])
       setExpenseForm({ description: '', amount: '', category: 'food', splitType: 'equal' })
       setShowAddExpense(false)
+      setExpenseError('')
+      fetchSettlements()
+      if (activityFetched) fetchActivity()
     } catch (err) {
-      console.error(err)
+      setExpenseError(err.response?.data?.message || 'We could not save this expense. Check your connection and try again.')
     } finally {
       setAddingExpense(false)
     }
@@ -565,14 +585,20 @@ export default function GroupDetail() {
   }
 
   const handleDeleteExpense = async () => {
-    if (!expenseToDelete) return
+    if (!expenseToDelete || deletingExpense) return
     setDeletingExpense(true)
     setDeleteExpenseError('')
     try {
       await axios.delete(`/expenses/${expenseToDelete._id}`)
+      const deletedId = expenseToDelete._id
+      setExpenses(prev => prev.filter(item => item._id !== deletedId))
       setExpenseToDelete(null)
+      setDeleteExpenseError('')
+      fetchSettlements()
+      if (activityFetched) fetchActivity()
     } catch (err) {
-      setDeleteExpenseError(err.response?.data?.message || 'Error deleting expense')
+      setDeleteExpenseError(err.response?.data?.message || 'We could not delete this expense. Refresh the group and try again.')
+    } finally {
       setDeletingExpense(false)
     }
   }
@@ -676,7 +702,9 @@ export default function GroupDetail() {
 
     // Expense events
     const onExpenseAdded = (expense) => {
-      setExpenses(prev => [expense, ...prev])
+      setExpenses(prev => prev.some(item => item._id === expense._id)
+        ? prev.map(item => item._id === expense._id ? expense : item)
+        : [expense, ...prev])
       fetchSettlements()
     }
     const onExpenseDeleted = ({ expenseId }) => {
@@ -1992,7 +2020,7 @@ export default function GroupDetail() {
 
       {/* ── Add Expense Modal ─────────────────────────────────────────────────── */}
       {showAddExpense && (
-        <div className="modal-overlay bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={(e) => { if (e.target === e.currentTarget) setShowAddExpense(false) }}>
+        <div className="modal-overlay bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={(e) => { if (e.target === e.currentTarget && !addingExpense) { setShowAddExpense(false); setExpenseError('') } }}>
           <div className="glass-modal rounded-3xl max-w-2xl w-full border border-white/10 shadow-2xl overflow-y-auto md:overflow-hidden max-h-[90vh] md:max-h-[none] flex flex-col md:flex-row animate-in zoom-in-95 duration-200 hide-scrollbar">
             {/* Left section: Category and Amount */}
             <div className="md:w-5/12 bg-white/[0.02] border-b md:border-b-0 md:border-r border-white/5 p-6 flex flex-col justify-between relative overflow-hidden">
@@ -2000,7 +2028,7 @@ export default function GroupDetail() {
               
               <div>
                 <div className="flex items-center gap-3 mb-6">
-                  <button onClick={() => setShowAddExpense(false)} className="w-8 h-8 rounded-xl flex items-center justify-center bg-white/5 hover:bg-white/10 border border-white/5 transition-all cursor-pointer text-white">
+                  <button onClick={() => { if (!addingExpense) { setShowAddExpense(false); setExpenseError('') } }} disabled={addingExpense} className="w-8 h-8 rounded-xl flex items-center justify-center bg-white/5 hover:bg-white/10 border border-white/5 transition-all cursor-pointer text-white">
                     <span className="material-symbols-outlined text-white text-sm">close</span>
                   </button>
                   <h3 className="text-base font-extrabold text-white">Add Expense</h3>
@@ -2012,7 +2040,7 @@ export default function GroupDetail() {
                     <input
                       type="text" placeholder="Dinner, Movie, Rent..."
                       value={expenseForm.description}
-                      onChange={e => setExpenseForm({ ...expenseForm, description: e.target.value })}
+                      onChange={e => { setExpenseForm({ ...expenseForm, description: e.target.value }); setExpenseError('') }}
                       className="w-full bg-transparent border-0 border-b border-white/10 focus:border-blue-500 focus:ring-0 text-white font-bold text-lg placeholder:text-white/20 transition-all p-0 pb-2 ml-1"
                       required
                     />
@@ -2025,7 +2053,7 @@ export default function GroupDetail() {
                       <input
                         type="number" placeholder="0.00"
                         value={expenseForm.amount}
-                        onChange={e => setExpenseForm({ ...expenseForm, amount: e.target.value })}
+                        onChange={e => { setExpenseForm({ ...expenseForm, amount: e.target.value }); setExpenseError('') }}
                         className="w-full bg-transparent border-0 border-b border-white/10 focus:border-blue-500 focus:ring-0 text-white font-bold text-lg placeholder:text-white/20 transition-all p-0 pb-2"
                         required
                       />
@@ -2203,13 +2231,19 @@ export default function GroupDetail() {
                 </div>
               </div>
               
+              {expenseError && (
+                <div role="alert" aria-live="polite" className="mt-5 flex items-start gap-2 rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2.5 text-xs text-rose-300">
+                  <span className="material-symbols-outlined text-[15px] flex-shrink-0">warning</span>
+                  <span className="font-semibold leading-relaxed">{expenseError}</span>
+                </div>
+              )}
               <div className="border-t border-white/5 pt-4 mt-6 flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-on-surface-variant text-[11px] font-semibold">
                   <span className="material-symbols-outlined text-[16px] text-blue-400">event</span>
                   <span>Today</span>
                 </div>
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => setShowAddExpense(false)} className="px-4 py-2 border border-white/10 rounded-xl text-white font-bold text-xs uppercase tracking-wider hover:bg-white/5 transition-all cursor-pointer">Cancel</button>
+                  <button type="button" onClick={() => { setShowAddExpense(false); setExpenseError('') }} disabled={addingExpense} className="px-4 py-2 border border-white/10 rounded-xl text-white font-bold text-xs uppercase tracking-wider hover:bg-white/5 transition-all cursor-pointer">Cancel</button>
                   <button type="submit" disabled={addingExpense} className="px-5 py-2 bg-blue-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-md shadow-blue-500/10 border border-blue-500/20 hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-50">
                     {addingExpense ? 'Saving...' : 'Save Expense'}
                   </button>
@@ -2323,15 +2357,12 @@ export default function GroupDetail() {
                   <span className="material-symbols-outlined text-[15px] flex-shrink-0 mt-0.5" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
                   <span className="font-semibold leading-normal">{deleteError}</span>
                 </div>
-                <button onClick={() => { setShowDeleteGroup(false); navigate(`/settle/${id}`) }} className="self-end text-[10px] font-bold text-rose-400 underline underline-offset-2 hover:opacity-80 cursor-pointer">
-                  Go to Settle Up →
-                </button>
               </div>
             )}
             
             <div className="flex gap-3 mt-6">
               <button onClick={() => { setShowDeleteGroup(false); setDeleteError('') }} disabled={deletingGroup} className="flex-1 py-3 border border-white/10 rounded-2xl text-white font-bold text-xs uppercase tracking-wider hover:bg-white/5 transition-all cursor-pointer disabled:opacity-50">Cancel</button>
-              <button onClick={handleDeleteGroup} disabled={deletingGroup || !!deleteError} className="flex-1 py-3 bg-rose-500 text-white rounded-2xl font-bold text-xs uppercase tracking-wider hover:brightness-110 active:scale-95 shadow-md shadow-rose-500/10 border border-rose-500/20 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2">
+              <button onClick={handleDeleteGroup} disabled={deletingGroup} className="flex-1 py-3 bg-rose-500 text-white rounded-2xl font-bold text-xs uppercase tracking-wider hover:brightness-110 active:scale-95 shadow-md shadow-rose-500/10 border border-rose-500/20 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2">
                 {deletingGroup ? <><span className="material-symbols-outlined text-[15px] animate-spin">sync</span> Deleting...</> : <><span className="material-symbols-outlined text-[15px]">delete_forever</span> Yes, Delete</>}
               </button>
             </div>
