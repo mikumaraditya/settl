@@ -18,12 +18,22 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     env:
       MONGO_URI: mongodb://127.0.0.1:27017/settl_dev
       MONGO_URI_TEST: mongodb://127.0.0.1:27017/settl_test
       JWT_SECRET: ci-only-test-secret
       GEMINI_API_KEY: ci-placeholder-key
       NODE_ENV: test
+      RATE_LIMIT_STORE: memory
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,6 +58,13 @@ jobs:
       - name: Run backend lint and test suite
         run: npm run check
         working-directory: backend
+
+      - name: Run shared Redis rate-limit integration test
+        run: node --test test/rateLimitStore.test.mjs
+        working-directory: backend
+        env:
+          RATE_LIMIT_STORE: redis
+          REDIS_URL: redis://127.0.0.1:6379
 
       - name: Run frontend lint and production build
         run: npm run check
