@@ -54,6 +54,10 @@ const groupSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    membershipMutationExpiresAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true },
 );
