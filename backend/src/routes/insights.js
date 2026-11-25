@@ -14,6 +14,7 @@ import ScoreHistory from "../models/ScoreHistory.js";
 import UserFinancialProfile from "../models/UserFinancialProfile.js";
 import mongoose from "mongoose";
 import rateLimit from "express-rate-limit";
+import { createRateLimitStore } from "../config/rateLimitStore.js";
 
 const router = express.Router();
 
@@ -166,6 +167,7 @@ const trustScoreRateLimiter = rateLimit({
   windowMs: 60 * 1000,         // 1 minute window
   max: 60,                     // 60 req/min per requesting user
   keyGenerator: (req) => req.user.id,
+  store: createRateLimitStore("insights-trust-score"),
   message: { message: "Too many requests, please slow down." },
 });
 
@@ -210,6 +212,7 @@ const mentorRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 60, // Limit each user to 60 requests per 15 min
   keyGenerator: (req) => req.user.id,
+  store: createRateLimitStore("insights-mentor"),
   message: { message: "Daily limit reached for AI mentor. Please try again tomorrow." },
 });
 
@@ -681,6 +684,7 @@ const tipsRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 30,
   keyGenerator: (req) => req.user.id,
+  store: createRateLimitStore("insights-tips"),
   message: { message: "Too many financial tips requests. Please slow down." },
 });
 
