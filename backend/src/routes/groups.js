@@ -245,6 +245,13 @@ router.post("/:id/members", async (req, res) => {
       meta: { memberName: userToAdd.name, memberEmail: userToAdd.email },
     }).catch(error => console.error("Could not record member-added activity:", error));
 
+    try {
+      await releaseMembershipMutation(reservedGroupId, reservedMembershipLease);
+    } catch (releaseError) {
+      console.error("Could not release group membership lock before response:", releaseError);
+    }
+    reservedGroupId = null;
+    reservedMembershipLease = null;
     return res.status(201).json(updated);
   } catch (error) {
     console.error("Error adding member to group:", error);
@@ -392,6 +399,13 @@ router.delete("/:id/members/:userId", async (req, res) => {
         type: "member_left",
         meta: {},
       }).catch(error => console.error("Could not record member-left activity:", error));
+      try {
+        await releaseMembershipMutation(reservedGroupId, reservedMembershipLease);
+      } catch (releaseError) {
+        console.error("Could not release group membership lock before response:", releaseError);
+      }
+      reservedGroupId = null;
+      reservedMembershipLease = null;
       return res.json({ message: "You have left the group" });
     }
 
@@ -402,6 +416,13 @@ router.delete("/:id/members/:userId", async (req, res) => {
       meta: { removedId: targetId },
     }).catch(error => console.error("Could not record member-removed activity:", error));
 
+    try {
+      await releaseMembershipMutation(reservedGroupId, reservedMembershipLease);
+    } catch (releaseError) {
+      console.error("Could not release group membership lock before response:", releaseError);
+    }
+    reservedGroupId = null;
+    reservedMembershipLease = null;
     return res.json(updated);
   } catch (error) {
     console.error("Error removing member from group:", error);
