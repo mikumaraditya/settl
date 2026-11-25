@@ -277,7 +277,7 @@ export default function GroupDetail() {
   // ── Smart Settlement state ────────────────────────────────────────────────────
   const [transactions, setTransactions]             = useState([])
   const [confirmedSettlements, setConfirmedSettlements] = useState([])
-  const [now]                                       = useState(() => Date.now())
+  const [now, setNow]                               = useState(() => Date.now())
   const [loadingSettlements, setLoadingSettlements] = useState(true)
   const [memberScores, setMemberScores]             = useState({})
 
@@ -543,6 +543,7 @@ export default function GroupDetail() {
       }
 
       const { data: createdExpense } = await axios.post('/expenses', payload)
+      setNow(Date.now())
       setExpenses(prev => prev.some(item => item._id === createdExpense._id)
         ? prev.map(item => item._id === createdExpense._id ? createdExpense : item)
         : [createdExpense, ...prev])
@@ -705,6 +706,7 @@ export default function GroupDetail() {
 
     // Expense events
     const onExpenseAdded = (expense) => {
+      setNow(Date.now())
       setExpenses(prev => prev.some(item => item._id === expense._id)
         ? prev.map(item => item._id === expense._id ? expense : item)
         : [expense, ...prev])
@@ -1223,7 +1225,7 @@ export default function GroupDetail() {
                                     if (!canDelete) return null
                                     return (
                                       <button
-                                        onClick={() => { setDeleteExpenseError(''); setExpenseToDelete(expense) }}
+                                        onClick={() => { setNow(Date.now()); setDeleteExpenseError(''); setExpenseToDelete(expense) }}
                                         className="absolute bottom-3.5 right-3.5 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-on-surface-variant hover:text-[#f87171] opacity-75 hover:opacity-100 active:scale-95 transition-all cursor-pointer p-1 rounded-lg border border-transparent hover:bg-white/5 hover:border-white/5"
                                         title="Delete Expense"
                                       >
