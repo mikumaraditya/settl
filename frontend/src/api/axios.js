@@ -21,7 +21,7 @@ instance.interceptors.response.use(
     if (status === 401) {
       const requestUrl = error.config?.url || "";
       // Exclude login and register routes from redirection/eviction to let them handle validation normally
-      const isAuthRoute = requestUrl.includes("/auth/login") || requestUrl.includes("/auth/register");
+      const isAuthRoute = requestUrl.includes("/auth/login") || requestUrl.includes("/auth/register") || requestUrl.includes("/auth/me");
 
       if (!isAuthRoute) {
         // Evict invalid session metadata from store
