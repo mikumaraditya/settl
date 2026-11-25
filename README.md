@@ -335,8 +335,8 @@ Settl uses Socket.IO to keep connected clients synchronized. Clients join rooms 
 | `leave_group` | Client → Server | `groupId` | Leaves the group room. |
 | `expense_added` | Server → Client | Populated `Expense` | Emitted when an expense is added; updates list and recalculates balances. |
 | `expense_deleted` | Server → Client | `{ expenseId }` | Emitted when an expense is deleted; removes item from view. |
-| `settlement_requested` | Server → Client | Populated `Settlement` | Notifies the receiver that a payment was marked as sent. |
-| `settlement_done` | Server → Client | Populated `Settlement` | Notifies the group that the receiver confirmed receipt. |
+| `settlement_requested` | Server → Client | Settlement status (UPI reference omitted) | Notifies the group that a payment was marked as sent; participants load their own view for the reference. |
+| `settlement_done` | Server → Client | Settlement status (UPI reference omitted) | Notifies the group that the receiver confirmed receipt without broadcasting the payer-provided reference. |
 | `settlement_undone` | Server → Client | `{ fromId, toId }` | Emitted when a settlement is cancelled by payer or rejected by receiver. |
 | `schedule_proposed` / `schedule_accepted` / `schedule_rejected` | Server → Client | Populated `SettlementSchedule` | Notifies participants about a proposal and its response. |
 | `schedule_cancelled` | Server → Client | Populated `SettlementSchedule` | Notifies participants that a proposed or accepted schedule was cancelled. |
