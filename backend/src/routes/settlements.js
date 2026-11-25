@@ -458,7 +458,10 @@ router.post("/settle", protect, async (req, res) => {
       .populate("from", "name email upiId")
       .populate("to", "name email upiId");
 
-    safeEmit(groupId, 'settlement_requested', populated);
+    // Broadcast status only; participants fetch their own view for the UPI reference.
+    const settlementEvent = populated.toObject();
+    delete settlementEvent.upiReference;
+    safeEmit(groupId, 'settlement_requested', settlementEvent);
 
     // Log activity
     ActivityLog.create({
@@ -553,7 +556,10 @@ router.post("/confirm", protect, async (req, res) => {
       .populate("from", "name email upiId")
       .populate("to", "name email upiId");
 
-    safeEmit(groupId, "settlement_done", populated);
+    // Keep payer-provided references out of group-wide socket broadcasts.
+    const settlementEvent = populated.toObject();
+    delete settlementEvent.upiReference;
+    safeEmit(groupId, "settlement_done", settlementEvent);
     await ActivityLog.create({
       group: groupId,
       actor: req.user.id,
