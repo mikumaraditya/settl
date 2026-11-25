@@ -408,20 +408,40 @@ router.delete("/:id", async (req, res) => {
       });
     }
 
+    // The data model does not link a settlement to a specific expense.
+    // Block deletion only when relevant payment activity was created after this
+    // expense (or is legacy data without a timestamp).
     const [hasSettlement, hasActiveSchedule] = await Promise.all([
       Settlement.exists({
         group: expense.group,
-        $or: [
-          { status: { $in: ["pending", "confirmed"] } },
-          { status: { $exists: false } },
+        $and: [
+          {
+            $or: [
+              { status: { $in: ["pending", "confirmed"] } },
+              { status: { $exists: false } },
+            ],
+          },
+          {
+            $or: [
+              { createdAt: { $gte: expense.createdAt } },
+              { createdAt: { $exists: false } },
+            ],
+          },
         ],
       }),
-      SettlementSchedule.exists({ group: expense.group, active: true }),
+      SettlementSchedule.exists({
+        group: expense.group,
+        active: true,
+        $or: [
+          { createdAt: { $gte: expense.createdAt } },
+          { createdAt: { $exists: false } },
+        ],
+      }),
     ]);
 
     if (hasSettlement || hasActiveSchedule) {
       return res.status(409).json({
-        message: "This group already has a pending or completed payment record. To protect the payment history, this expense cannot be deleted. Add a correcting expense instead.",
+        message: "A payment was requested or scheduled after this expense was added. To protect the payment history, this expense cannot be deleted. Add a correcting expense instead.",
       });
     }
 
