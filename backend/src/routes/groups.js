@@ -52,10 +52,14 @@ const acquireMembershipMutation = async (groupId) => Group.findOneAndUpdate(
   { new: true },
 );
 
-const releaseMembershipMutation = async (groupId) => {
-  if (!groupId) return;
+const releaseMembershipMutation = async (groupId, leaseExpiresAt) => {
+  if (!groupId || !leaseExpiresAt) return;
   await Group.updateOne(
-    { _id: groupId, membershipMutation: true },
+    {
+      _id: groupId,
+      membershipMutation: true,
+      membershipMutationExpiresAt: leaseExpiresAt,
+    },
     { $set: { membershipMutation: false, membershipMutationExpiresAt: null } },
   );
 };
@@ -160,6 +164,7 @@ router.get("/:id", protect, async (req, res) => {
 // ADD MEMBER TO GROUP (admin only)
 router.post("/:id/members", async (req, res) => {
   let reservedGroupId = null;
+  let reservedMembershipLease = null;
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {
       return res.status(400).json({ message: "Invalid group id" });
@@ -184,6 +189,7 @@ router.post("/:id/members", async (req, res) => {
       return res.status(conflict.status).json({ message: conflict.message });
     }
     reservedGroupId = group._id;
+    reservedMembershipLease = group.membershipMutationExpiresAt;
 
     const requester = group.members.find(member => member.user.toString() === req.user.id);
     if (!requester || requester.role !== "admin") {
@@ -248,7 +254,7 @@ router.post("/:id/members", async (req, res) => {
   } finally {
     if (reservedGroupId) {
       try {
-        await releaseMembershipMutation(reservedGroupId);
+        await releaseMembershipMutation(reservedGroupId, reservedMembershipLease);
       } catch (releaseError) {
         console.error("Could not release group membership lock:", releaseError);
       }
@@ -262,6 +268,7 @@ router.post("/:id/members", async (req, res) => {
 // - The target must have no unpaid balance or unresolved payment activity.
 router.delete("/:id/members/:userId", async (req, res) => {
   let reservedGroupId = null;
+  let reservedMembershipLease = null;
   try {
     if (!mongoose.isValidObjectId(req.params.id) || !mongoose.isValidObjectId(req.params.userId)) {
       return res.status(400).json({ message: "Invalid group or member id" });
@@ -273,6 +280,7 @@ router.delete("/:id/members/:userId", async (req, res) => {
       return res.status(conflict.status).json({ message: conflict.message });
     }
     reservedGroupId = group._id;
+    reservedMembershipLease = group.membershipMutationExpiresAt;
 
     const requester = group.members.find(member => member.user.toString() === req.user.id);
     if (!requester) {
@@ -402,7 +410,7 @@ router.delete("/:id/members/:userId", async (req, res) => {
   } finally {
     if (reservedGroupId) {
       try {
-        await releaseMembershipMutation(reservedGroupId);
+        await releaseMembershipMutation(reservedGroupId, reservedMembershipLease);
       } catch (releaseError) {
         console.error("Could not release group membership lock:", releaseError);
       }
