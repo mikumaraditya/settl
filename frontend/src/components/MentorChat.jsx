@@ -383,6 +383,7 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
         ]);
       } catch (err) {
         console.error('Failed to clear history:', err);
+        setError(err.response?.data?.message || 'Unable to clear this conversation.');
       }
     }
   };
