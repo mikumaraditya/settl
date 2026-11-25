@@ -363,6 +363,67 @@ describe("Group lifecycle routes", () => {
     assert.equal(busyResponse.status, 409);
   });
 
+  it("recovers an abandoned membership lock before adding a member", async () => {
+    const group = await makeGroup();
+    await Group.updateOne(
+      { _id: group._id },
+      {
+        $set: {
+          membershipMutation: true,
+          membershipMutationExpiresAt: new Date(Date.now() - 1000),
+        },
+      },
+    );
+
+    const response = await request(app)
+      .post(`/api/groups/${group._id}/members`)
+      .set("Authorization", `Bearer ${creatorToken}`)
+      .send({ email: invitee.email });
+
+    assert.equal(response.status, 201);
+    const updated = await Group.findById(group._id);
+    assert.equal(updated.membershipMutation, false);
+    assert.ok(updated.members.some(item => item.user.toString() === invitee._id.toString()));
+  });
+
+  it("does not delete a group while a membership update has a live lease", async () => {
+    const group = await makeGroup();
+    await Group.updateOne(
+      { _id: group._id },
+      {
+        $set: {
+          membershipMutation: true,
+          membershipMutationExpiresAt: new Date(Date.now() + 60_000),
+        },
+      },
+    );
+
+    const response = await request(app)
+      .delete(`/api/groups/${group._id}`)
+      .set("Authorization", `Bearer ${creatorToken}`);
+
+    assert.equal(response.status, 409);
+    assert.ok(await Group.exists({ _id: group._id }));
+  });
+
+  it("can recover a group after an abandoned membership lock has expired", async () => {
+    const group = await Group.create({
+      name: `Expired membership lock ${Date.now()}`,
+      createdBy: creator._id,
+      members: [{ user: creator._id, role: "admin" }],
+      membershipMutation: true,
+      membershipMutationExpiresAt: new Date(Date.now() - 1000),
+    });
+    groupIds.push(group._id);
+
+    const response = await request(app)
+      .delete(`/api/groups/${group._id}`)
+      .set("Authorization", `Bearer ${creatorToken}`);
+
+    assert.equal(response.status, 200);
+    assert.equal(await Group.exists({ _id: group._id }), null);
+  });
+
   it("does not delete a group while a payment request is pending", async () => {
     const group = await makeGroup();
     await Settlement.create({
