@@ -185,11 +185,7 @@ test("only the receiver can accept; accepted schedule remains separate from paym
   await SettlementSchedule.updateOne(
     { _id: scheduleId },
     {
-      $set: {
-        dueDate,
-        fromReminderSentAt: null,
-        toReminderSentAt: null,
-      },
+      $set: { dueDate },
     },
   );
 
