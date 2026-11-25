@@ -8,6 +8,7 @@ import UserFinancialProfile from "../models/UserFinancialProfile.js";
 import { runMentorAgent } from "../services/mentorAgent.js";
 import { sanitizePromptText } from "../utils/sanitizeInput.js";
 import { acquireMentorConversation, appendMentorTurn, releaseMentorConversation } from "../services/mentorConversation.js";
+import { createRateLimitStore } from "../config/rateLimitStore.js";
 
 const router = express.Router();
 
@@ -16,6 +17,7 @@ const chatLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 60,
   keyGenerator: (req) => req.user.id,
+  store: createRateLimitStore("mentor-chat"),
   message: { message: "Too many mentor requests. Please pause for a moment." },
 });
 
