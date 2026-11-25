@@ -449,6 +449,8 @@ router.post("/settle", protect, async (req, res) => {
     // Bust the payer's cached trust score — a new pending settlement
     // changes their repayment-reliability picture immediately.
     clearInsightCaches([req.user.id]);
+    await releaseGroupWrite(reservedGroupId);
+    reservedGroupId = null;
   } catch (error) {
     console.error("Error creating settlement request:", error);
     if (error.name === "CastError" || error.name === "ValidationError") {
@@ -784,6 +786,8 @@ router.post("/schedule", async (req, res) => {
       group: groupId, actor: req.user.id, type: "schedule_proposed",
       meta: { amount, fromId: req.user.id, toId: toUserId, dueDate: resolvedDueDate },
     }).catch(error => console.error("Could not record schedule-proposed activity:", error));
+    await releaseGroupWrite(reservedGroupId);
+    reservedGroupId = null;
     res.status(201).json(populated);
   } catch (error) {
     if (error?.code === 11000) {
