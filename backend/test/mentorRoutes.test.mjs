@@ -201,6 +201,25 @@ describe("Mentor Routes Supertest Suite", () => {
     assert.ok(listed.body.conversations.some((item) => item.id === idA));
     assert.ok(listed.body.conversations.some((item) => item.id === idB));
 
+    const otherUser = await User.create({
+      name: "Other Mentor User",
+      email: `other-mentor-${Date.now()}@example.com`,
+      password: "password123",
+      isEmailVerified: true,
+    });
+    const otherToken = jwt.sign(
+      { id: otherUser._id.toString(), email: otherUser.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" },
+    );
+    const privateHistory = await request(app)
+      .get("/api/mentor/history")
+      .set("Authorization", `Bearer ${otherToken}`)
+      .query({ conversationId: idA });
+    assert.equal(privateHistory.status, 404);
+    await MentorConversation.deleteMany({ user: otherUser._id });
+    await User.deleteOne({ _id: otherUser._id });
+
     const renamed = await request(app)
       .patch(`/api/mentor/conversations/${idA}`)
       .set("Authorization", `Bearer ${authToken}`)
