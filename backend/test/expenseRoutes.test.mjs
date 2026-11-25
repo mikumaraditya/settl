@@ -223,6 +223,58 @@ describe("Expense creation and deletion lifecycle", () => {
     assert.equal(await Expense.countDocuments({ group: group._id }), 0);
   });
 
+  it("does not create an expense while membership is being updated", async () => {
+    const group = await makeGroup();
+    await Group.updateOne(
+      { _id: group._id },
+      {
+        $set: {
+          membershipMutation: true,
+          membershipMutationExpiresAt: new Date(Date.now() + 60_000),
+        },
+      },
+    );
+
+    const response = await request(app)
+      .post("/api/expenses")
+      .set("Authorization", `Bearer ${payerToken}`)
+      .send({
+        groupId: group._id.toString(),
+        description: "Do not race membership",
+        amount: 25,
+      });
+
+    assert.equal(response.status, 409);
+    assert.equal(await Expense.countDocuments({ group: group._id }), 0);
+  });
+
+  it("recovers an abandoned membership lock before creating an expense", async () => {
+    const group = await makeGroup();
+    await Group.updateOne(
+      { _id: group._id },
+      {
+        $set: {
+          membershipMutation: true,
+          membershipMutationExpiresAt: new Date(Date.now() - 1000),
+        },
+      },
+    );
+
+    const response = await request(app)
+      .post("/api/expenses")
+      .set("Authorization", `Bearer ${payerToken}`)
+      .send({
+        groupId: group._id.toString(),
+        description: "Allowed after expired lock",
+        amount: 25,
+      });
+
+    assert.equal(response.status, 201);
+    const updatedGroup = await Group.findById(group._id);
+    assert.equal(updatedGroup.membershipMutation, false);
+    assert.equal(updatedGroup.activeMutations, 0);
+  });
+
   it("does not let an outsider or a deleting group add an expense", async () => {
     const group = await makeGroup();
     const outsiderResponse = await request(app)
