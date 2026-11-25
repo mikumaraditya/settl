@@ -45,8 +45,34 @@ export const AuthProvider = ({ children }) => {
   }, [refreshSession])
 
   useEffect(() => {
-    refreshSession()
-  }, [refreshSession])
+    let isActive = true
+
+    axios.get('/auth/me')
+      .then(({ data }) => {
+        if (!isActive) return
+        const safeUser = withoutToken(data)
+        setUser(safeUser)
+        localStorage.setItem('settl_user', JSON.stringify(safeUser))
+        setAuthError('')
+      })
+      .catch((error) => {
+        if (!isActive) return
+        if (error.response?.status === 401) {
+          setUser(null)
+          localStorage.removeItem('settl_user')
+          setAuthError('')
+          return
+        }
+        setAuthError('We could not verify your session. Check your connection and try again.')
+      })
+      .finally(() => {
+        if (isActive) setIsAuthLoading(false)
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [])
 
   const login = useCallback((userData) => {
     const safeUser = withoutToken(userData)
