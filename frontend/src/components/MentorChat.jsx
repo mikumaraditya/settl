@@ -200,6 +200,7 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
 
   const handleRenameConversation = async (event) => {
     event.preventDefault();
+    if (loading || fetchingHistory) return;
     const cleanTitle = titleDraft.trim();
     if (!selectedConversationId || !cleanTitle) return;
     try {
@@ -272,6 +273,11 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
       return;
     }
 
+    if (!selectedConversationId || selectedConversation?.archivedAt) {
+      setError('Choose an active conversation before sending a message.');
+      return;
+    }
+
     setError('');
     setInput('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
@@ -290,9 +296,6 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
     activeRequestRef.current = controller;
 
     try {
-      if (!selectedConversationId || selectedConversation?.archivedAt) {
-        throw new Error('Choose an active conversation before sending a message.');
-      }
       const res = await streamMentorMessage(textToSend, {
         signal: controller.signal,
         conversationId: selectedConversationId,
@@ -460,7 +463,7 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
                 aria-label="Conversation title"
                 className="min-w-0 flex-1 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500/30"
               />
-              <button type="submit" disabled={!titleDraft.trim()} className="rounded-lg px-2 py-1.5 text-[11px] font-bold text-indigo-600 dark:text-indigo-300 disabled:opacity-40">Save</button>
+              <button type="submit" disabled={!titleDraft.trim() || loading || fetchingHistory} className="rounded-lg px-2 py-1.5 text-[11px] font-bold text-indigo-600 dark:text-indigo-300 disabled:opacity-40">Save</button>
               <button type="button" onClick={() => setIsRenaming(false)} className="rounded-lg px-2 py-1.5 text-[11px] font-semibold text-slate-500">Cancel</button>
             </form>
           )}
@@ -731,7 +734,7 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
       </div>
 
       {/* Suggested Quick Prompts */}
-      {!loading && messages.length <= 4 && (
+      {!loading && !fetchingHistory && !selectedConversation?.archivedAt && messages.length <= 4 && (
         <div className="finn-suggestions px-4 py-3">
           <p className="finn-suggestions-label text-[10px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1">
             <span className="material-symbols-outlined text-[12px] text-indigo-500">lightbulb</span>
