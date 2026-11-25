@@ -6,6 +6,9 @@ export default function UPIPaymentModal({ transaction, onClose, onPaymentInitiat
 
   const [copied, setCopied]       = useState(false)
   const [confirmed, setConfirmed] = useState(false)
+  const [upiReference, setUpiReference] = useState('')
+  const [referenceError, setReferenceError] = useState('')
+  const [returnedFromUpi, setReturnedFromUpi] = useState(false)
   const paymentAttemptedRef       = useRef(false)
   const leaveTimeRef              = useRef(null)
 
@@ -24,9 +27,10 @@ export default function UPIPaymentModal({ transaction, onClose, onPaymentInitiat
           ? Date.now() - leaveTimeRef.current
           : 0
 
-        // Must have been away 5s – 5min (indicating they successfully handed off to UPI App)
+        // Returning from the UPI app does not prove a transfer succeeded.
+        // Ask the payer to confirm explicitly and optionally provide the UTR/RRN.
         if (timeAway >= 5000 && timeAway <= 5 * 60 * 1000) {
-          setTimeout(() => onPaymentInitiated(), 500)
+          setReturnedFromUpi(true)
         }
       } else {
         leaveTimeRef.current = Date.now()
@@ -37,7 +41,18 @@ export default function UPIPaymentModal({ transaction, onClose, onPaymentInitiat
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility)
     }
-  }, [onPaymentInitiated])
+  }, [])
+
+  const handlePaymentCompleted = () => {
+    const reference = upiReference.trim()
+    if (reference && !/^[A-Za-z0-9][A-Za-z0-9/_-]{5,63}$/.test(reference)) {
+      setReferenceError('Enter 6–64 characters using letters, numbers, /, _ or -.')
+      return
+    }
+    setReferenceError('')
+    setConfirmed(true)
+    setTimeout(() => onPaymentInitiated(reference || null), 400)
+  }
 
   // ── Open UPI app via deep link ───────────────────────────────────────────
   const handleOpenUPIApp = () => {
@@ -211,25 +226,51 @@ export default function UPIPaymentModal({ transaction, onClose, onPaymentInitiat
           </button>
         </div>
 
-        {/* Action Confirmation Section (Always visible) */}
-        <div className="flex flex-col gap-4 mt-1">
-          {/* Already paid divider */}
+        {/* Explicit payer attestation and optional UPI reference */}
+        <div className="flex flex-col gap-3 mt-1">
           <div className="flex items-center gap-3">
             <div className="flex-1 h-px bg-white/5" />
-            <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Already paid?</span>
+            <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Payment details</span>
             <div className="flex-1 h-px bg-white/5" />
           </div>
 
-          {/* Manual "I have completed payment" button */}
+          {returnedFromUpi && (
+            <p className="text-[10px] text-emerald-300 font-semibold">
+              You returned from your UPI app. Check the payment status there before continuing.
+            </p>
+          )}
+
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="upi-transaction-reference" className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+              UPI transaction reference / UTR (optional)
+            </label>
+            <input
+              id="upi-transaction-reference"
+              type="text"
+              value={upiReference}
+              onChange={(event) => {
+                setUpiReference(event.target.value)
+                setReferenceError('')
+              }}
+              maxLength={64}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="Enter UTR / RRN from your UPI app"
+              aria-invalid={Boolean(referenceError)}
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs font-mono text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-400/50"
+            />
+            {referenceError && <p className="text-[10px] text-rose-400">{referenceError}</p>}
+            <p className="text-[10px] leading-relaxed text-slate-400">
+              This is supplied by you and is not verified by Settl. The receiver should check their own UPI or bank app before confirming.
+            </p>
+          </div>
+
           <button
-            onClick={() => {
-              setConfirmed(true)
-              setTimeout(() => onPaymentInitiated(), 400)
-            }}
+            onClick={handlePaymentCompleted}
             className={`w-full h-12 rounded-2xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer border transition-all ${
-              confirmed 
-                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-md shadow-emerald-500/5' 
-                : 'bg-white/5 text-slate-400 border-white/5 hover:bg-white/10 hover:text-white hover:border-white/20'
+              confirmed
+                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-md shadow-emerald-500/5'
+                : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 hover:text-white hover:border-white/20'
             }`}
           >
             <span className="material-symbols-outlined text-[16px]" style={{ fontVariationSettings: ` 'FILL' ${confirmed ? 1 : 0}` }}>
