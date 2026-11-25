@@ -313,7 +313,7 @@ describe("Expense creation and deletion lifecycle", () => {
   it("rejects expense deletion after the two-hour correction window", async () => {
     const group = await makeGroup();
     const expense = await makeExpense(group);
-    await Expense.updateOne(
+    await Expense.collection.updateOne(
       { _id: expense._id },
       { $set: { createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) } },
     );
