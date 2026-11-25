@@ -13,21 +13,49 @@ import Activity from './pages/Activity'
 
 import FinancialMentorWidget from './components/FinancialMentorWidget'
 
+const AuthLoadingState = () => (
+  <main className="app-page min-h-screen flex items-center justify-center p-6" role="status" aria-live="polite">
+    <div className="app-card px-6 py-5 flex items-center gap-3">
+      <span className="material-symbols-outlined animate-spin" aria-hidden="true">progress_activity</span>
+      <span className="text-sm font-semibold">Checking your session…</span>
+    </div>
+  </main>
+)
+
+const AuthErrorState = ({ onRetry }) => (
+  <main className="app-page min-h-screen flex items-center justify-center p-6">
+    <section className="app-card w-full max-w-md p-6 text-center" role="alert">
+      <span className="material-symbols-outlined text-3xl app-muted" aria-hidden="true">wifi_off</span>
+      <h1 className="text-lg font-bold mt-3">Could not verify your session</h1>
+      <p className="text-sm app-muted mt-2">Check your internet connection and try again. Your account has not been signed out.</p>
+      <button type="button" onClick={onRetry} className="app-button-primary mt-5">Try again</button>
+    </section>
+  </main>
+)
+
 const ProtectedRoute = ({ children }) => {
-  const { user } = useAuth()
+  const { user, isAuthLoading, authError, refreshSession } = useAuth()
+
+  if (isAuthLoading) return <AuthLoadingState />
+  if (authError) return <AuthErrorState onRetry={refreshSession} />
+
   return user ? (
     <>
       {children}
       <FinancialMentorWidget />
     </>
   ) : (
-    <Navigate to="/login" />
+    <Navigate to="/login" replace />
   )
 }
 
 const RootRoute = () => {
-  const { user } = useAuth()
-  return user ? <Navigate to="/dashboard" /> : <Landing />
+  const { user, isAuthLoading, authError, refreshSession } = useAuth()
+
+  if (isAuthLoading) return <AuthLoadingState />
+  if (authError) return <AuthErrorState onRetry={refreshSession} />
+
+  return user ? <Navigate to="/dashboard" replace /> : <Landing />
 }
 
 export default function App() {
