@@ -453,6 +453,7 @@ router.delete("/:id", async (req, res) => {
           _id: group._id,
           createdBy: req.user.id,
           isDeleting: { $ne: true },
+          membershipMutation: { $ne: true },
           $or: [
             { activeMutations: 0 },
             { activeMutations: { $exists: false } },
