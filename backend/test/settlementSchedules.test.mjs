@@ -305,23 +305,23 @@ test("settlement and schedule transitions respect an active group mutation lock"
   try {
     const confirm = await request(app)
       .post("/api/settlements/confirm")
-      .set("Authorization", \`Bearer \${tokenB}\`)
+      .set("Authorization", `Bearer ${tokenB}`)
       .send({ groupId, fromUserId: userA._id.toString() });
     const reject = await request(app)
       .post("/api/settlements/reject")
-      .set("Authorization", \`Bearer \${tokenB}\`)
+      .set("Authorization", `Bearer ${tokenB}`)
       .send({ groupId, fromUserId: userA._id.toString() });
     const cancel = await request(app)
       .delete("/api/settlements/settle")
-      .set("Authorization", \`Bearer \${tokenA}\`)
+      .set("Authorization", `Bearer ${tokenA}`)
       .send({ groupId, toUserId: userB._id.toString() });
     const respond = await request(app)
-      .post(\`/api/settlements/schedule/\${schedule._id}/respond\`)
-      .set("Authorization", \`Bearer \${tokenB}\`)
+      .post(`/api/settlements/schedule/${schedule._id}/respond`)
+      .set("Authorization", `Bearer ${tokenB}`)
       .send({ action: "accept" });
     const cancelSchedule = await request(app)
-      .post(\`/api/settlements/schedule/\${schedule._id}/cancel\`)
-      .set("Authorization", \`Bearer \${tokenA}\`);
+      .post(`/api/settlements/schedule/${schedule._id}/cancel`)
+      .set("Authorization", `Bearer ${tokenA}`);
 
     for (const response of [confirm, reject, cancel, respond, cancelSchedule]) {
       assert.equal(response.status, 409, JSON.stringify(response.body));
