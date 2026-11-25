@@ -168,7 +168,12 @@ export default function Activity() {
                 {notifications.map(notification => (
                   <button key={notification.id} onClick={() => {
                     markRead(notification.id)
-                    if (notification.groupId) navigate(`/group/${notification.groupId}`)
+                    if (notification.groupId) {
+                      const destination = notification.type === 'settlement_schedule_reminder'
+                        ? `/settle/${notification.groupId}`
+                        : `/group/${notification.groupId}`
+                      navigate(destination)
+                    }
                   }} className={`w-full text-left px-5 sm:px-6 py-4 flex items-start gap-3.5 hover:bg-[var(--surface-container-low)] ${!notification.read ? 'bg-[var(--app-blue-soft)]/50' : ''}`}>
                     <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: `${notification.color || '#315cf5'}16`, color: notification.color || '#315cf5' }}>
                       <span className="material-symbols-outlined text-[19px]">{notification.icon || 'notifications'}</span>
