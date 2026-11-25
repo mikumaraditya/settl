@@ -1,19 +1,30 @@
 import dotenv from "dotenv";
 import path from "path";
+import http from "http";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
-import http from "http";
-import app from "./src/app.js";
-import connectDB from "./src/config/db.js";
-import { initSocket } from "./src/socket.js";
-import { startSettlementReminderWorker } from "./src/services/settlementReminderWorker.js";
-import Notification from "./src/models/Notification.js";
-import {
-  connectRateLimitRedis,
-  closeRateLimitRedis,
-  isRedisRateLimitEnabled,
-} from "./src/config/rateLimitStore.js";
+// Load the application only after dotenv has populated process.env. The route
+// modules create their rate-limit stores during import and must see REDIS_URL.
+const [
+  { default: app },
+  { default: connectDB },
+  { initSocket },
+  { startSettlementReminderWorker },
+  { default: Notification },
+  {
+    connectRateLimitRedis,
+    closeRateLimitRedis,
+    isRedisRateLimitEnabled,
+  },
+] = await Promise.all([
+  import("./src/app.js"),
+  import("./src/config/db.js"),
+  import("./src/socket.js"),
+  import("./src/services/settlementReminderWorker.js"),
+  import("./src/models/Notification.js"),
+  import("./src/config/rateLimitStore.js"),
+]);
 
 const server = http.createServer(app);
 
