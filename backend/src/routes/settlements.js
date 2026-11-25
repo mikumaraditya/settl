@@ -110,35 +110,43 @@ export async function autoExpirePendingSettlements(groupId = null) {
       query.group = groupId;
     }
 
-    const expiredItems = await Settlement.find(query);
+    const expiredItems = await Settlement.find(query).select("_id");
     if (expiredItems.length === 0) return 0;
 
+    let expiredCount = 0;
     for (const item of expiredItems) {
-      item.status = "expired";
-      await item.save();
+      // Compare-and-set the lifecycle state. A receiver may confirm or reject
+      // this payment after the initial query, so never save a stale document.
+      const expired = await Settlement.findOneAndUpdate(
+        { _id: item._id, status: "pending", createdAt: { $lt: thresholdDate } },
+        { $set: { status: "expired" } },
+        { new: true },
+      );
+      if (!expired) continue;
+      expiredCount += 1;
 
       // A payment attempt that expires was never confirmed; restore its
       // accepted schedule so the payer can retry without renegotiating.
       await SettlementSchedule.updateOne(
-        { paymentSettlement: item._id, status: "payment_pending", active: true },
+        { paymentSettlement: expired._id, status: "payment_pending", active: true },
         { $set: { status: "accepted", paymentSettlement: null } },
       );
 
       await ActivityLog.create({
-        group: item.group,
-        actor: item.from,
+        group: expired.group,
+        actor: expired.from,
         type: "settlement_expired",
         meta: {
-          amount: item.amount,
-          fromId: item.from,
-          toId: item.to,
+          amount: expired.amount,
+          fromId: expired.from,
+          toId: expired.to,
           reason: "Auto-expired after 7 days",
         },
-      });
+      }).catch(error => console.error("Could not record settlement-expired activity:", error));
 
-      clearInsightCaches([item.from?.toString(), item.to?.toString()]);
+      clearInsightCaches([expired.from?.toString(), expired.to?.toString()]);
     }
-    return expiredItems.length;
+    return expiredCount;
   } catch (err) {
     console.error("Error auto-expiring pending settlements:", err);
     return 0;
@@ -453,6 +461,9 @@ router.post("/settle", protect, async (req, res) => {
     reservedGroupId = null;
   } catch (error) {
     console.error("Error creating settlement request:", error);
+    if (error?.code === 11000) {
+      return res.status(409).json({ message: "Settlement request already sent. Waiting for receiver to confirm." });
+    }
     if (error.name === "CastError" || error.name === "ValidationError") {
       return res.status(400).json({ message: "Please check the settlement details and try again" });
     }
@@ -472,30 +483,40 @@ router.post("/settle", protect, async (req, res) => {
 // CONFIRM SETTLEMENT (receiver confirms they received the payment)
 // ─────────────────────────────────────────────────────────────────────────────
 router.post("/confirm", protect, async (req, res) => {
+  let reservedGroupId = null;
   try {
-    const { groupId, fromUserId } = req.body;
+    const { groupId, fromUserId } = req.body || {};
+    if (!mongoose.isValidObjectId(groupId) || !mongoose.isValidObjectId(fromUserId)) {
+      return res.status(400).json({ message: "Invalid group or payer id" });
+    }
 
-    // Atomic update from pending -> confirmed
+    const group = await reserveGroupWrite(groupId, req.user.id);
+    if (!group) {
+      const failure = await groupWriteFailure(groupId, req.user.id);
+      return res.status(failure.status).json({ message: failure.message });
+    }
+    reservedGroupId = group._id;
+
+    // Validate both participants before committing the payment transition.
+    const payerIsMember = group.members.some(member => member.user.toString() === fromUserId);
+    if (!payerIsMember) {
+      return res.status(400).json({ message: "Both users must still be members of this group" });
+    }
+
+    // Compare-and-set: only one of confirm, reject, cancel, or expiry can win.
     const settlement = await Settlement.findOneAndUpdate(
       {
         group: groupId,
         from: fromUserId,
-        to: req.user.id,   // only receiver can confirm
+        to: req.user.id,
         status: "pending",
       },
       { $set: { status: "confirmed" } },
-      { new: true }
+      { new: true },
     );
 
     if (!settlement) {
-      return res.status(404).json({ message: "No pending settlement request found or already confirmed" });
-    }
-
-    const group = await Group.findById(groupId);
-    const payerIsMember = group?.members.some((member) => member.user.toString() === fromUserId);
-    const receiverIsMember = group?.members.some((member) => member.user.toString() === req.user.id);
-    if (!payerIsMember || !receiverIsMember) {
-      return res.status(400).json({ message: "Both users must still be members of this group" });
+      return res.status(404).json({ message: "No pending settlement request found or already resolved" });
     }
 
     const linkedSchedule = await SettlementSchedule.findOneAndUpdate(
@@ -509,31 +530,34 @@ router.post("/confirm", protect, async (req, res) => {
         actor: req.user.id,
         type: "schedule_completed",
         meta: { amount: linkedSchedule.amount, fromId: fromUserId, toId: req.user.id },
-      });
+      }).catch(error => console.error("Could not record schedule-completed activity:", error));
     }
 
     const populated = await Settlement.findById(settlement._id)
       .populate("from", "name email upiId")
       .populate("to", "name email upiId");
 
-    safeEmit(groupId, 'settlement_done', populated);
-
-    // Log activity
+    safeEmit(groupId, "settlement_done", populated);
     await ActivityLog.create({
       group: groupId,
       actor: req.user.id,
-      type: 'settlement_confirmed',
+      type: "settlement_confirmed",
       meta: { amount: settlement.amount, fromName: populated.from?.name, fromId: populated.from?._id },
-    });
+    }).catch(error => console.error("Could not record settlement-confirmed activity:", error));
 
-    res.json(populated);
-
-    // Bust the payer's cached score — confirmation changes their
-    // confirmed-on-time rate, which feeds repayment reliability.
     clearInsightCaches([fromUserId]);
+    return res.json(populated);
   } catch (error) {
     console.error("Error confirming settlement:", error);
-    res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({ message: "Internal server error" });
+  } finally {
+    if (reservedGroupId) {
+      try {
+        await releaseGroupWrite(reservedGroupId);
+      } catch (releaseError) {
+        console.error("Could not release confirmation group write reservation:", releaseError);
+      }
+    }
   }
 });
 
@@ -541,51 +565,66 @@ router.post("/confirm", protect, async (req, res) => {
 // CANCEL / UNDO SETTLEMENT REQUEST (payer only, only while still pending)
 // ─────────────────────────────────────────────────────────────────────────────
 const handlePayerCancel = async (req, res) => {
+  let reservedGroupId = null;
   try {
-    const { groupId, toUserId } = req.body;
-    await autoExpirePendingSettlements(groupId);
-
-    const settlement = await Settlement.findOne({
-      group: groupId,
-      from: req.user.id,
-      to: toUserId,
-      status: "pending",   // can only undo a pending request
-    });
-
-    if (!settlement) {
-      return res.status(404).json({
-        message: "No pending settlement request found to cancel",
-      });
+    const { groupId, toUserId } = req.body || {};
+    if (!mongoose.isValidObjectId(groupId) || !mongoose.isValidObjectId(toUserId)) {
+      return res.status(400).json({ message: "Invalid group or recipient id" });
     }
 
-    settlement.status = "cancelled";
-    await settlement.save();
+    const group = await reserveGroupWrite(groupId, req.user.id);
+    if (!group) {
+      const failure = await groupWriteFailure(groupId, req.user.id);
+      return res.status(failure.status).json({ message: failure.message });
+    }
+    reservedGroupId = group._id;
+
+    await autoExpirePendingSettlements(groupId);
+    const settlement = await Settlement.findOneAndUpdate(
+      {
+        group: groupId,
+        from: req.user.id,
+        to: toUserId,
+        status: "pending",
+      },
+      { $set: { status: "cancelled" } },
+      { new: true },
+    );
+
+    if (!settlement) {
+      return res.status(404).json({ message: "No pending settlement request found to cancel" });
+    }
 
     await SettlementSchedule.updateOne(
       { paymentSettlement: settlement._id, status: "payment_pending", active: true },
       { $set: { status: "accepted", paymentSettlement: null } },
     );
 
-    // Log activity
     await ActivityLog.create({
       group: groupId,
       actor: req.user.id,
       type: "settlement_cancelled",
       meta: { amount: settlement.amount, toId: toUserId },
-    });
+    }).catch(error => console.error("Could not record settlement-cancelled activity:", error));
 
-    // Notify group
     safeEmit(groupId, "settlement_undone", {
       fromId: req.user.id,
       toId: toUserId,
     });
-
     clearInsightCaches([req.user.id, toUserId]);
 
-    res.json({ message: "Settlement request cancelled successfully", settlement });
+    return res.json({ message: "Settlement request cancelled successfully", settlement });
   } catch (error) {
     console.error("Error cancelling settlement request:", error);
-    res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({ message: "Internal server error" });
+  } finally {
+    if (reservedGroupId) {
+      try {
+        await releaseGroupWrite(reservedGroupId);
+      } catch (releaseError) {
+        console.error("Could not release cancellation group write reservation:", releaseError);
+      }
+    }
   }
 };
 
@@ -596,59 +635,81 @@ router.post("/cancel", protect, handlePayerCancel);
 // REJECT SETTLEMENT REQUEST (receiver only, only while still pending)
 // ─────────────────────────────────────────────────────────────────────────────
 router.post("/reject", protect, async (req, res) => {
+  let reservedGroupId = null;
   try {
-    const { groupId, fromUserId, reason } = req.body;
-    await autoExpirePendingSettlements(groupId);
-
-    const settlement = await Settlement.findOne({
-      group: groupId,
-      from: fromUserId,
-      to: req.user.id,
-      status: "pending",
-    }).populate("from", "name");
-
-    if (!settlement) {
-      return res.status(404).json({
-        message: "No pending settlement request found to reject",
-      });
+    const { groupId, fromUserId, reason } = req.body || {};
+    if (!mongoose.isValidObjectId(groupId) || !mongoose.isValidObjectId(fromUserId)) {
+      return res.status(400).json({ message: "Invalid group or payer id" });
     }
 
-    // Preserve the settlement record with status 'rejected' for audit integrity
-    settlement.status = "rejected";
-    settlement.rejectionReason = reason || "Payment not received or amount mismatch";
-    await settlement.save();
+    const group = await reserveGroupWrite(groupId, req.user.id);
+    if (!group) {
+      const failure = await groupWriteFailure(groupId, req.user.id);
+      return res.status(failure.status).json({ message: failure.message });
+    }
+    reservedGroupId = group._id;
+
+    const payerIsMember = group.members.some(member => member.user.toString() === fromUserId);
+    if (!payerIsMember) {
+      return res.status(400).json({ message: "Both users must still be members of this group" });
+    }
+
+    await autoExpirePendingSettlements(groupId);
+    // Compare-and-set prevents a late rejection from overwriting confirmation.
+    const settlement = await Settlement.findOneAndUpdate(
+      {
+        group: groupId,
+        from: fromUserId,
+        to: req.user.id,
+        status: "pending",
+      },
+      {
+        $set: {
+          status: "rejected",
+          rejectionReason: String(reason || "Payment not received or amount mismatch").slice(0, 240),
+        },
+      },
+      { new: true },
+    ).populate("from", "name");
+
+    if (!settlement) {
+      return res.status(404).json({ message: "No pending settlement request found to reject" });
+    }
 
     await SettlementSchedule.updateOne(
       { paymentSettlement: settlement._id, status: "payment_pending", active: true },
       { $set: { status: "accepted", paymentSettlement: null } },
     );
 
-    // Notify group
     safeEmit(groupId, "settlement_undone", {
       fromId: fromUserId,
       toId: req.user.id,
     });
-
-    // Log activity
     await ActivityLog.create({
       group: groupId,
       actor: req.user.id,
-      type: 'settlement_rejected',
+      type: "settlement_rejected",
       meta: {
         amount: settlement.amount,
         fromId: fromUserId,
         fromName: settlement.from?.name,
         reason: settlement.rejectionReason,
       },
-    });
+    }).catch(error => console.error("Could not record settlement-rejected activity:", error));
 
-    res.json({ message: "Settlement request rejected", settlement });
-
-    // Bust the payer and receiver cached scores immediately
     clearInsightCaches([fromUserId, req.user.id]);
+    return res.json({ message: "Settlement request rejected", settlement });
   } catch (error) {
     console.error("Error rejecting settlement request:", error);
-    res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({ message: "Internal server error" });
+  } finally {
+    if (reservedGroupId) {
+      try {
+        await releaseGroupWrite(reservedGroupId);
+      } catch (releaseError) {
+        console.error("Could not release rejection group write reservation:", releaseError);
+      }
+    }
   }
 });
 
@@ -810,20 +871,32 @@ router.post("/schedule", async (req, res) => {
 });
 
 router.post("/schedule/:scheduleId/respond", async (req, res) => {
+  let reservedGroupId = null;
   try {
-    const { action, reason } = req.body;
+    const { action, reason } = req.body || {};
     if (!["accept", "reject"].includes(action)) {
       return res.status(400).json({ message: "Action must be accept or reject" });
     }
+    if (!mongoose.isValidObjectId(req.params.scheduleId)) {
+      return res.status(400).json({ message: "Invalid payment schedule id" });
+    }
+
     const proposedSchedule = await SettlementSchedule.findOne({
       _id: req.params.scheduleId, to: req.user.id, status: "proposed", active: true,
     });
     if (!proposedSchedule) {
       return res.status(404).json({ message: "No proposed payment schedule found for you to respond to" });
     }
-    const group = await Group.findById(proposedSchedule.group);
-    const bothParticipantsAreMembers = group?.members.some((member) => member.user.toString() === proposedSchedule.from.toString())
-      && group?.members.some((member) => member.user.toString() === proposedSchedule.to.toString());
+
+    const group = await reserveGroupWrite(proposedSchedule.group, req.user.id);
+    if (!group) {
+      const failure = await groupWriteFailure(proposedSchedule.group, req.user.id);
+      return res.status(failure.status).json({ message: failure.message });
+    }
+    reservedGroupId = group._id;
+
+    const bothParticipantsAreMembers = group.members.some(member => member.user.toString() === proposedSchedule.from.toString())
+      && group.members.some(member => member.user.toString() === proposedSchedule.to.toString());
     if (!bothParticipantsAreMembers) {
       return res.status(403).json({ message: "Both participants must remain members of this group" });
     }
@@ -845,16 +918,28 @@ router.post("/schedule/:scheduleId/respond", async (req, res) => {
       group: schedule.group, actor: req.user.id,
       type: action === "accept" ? "schedule_accepted" : "schedule_rejected",
       meta: { amount: schedule.amount, fromId: schedule.from?._id?.toString(), toId: schedule.to?._id?.toString(), dueDate: schedule.dueDate.toISOString().slice(0, 10) },
-    });
-    res.json(schedule);
+    }).catch(error => console.error("Could not record schedule-response activity:", error));
+    return res.json(schedule);
   } catch (error) {
     console.error("Error responding to payment schedule:", error);
-    res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({ message: "Internal server error" });
+  } finally {
+    if (reservedGroupId) {
+      try {
+        await releaseGroupWrite(reservedGroupId);
+      } catch (releaseError) {
+        console.error("Could not release schedule-response group write reservation:", releaseError);
+      }
+    }
   }
 });
 
 router.post("/schedule/:scheduleId/cancel", async (req, res) => {
+  let reservedGroupId = null;
   try {
+    if (!mongoose.isValidObjectId(req.params.scheduleId)) {
+      return res.status(400).json({ message: "Invalid payment schedule id" });
+    }
     const cancellableSchedule = await SettlementSchedule.findOne({
       _id: req.params.scheduleId,
       $or: [{ from: req.user.id }, { to: req.user.id }],
@@ -864,9 +949,16 @@ router.post("/schedule/:scheduleId/cancel", async (req, res) => {
     if (!cancellableSchedule) {
       return res.status(404).json({ message: "No cancellable payment schedule found" });
     }
-    const group = await Group.findById(cancellableSchedule.group);
-    const bothParticipantsAreMembers = group?.members.some((member) => member.user.toString() === cancellableSchedule.from.toString())
-      && group?.members.some((member) => member.user.toString() === cancellableSchedule.to.toString());
+
+    const group = await reserveGroupWrite(cancellableSchedule.group, req.user.id);
+    if (!group) {
+      const failure = await groupWriteFailure(cancellableSchedule.group, req.user.id);
+      return res.status(failure.status).json({ message: failure.message });
+    }
+    reservedGroupId = group._id;
+
+    const bothParticipantsAreMembers = group.members.some(member => member.user.toString() === cancellableSchedule.from.toString())
+      && group.members.some(member => member.user.toString() === cancellableSchedule.to.toString());
     if (!bothParticipantsAreMembers) {
       return res.status(403).json({ message: "Both participants must remain members of this group" });
     }
@@ -882,11 +974,19 @@ router.post("/schedule/:scheduleId/cancel", async (req, res) => {
     await ActivityLog.create({
       group: schedule.group, actor: req.user.id, type: "schedule_cancelled",
       meta: { amount: schedule.amount, fromId: schedule.from?._id?.toString(), toId: schedule.to?._id?.toString() },
-    });
-    res.json(schedule);
+    }).catch(error => console.error("Could not record schedule-cancelled activity:", error));
+    return res.json(schedule);
   } catch (error) {
     console.error("Error cancelling payment schedule:", error);
-    res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({ message: "Internal server error" });
+  } finally {
+    if (reservedGroupId) {
+      try {
+        await releaseGroupWrite(reservedGroupId);
+      } catch (releaseError) {
+        console.error("Could not release schedule-cancellation group write reservation:", releaseError);
+      }
+    }
   }
 });
 

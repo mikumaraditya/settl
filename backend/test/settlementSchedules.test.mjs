@@ -274,6 +274,79 @@ test("scheduled payment completes only after receiver confirms; rejection restor
   assert.equal(snapshot.body.scheduleRequests.length, 0);
 });
 
+test("settlement and schedule transitions respect an active group mutation lock", async () => {
+  const settlement = await Settlement.create({
+    group: group._id,
+    from: userA._id,
+    to: userB._id,
+    amount: 25,
+    status: "pending",
+  });
+  const schedule = await SettlementSchedule.create({
+    group: group._id,
+    from: userA._id,
+    to: userB._id,
+    amount: 25,
+    dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+    status: "proposed",
+    active: true,
+  });
+
+  await Group.updateOne(
+    { _id: group._id },
+    {
+      $set: {
+        membershipMutation: true,
+        membershipMutationExpiresAt: new Date(Date.now() + 60_000),
+      },
+    },
+  );
+
+  try {
+    const confirm = await request(app)
+      .post("/api/settlements/confirm")
+      .set("Authorization", `Bearer ${tokenB}`)
+      .send({ groupId, fromUserId: userA._id.toString() });
+    const reject = await request(app)
+      .post("/api/settlements/reject")
+      .set("Authorization", `Bearer ${tokenB}`)
+      .send({ groupId, fromUserId: userA._id.toString() });
+    const cancel = await request(app)
+      .delete("/api/settlements/settle")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .send({ groupId, toUserId: userB._id.toString() });
+    const respond = await request(app)
+      .post(`/api/settlements/schedule/${schedule._id}/respond`)
+      .set("Authorization", `Bearer ${tokenB}`)
+      .send({ action: "accept" });
+    const cancelSchedule = await request(app)
+      .post(`/api/settlements/schedule/${schedule._id}/cancel`)
+      .set("Authorization", `Bearer ${tokenA}`);
+
+    for (const response of [confirm, reject, cancel, respond, cancelSchedule]) {
+      assert.equal(response.status, 409, JSON.stringify(response.body));
+      assert.match(response.body.message, /membership|updated|try again/i);
+    }
+
+    const [storedSettlement, storedSchedule] = await Promise.all([
+      Settlement.findById(settlement._id).lean(),
+      SettlementSchedule.findById(schedule._id).lean(),
+    ]);
+    assert.equal(storedSettlement.status, "pending", "payment must remain pending while membership is locked");
+    assert.equal(storedSchedule.status, "proposed", "schedule must remain proposed while membership is locked");
+    assert.equal(storedSchedule.active, true);
+  } finally {
+    await Group.updateOne(
+      { _id: group._id },
+      { $set: { membershipMutation: false, membershipMutationExpiresAt: null } },
+    );
+    await Promise.all([
+      Settlement.deleteOne({ _id: settlement._id }),
+      SettlementSchedule.deleteOne({ _id: schedule._id }),
+    ]);
+  }
+});
+
 test("blank due date defaults to seven calendar days", async () => {
   const todayUtc = new Date().toISOString().slice(0, 10);
   const expectedDate = new Date(`${todayUtc}T12:00:00.000Z`);
