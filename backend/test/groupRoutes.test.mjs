@@ -24,6 +24,7 @@ app.use("/api/groups", groupsRouter);
 describe("Group lifecycle routes", () => {
   let creator;
   let member;
+  let invitee;
   let creatorToken;
   let memberToken;
   const groupIds = [];
@@ -62,6 +63,13 @@ describe("Group lifecycle routes", () => {
       isEmailVerified: true,
     });
 
+    invitee = await User.create({
+      name: "Invitee User",
+      email: `invitee-${suffix}@example.com`,
+      password: "test-password-hash",
+      isEmailVerified: true,
+    });
+
     creatorToken = jwt.sign({ id: creator._id.toString() }, jwtSecret, { expiresIn: "1h" });
     memberToken = jwt.sign({ id: member._id.toString() }, jwtSecret, { expiresIn: "1h" });
   });
@@ -78,7 +86,7 @@ describe("Group lifecycle routes", () => {
         Group.deleteMany({ _id: { $in: groupIds } }),
       ]);
     }
-    const userIds = [creator?._id, member?._id].filter(Boolean);
+    const userIds = [creator?._id, member?._id, invitee?._id].filter(Boolean);
     if (userIds.length) await User.deleteMany({ _id: { $in: userIds } });
     await mongoose.disconnect();
   });
@@ -110,6 +118,249 @@ describe("Group lifecycle routes", () => {
     assert.equal(response.body.members[0].user.toString(), creator._id.toString());
     assert.equal(response.body.members[0].role, "admin");
     groupIds.push(response.body._id);
+  });
+
+  it("validates invitation emails and returns a useful not-found response", async () => {
+    const group = await makeGroup();
+
+    const malformed = await request(app)
+      .post(`/api/groups/${group._id}/members`)
+      .set("Authorization", `Bearer ${creatorToken}`)
+      .send({ email: "not-an-email" });
+    assert.equal(malformed.status, 400);
+
+    const missing = await request(app)
+      .post(`/api/groups/${group._id}/members`)
+      .set("Authorization", `Bearer ${creatorToken}`)
+      .send({ email: "not-registered@example.com" });
+    assert.equal(missing.status, 404);
+    assert.equal((await Group.findById(group._id)).members.length, 2);
+  });
+
+  it("allows only an admin to add a registered member and normalizes email", async () => {
+    const group = await makeGroup();
+
+    const denied = await request(app)
+      .post(`/api/groups/${group._id}/members`)
+      .set("Authorization", `Bearer ${memberToken}`)
+      .send({ email: invitee.email });
+    assert.equal(denied.status, 403);
+
+    const added = await request(app)
+      .post(`/api/groups/${group._id}/members`)
+      .set("Authorization", `Bearer ${creatorToken}`)
+      .send({ email: `  ${invitee.email.toUpperCase()}  ` });
+
+    assert.equal(added.status, 201);
+    assert.equal(added.body.members.length, 3);
+    assert.ok(added.body.members.some(item => item.user?._id === invitee._id.toString()));
+    assert.equal((await Group.findById(group._id)).membershipMutation, false);
+  });
+
+  it("rejects an existing member and does not create duplicate memberships", async () => {
+    const group = await makeGroup();
+
+    const response = await request(app)
+      .post(`/api/groups/${group._id}/members`)
+      .set("Authorization", `Bearer ${creatorToken}`)
+      .send({ email: member.email });
+
+    assert.equal(response.status, 409);
+    assert.equal((await Group.findById(group._id)).members.length, 2);
+  });
+
+  it("serializes concurrent invitations so the same user is added only once", async () => {
+    const group = await makeGroup();
+    const sendInvite = () => request(app)
+      .post(`/api/groups/${group._id}/members`)
+      .set("Authorization", `Bearer ${creatorToken}`)
+      .send({ email: invitee.email });
+
+    const responses = await Promise.all([sendInvite(), sendInvite()]);
+    assert.equal(responses.filter(response => response.status === 201).length, 1);
+    assert.ok(responses.every(response => [201, 409].includes(response.status)));
+
+    const updated = await Group.findById(group._id);
+    assert.equal(updated.members.filter(item => item.user.toString() === invitee._id.toString()).length, 1);
+    assert.equal(updated.membershipMutation, false);
+  });
+
+  it("does not add members while a group is deleting or another expense is in flight", async () => {
+    const deletingGroup = await makeGroup();
+    await Group.updateOne({ _id: deletingGroup._id }, { $set: { isDeleting: true } });
+    const deletingResponse = await request(app)
+      .post(`/api/groups/${deletingGroup._id}/members`)
+      .set("Authorization", `Bearer ${creatorToken}`)
+      .send({ email: invitee.email });
+    assert.equal(deletingResponse.status, 409);
+
+    const busyGroup = await makeGroup();
+    await Group.updateOne(
+      { _id: busyGroup._id },
+      {
+        $set: {
+          activeMutations: 1,
+          mutationExpiresAt: new Date(Date.now() + 60_000),
+        },
+      },
+    );
+    const busyResponse = await request(app)
+      .post(`/api/groups/${busyGroup._id}/members`)
+      .set("Authorization", `Bearer ${creatorToken}`)
+      .send({ email: invitee.email });
+    assert.equal(busyResponse.status, 409);
+  });
+
+  it("allows an admin to remove a member with no balance or unresolved payment", async () => {
+    const group = await makeGroup();
+    const response = await request(app)
+      .delete(`/api/groups/${group._id}/members/${member._id}`)
+      .set("Authorization", `Bearer ${creatorToken}`);
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.members.length, 1);
+    assert.equal(response.body.members.some(item => item.user?._id === member._id.toString()), false);
+    assert.equal((await Group.findById(group._id)).membershipMutation, false);
+  });
+
+  it("allows a member to leave voluntarily when their balance and payment activity are clear", async () => {
+    const group = await makeGroup();
+    const response = await request(app)
+      .delete(`/api/groups/${group._id}/members/${member._id}`)
+      .set("Authorization", `Bearer ${memberToken}`);
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.message, "You have left the group");
+    assert.equal((await Group.findById(group._id)).members.length, 1);
+  });
+
+  it("does not allow a non-admin to remove another member", async () => {
+    const group = await makeGroup();
+    await request(app)
+      .post(`/api/groups/${group._id}/members`)
+      .set("Authorization", `Bearer ${creatorToken}`)
+      .send({ email: invitee.email })
+      .expect(201);
+
+    const response = await request(app)
+      .delete(`/api/groups/${group._id}/members/${invitee._id}`)
+      .set("Authorization", `Bearer ${memberToken}`);
+
+    assert.equal(response.status, 403);
+    assert.equal((await Group.findById(group._id)).members.length, 3);
+  });
+
+  it("blocks member removal when unpaid balances remain", async () => {
+    const group = await makeGroup();
+    await Expense.create({
+      description: "Member still owes",
+      amount: 100,
+      paidBy: creator._id,
+      group: group._id,
+      splits: [
+        { user: creator._id, amount: 50 },
+        { user: member._id, amount: 50 },
+      ],
+    });
+
+    const response = await request(app)
+      .delete(`/api/groups/${group._id}/members/${member._id}`)
+      .set("Authorization", `Bearer ${creatorToken}`);
+
+    assert.equal(response.status, 409);
+    assert.equal((await Group.findById(group._id)).members.length, 2);
+  });
+
+  it("blocks member removal when a payment request is awaiting confirmation", async () => {
+    const group = await makeGroup();
+    await Settlement.create({
+      group: group._id,
+      from: member._id,
+      to: creator._id,
+      amount: 10,
+      status: "pending",
+    });
+
+    const response = await request(app)
+      .delete(`/api/groups/${group._id}/members/${member._id}`)
+      .set("Authorization", `Bearer ${creatorToken}`);
+
+    assert.equal(response.status, 409);
+    assert.equal((await Group.findById(group._id)).members.length, 2);
+  });
+
+  it("blocks member removal while an active settlement schedule references them", async () => {
+    const group = await makeGroup();
+    await SettlementSchedule.create({
+      group: group._id,
+      from: member._id,
+      to: creator._id,
+      amount: 10,
+      dueDate: new Date("2026-12-01T12:00:00.000Z"),
+      status: "accepted",
+      active: true,
+    });
+
+    const response = await request(app)
+      .delete(`/api/groups/${group._id}/members/${member._id}`)
+      .set("Authorization", `Bearer ${creatorToken}`);
+
+    assert.equal(response.status, 409);
+    assert.equal((await Group.findById(group._id)).members.length, 2);
+  });
+
+  it("does not let the sole admin leave the group", async () => {
+    const group = await Group.create({
+      name: `Single admin ${Date.now()}`,
+      createdBy: creator._id,
+      members: [{ user: creator._id, role: "admin" }],
+    });
+    groupIds.push(group._id);
+
+    const response = await request(app)
+      .delete(`/api/groups/${group._id}/members/${creator._id}`)
+      .set("Authorization", `Bearer ${creatorToken}`);
+
+    assert.equal(response.status, 409);
+    assert.equal((await Group.findById(group._id)).members.length, 1);
+  });
+
+  it("rejects malformed group and member identifiers", async () => {
+    const badGroup = await request(app)
+      .post("/api/groups/not-an-id/members")
+      .set("Authorization", `Bearer ${creatorToken}`)
+      .send({ email: invitee.email });
+    assert.equal(badGroup.status, 400);
+
+    const group = await makeGroup();
+    const badMember = await request(app)
+      .delete(`/api/groups/${group._id}/members/not-an-id`)
+      .set("Authorization", `Bearer ${creatorToken}`);
+    assert.equal(badMember.status, 400);
+  });
+
+  it("rejects membership changes during group deletion or active expense mutations", async () => {
+    const deletingGroup = await makeGroup();
+    await Group.updateOne({ _id: deletingGroup._id }, { $set: { isDeleting: true } });
+    const deletingResponse = await request(app)
+      .delete(`/api/groups/${deletingGroup._id}/members/${member._id}`)
+      .set("Authorization", `Bearer ${creatorToken}`);
+    assert.equal(deletingResponse.status, 409);
+
+    const busyGroup = await makeGroup();
+    await Group.updateOne(
+      { _id: busyGroup._id },
+      {
+        $set: {
+          activeMutations: 1,
+          mutationExpiresAt: new Date(Date.now() + 60_000),
+        },
+      },
+    );
+    const busyResponse = await request(app)
+      .delete(`/api/groups/${busyGroup._id}/members/${member._id}`)
+      .set("Authorization", `Bearer ${creatorToken}`);
+    assert.equal(busyResponse.status, 409);
   });
 
   it("does not delete a group while a payment request is pending", async () => {
