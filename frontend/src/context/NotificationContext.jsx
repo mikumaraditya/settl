@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { io } from 'socket.io-client'
 import { useAuth } from './AuthContext'
 import axios, { SOCKET_URL } from '../api/axios'
@@ -26,36 +26,34 @@ const loadStored = (userId) => {
 export function NotificationProvider({ children }) {
   const { user } = useAuth()
   const notificationUserId = user?._id?.toString?.() || null
-  const [notificationState, setNotificationState] = useState({ userId: null, items: [] })
-  const notifications = notificationState.userId === notificationUserId ? notificationState.items : []
+  const [notificationState, setNotificationState] = useState(() => ({
+    userId: notificationUserId,
+    items: loadStored(notificationUserId),
+  }))
+  // A different account's state is never rendered while the new account loads.
+  const notifications = notificationState.userId === notificationUserId
+    ? notificationState.items
+    : loadStored(notificationUserId)
   const socketRef = useRef(null)
   const joinedGroups = useRef(new Set())
 
-  const setNotifications = (updater) => {
+  const setNotifications = useCallback((updater) => {
     setNotificationState(previous => {
-      const current = previous.userId === notificationUserId ? previous.items : []
+      const current = previous.userId === notificationUserId
+        ? previous.items
+        : loadStored(notificationUserId)
       const next = typeof updater === 'function' ? updater(current) : updater
       return { userId: notificationUserId, items: next }
-    })
-  }
-
-  // Switching accounts immediately hides the previous account's notifications.
-  useEffect(() => {
-    if (!notificationUserId) {
-      setNotificationState({ userId: null, items: [] })
-      localStorage.removeItem('settl_notifications')
-      return
-    }
-    setNotificationState({
-      userId: notificationUserId,
-      items: loadStored(notificationUserId),
     })
   }, [notificationUserId])
 
   // Persist only transient notifications, scoped to the signed-in account.
   useEffect(() => {
-    if (!notificationUserId || notificationState.userId !== notificationUserId) return
-    const transient = notificationState.items
+    if (!notificationUserId) return
+    const current = notificationState.userId === notificationUserId
+      ? notificationState.items
+      : loadStored(notificationUserId)
+    const transient = current
       .filter(notification => !notification.persistent)
       .slice(0, 10)
     localStorage.setItem(storageKeyFor(notificationUserId), JSON.stringify(transient))
@@ -109,7 +107,7 @@ export function NotificationProvider({ children }) {
 
   // Setup socket + join all group rooms
   useEffect(() => {
-    if (!user) return
+    if (!notificationUserId) return
 
     if (!socketRef.current) {
       socketRef.current = io(SOCKET_URL, { autoConnect: true, withCredentials: true })
@@ -133,7 +131,7 @@ export function NotificationProvider({ children }) {
 
     // ── Safe id-to-string helper ──────────────────────────────────────────
     const str = (id) => id?.toString?.() ?? ''
-    const myId = str(user._id)
+    const myId = str(notificationUserId)
 
     // ── Push a new notification ───────────────────────────────────────────
     const push = (type, icon, color, title, body, groupId) => {
@@ -293,7 +291,7 @@ export function NotificationProvider({ children }) {
       socket.off('settlement_resolved',          onSettlementResolved)
       socket.off('settlement_evidence_submitted', onEvidenceSubmitted)
     }
-  }, [notificationUserId])
+  }, [notificationUserId, setNotifications])
 
   const unreadCount = notifications.filter(n => !n.read).length
 
