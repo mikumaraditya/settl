@@ -74,17 +74,27 @@ router.post("/", async (req, res) => {
         _id: targetGroupId,
         "members.user": req.user.id,
         isDeleting: { $ne: true },
-        membershipMutation: { $ne: true },
+        $or: [
+          { membershipMutation: { $ne: true } },
+          {
+            membershipMutation: true,
+            membershipMutationExpiresAt: { $type: "date", $lte: new Date() },
+          },
+        ],
       },
       {
         $inc: { activeMutations: 1 },
-        $set: { mutationExpiresAt: new Date(Date.now() + 5 * 60 * 1000) },
+        $set: {
+          mutationExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
+          membershipMutation: false,
+          membershipMutationExpiresAt: null,
+        },
       },
       { new: true },
     );
 
     if (!group) {
-      const existingGroup = await Group.findById(targetGroupId).select("isDeleting membershipMutation");
+      const existingGroup = await Group.findById(targetGroupId).select("isDeleting membershipMutation membershipMutationExpiresAt");
       if (!existingGroup) {
         return res.status(404).json({ message: "Group not found" });
       }
@@ -384,16 +394,26 @@ router.delete("/:id", async (req, res) => {
         _id: expense.group,
         "members.user": req.user.id,
         isDeleting: { $ne: true },
-        membershipMutation: { $ne: true },
+        $or: [
+          { membershipMutation: { $ne: true } },
+          {
+            membershipMutation: true,
+            membershipMutationExpiresAt: { $type: "date", $lte: new Date() },
+          },
+        ],
       },
       {
         $inc: { activeMutations: 1 },
-        $set: { mutationExpiresAt: new Date(Date.now() + 5 * 60 * 1000) },
+        $set: {
+          mutationExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
+          membershipMutation: false,
+          membershipMutationExpiresAt: null,
+        },
       },
       { new: true },
     );
     if (!group) {
-      const existingGroup = await Group.findById(expense.group).select("isDeleting membershipMutation");
+      const existingGroup = await Group.findById(expense.group).select("isDeleting membershipMutation membershipMutationExpiresAt");
       if (!existingGroup) {
         return res.status(409).json({ message: "This expense belongs to a group that no longer exists" });
       }
