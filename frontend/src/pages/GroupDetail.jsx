@@ -269,6 +269,9 @@ export default function GroupDetail() {
   const addExpenseRequestInFlightRef = useRef(false)
   const deleteExpenseRequestInFlightRef = useRef(false)
   const deleteGroupRequestInFlightRef = useRef(false)
+  const addMemberRequestInFlightRef = useRef(false)
+  const removeMemberRequestInFlightRef = useRef(false)
+  const leaveGroupRequestInFlightRef = useRef(false)
   const [addingMember, setAddingMember]       = useState(false)
   const [deletingGroup, setDeletingGroup]     = useState(false)
   const [deleteError, setDeleteError]         = useState('')
@@ -568,11 +571,13 @@ export default function GroupDetail() {
 
   const handleAddMember = async (e) => {
     e.preventDefault()
+    if (addMemberRequestInFlightRef.current) return
     const email = memberEmail.trim()
     if (!email) {
       setAddMemberError('Enter the email address of the person to add.')
       return
     }
+    addMemberRequestInFlightRef.current = true
     setAddingMember(true)
     setAddMemberError('')
     try {
@@ -584,6 +589,7 @@ export default function GroupDetail() {
     } catch (err) {
       setAddMemberError(err.response?.data?.message || 'We could not add this member. Check the email and try again.')
     } finally {
+      addMemberRequestInFlightRef.current = false
       setAddingMember(false)
     }
   }
@@ -638,13 +644,14 @@ export default function GroupDetail() {
   }
 
   const handleRemoveMember = async () => {
-    if (!memberToRemove || removingMemberId) return
+    if (!memberToRemove || removeMemberRequestInFlightRef.current) return
     const memberId = memberToRemove.user?._id
     if (!memberId) {
       setRemoveError('This member could not be identified. Refresh the group and try again.')
       return
     }
 
+    removeMemberRequestInFlightRef.current = true
     setRemovingMemberId(memberId)
     setRemoveError('')
     try {
@@ -655,12 +662,14 @@ export default function GroupDetail() {
     } catch (err) {
       setRemoveError(err.response?.data?.message || 'We could not remove this member. Refresh the group and try again.')
     } finally {
+      removeMemberRequestInFlightRef.current = false
       setRemovingMemberId(null)
     }
   }
 
   const handleLeaveGroup = async () => {
-    if (leavingGroup) return
+    if (leaveGroupRequestInFlightRef.current) return
+    leaveGroupRequestInFlightRef.current = true
     setLeavingGroup(true)
     setLeaveError('')
     try {
@@ -669,6 +678,7 @@ export default function GroupDetail() {
     } catch (err) {
       setLeaveError(err.response?.data?.message || 'You could not leave this group. Please try again.')
     } finally {
+      leaveGroupRequestInFlightRef.current = false
       setLeavingGroup(false)
     }
   }
@@ -2352,7 +2362,7 @@ export default function GroupDetail() {
 
       {/* ── Add Member Modal ──────────────────────────────────────────────────── */}
       {showAddMember && (
-        <div className="modal-overlay bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={(e) => { if (e.target === e.currentTarget) { setShowAddMember(false); setAddMemberError(''); setMemberEmail('') } }}>
+        <div className="modal-overlay bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={(e) => { if (e.target === e.currentTarget && !addingMember) { setShowAddMember(false); setAddMemberError(''); setMemberEmail('') } }}>
           <div className="glass-card rounded-3xl max-w-md w-full border border-white/10 shadow-2xl p-6 animate-in zoom-in-95 duration-200 relative overflow-hidden">
             <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-blue-500/5 blur-xl pointer-events-none" />
             
@@ -2361,7 +2371,7 @@ export default function GroupDetail() {
                 <span className="material-symbols-outlined text-blue-400 text-lg">group_add</span>
                 Invite a Member
               </h3>
-              <button onClick={() => { setShowAddMember(false); setAddMemberError(''); setMemberEmail('') }} className="w-8 h-8 rounded-xl flex items-center justify-center bg-white/5 hover:bg-white/10 border border-white/5 transition-all cursor-pointer text-white">
+              <button disabled={addingMember} onClick={() => { if (!addingMember) { setShowAddMember(false); setAddMemberError(''); setMemberEmail('') } }} className="w-8 h-8 rounded-xl flex items-center justify-center bg-white/5 hover:bg-white/10 border border-white/5 transition-all cursor-pointer text-white">
                 <span className="material-symbols-outlined text-[16px]">close</span>
               </button>
             </div>
@@ -2391,7 +2401,7 @@ export default function GroupDetail() {
                 <button type="submit" disabled={addingMember} className="flex-1 py-3 rounded-2xl font-bold text-xs uppercase tracking-wider bg-blue-500 text-white shadow-md shadow-blue-500/10 border border-blue-500/20 hover:brightness-110 active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50">
                   {addingMember ? 'Adding...' : 'Invite'}
                 </button>
-                <button type="button" onClick={() => { setShowAddMember(false); setAddMemberError(''); setMemberEmail('') }} className="flex-1 py-3 border border-white/10 rounded-2xl text-white font-bold text-xs uppercase tracking-wider hover:bg-white/5 transition-all cursor-pointer">
+                <button type="button" disabled={addingMember} onClick={() => { if (!addingMember) { setShowAddMember(false); setAddMemberError(''); setMemberEmail('') } }} className="flex-1 py-3 border border-white/10 rounded-2xl text-white font-bold text-xs uppercase tracking-wider hover:bg-white/5 transition-all cursor-pointer">
                   Cancel
                 </button>
               </div>
