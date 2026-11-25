@@ -756,7 +756,7 @@ if (!testDbName || !testDbName.endsWith("_test")) {
 
 ### Current Limitations
 - **Rate-Limit Fallback**: Without `REDIS_URL`, limits use the built-in per-process memory store. Configure Redis in production when running multiple backend instances.
-- **Manual UPI Reconciliation**: Settlements depend on receiver peer confirmation. Settl does not connect to banking APIs to independently verify bank ledger entries.
+- **Manual UPI Reconciliation**: A payer may attach a UTR/RRN, but it is user-supplied metadata and is not verified against a banking API or bank ledger. The receiver must independently confirm the credit in their UPI or bank app.
 
 ---
 
