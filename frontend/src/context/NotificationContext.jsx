@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { io } from 'socket.io-client'
 import { useAuth } from './AuthContext'
 import axios, { SOCKET_URL } from '../api/axios'
@@ -9,42 +9,105 @@ const NotificationContext = createContext()
 // Generate a unique id for each notification
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 
-// Load from localStorage
-const loadStored = () => {
-  try { return JSON.parse(localStorage.getItem('settl_notifications') || '[]') }
-  catch { return [] }
+// Transient UI notifications are cached per account. Server-backed reminders
+// stay authoritative in MongoDB and are never persisted to browser storage.
+const storageKeyFor = (userId) => `settl_notifications:${userId}`
+
+const loadStored = (userId) => {
+  if (!userId) return []
+  try {
+    const stored = JSON.parse(localStorage.getItem(storageKeyFor(userId)) || '[]')
+    return Array.isArray(stored) ? stored.filter(notification => !notification.persistent) : []
+  } catch {
+    return []
+  }
 }
 
 export function NotificationProvider({ children }) {
   const { user } = useAuth()
-  const [notifications, setNotifications] = useState(loadStored)
+  const notificationUserId = user?._id?.toString?.() || null
+  const [notificationState, setNotificationState] = useState(() => ({
+    userId: notificationUserId,
+    items: loadStored(notificationUserId),
+  }))
+  // A different account's state is never rendered while the new account loads.
+  const notifications = notificationState.userId === notificationUserId
+    ? notificationState.items
+    : loadStored(notificationUserId)
   const socketRef = useRef(null)
   const joinedGroups = useRef(new Set())
 
-  // Persist to localStorage whenever notifications change
-  useEffect(() => {
-    const trimmed = notifications.slice(0, 10)
-    localStorage.setItem('settl_notifications', JSON.stringify(trimmed))
-  }, [notifications])
+  const setNotifications = useCallback((updater) => {
+    setNotificationState(previous => {
+      const current = previous.userId === notificationUserId
+        ? previous.items
+        : loadStored(notificationUserId)
+      const next = typeof updater === 'function' ? updater(current) : updater
+      return { userId: notificationUserId, items: next }
+    })
+  }, [notificationUserId])
 
-  // Clear on logout
+  // Persist only transient notifications, scoped to the signed-in account.
   useEffect(() => {
-    if (!user) {
-      if (notifications.length > 0) {
-        setTimeout(() => setNotifications([]), 0)
-      }
-      localStorage.removeItem('settl_notifications')
-      if (socketRef.current) {
-        socketRef.current.disconnect()
-        socketRef.current = null
-        joinedGroups.current.clear()
+    if (!notificationUserId) return
+    const current = notificationState.userId === notificationUserId
+      ? notificationState.items
+      : loadStored(notificationUserId)
+    const transient = current
+      .filter(notification => !notification.persistent)
+      .slice(0, 10)
+    localStorage.setItem(storageKeyFor(notificationUserId), JSON.stringify(transient))
+  }, [notificationUserId, notificationState])
+
+  // Fetch durable reminders on login and refresh them whenever the app regains focus.
+  useEffect(() => {
+    if (!notificationUserId) return undefined
+
+    let disposed = false
+    const loadPersistentNotifications = async () => {
+      try {
+        const { data } = await axios.get('/notifications')
+        if (disposed) return
+        const serverNotifications = data.notifications || []
+        setNotificationState(previous => {
+          const current = previous.userId === notificationUserId ? previous.items : []
+          const transient = current.filter(notification => !notification.persistent)
+          const unique = new Map()
+          ;[...serverNotifications, ...transient].forEach(notification => unique.set(notification.id, notification))
+          const merged = [...unique.values()].sort((a, b) => b.time - a.time).slice(0, 30)
+          return { userId: notificationUserId, items: merged }
+        })
+      } catch {
+        // Preserve locally cached activity when the API is temporarily unavailable.
       }
     }
-  }, [user, notifications.length])
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') loadPersistentNotifications()
+    }
+
+    loadPersistentNotifications()
+    window.addEventListener('focus', refreshWhenVisible)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      disposed = true
+      window.removeEventListener('focus', refreshWhenVisible)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
+  }, [notificationUserId])
+
+  // Disconnect the previous socket session on logout.
+  useEffect(() => {
+    if (!notificationUserId && socketRef.current) {
+      socketRef.current.disconnect()
+      socketRef.current = null
+      joinedGroups.current.clear()
+    }
+  }, [notificationUserId])
 
   // Setup socket + join all group rooms
   useEffect(() => {
-    if (!user) return
+    if (!notificationUserId) return
 
     if (!socketRef.current) {
       socketRef.current = io(SOCKET_URL, { autoConnect: true, withCredentials: true })
@@ -68,7 +131,7 @@ export function NotificationProvider({ children }) {
 
     // ── Safe id-to-string helper ──────────────────────────────────────────
     const str = (id) => id?.toString?.() ?? ''
-    const myId = str(user._id)
+    const myId = str(notificationUserId)
 
     // ── Push a new notification ───────────────────────────────────────────
     const push = (type, icon, color, title, body, groupId) => {
@@ -147,16 +210,12 @@ export function NotificationProvider({ children }) {
       )
     }
 
-    const onScheduleReminder = (schedule) => {
-      const involved = str(schedule?.from?._id) === myId || str(schedule?.to?._id) === myId
-      if (!involved) return
-      const date = schedule.dueDate ? new Date(schedule.dueDate).toLocaleDateString('en-IN') : 'today'
-      push(
-        'schedule_reminder', 'notifications_active', '#fbbf24',
-        'Payment schedule due soon',
-        `₹${Number(schedule.amount).toLocaleString('en-IN')} is due ${date}. Open Settle Up to record the payment.`,
-        schedule.group
-      )
+    const onNotificationCreated = (notification) => {
+      if (!notification?.id) return
+      setNotifications(prev => {
+        if (prev.some(item => item.id === notification.id)) return prev
+        return [notification, ...prev].slice(0, 30)
+      })
     }
 
     const onScheduleCancelled = (schedule) => {
@@ -213,7 +272,7 @@ export function NotificationProvider({ children }) {
     socket.on('schedule_accepted',             onScheduleAccepted)
     socket.on('schedule_rejected',             onScheduleRejected)
     socket.on('schedule_cancelled',            onScheduleCancelled)
-    socket.on('schedule_reminder',             onScheduleReminder)
+    socket.on('notification_created',          onNotificationCreated)
     socket.on('settlement_disputed',           onSettlementDisputed)
     socket.on('settlement_resolved',           onSettlementResolved)
     socket.on('settlement_evidence_submitted', onEvidenceSubmitted)
@@ -227,24 +286,34 @@ export function NotificationProvider({ children }) {
       socket.off('schedule_accepted',            onScheduleAccepted)
       socket.off('schedule_rejected',            onScheduleRejected)
       socket.off('schedule_cancelled',           onScheduleCancelled)
-      socket.off('schedule_reminder',            onScheduleReminder)
+      socket.off('notification_created',         onNotificationCreated)
       socket.off('settlement_disputed',          onSettlementDisputed)
       socket.off('settlement_resolved',          onSettlementResolved)
       socket.off('settlement_evidence_submitted', onEvidenceSubmitted)
     }
-  }, [user])
+  }, [notificationUserId, setNotifications])
 
   const unreadCount = notifications.filter(n => !n.read).length
 
-  const markAllRead = () =>
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+  const markAllRead = () => {
+    setNotifications(prev => prev.map(notification => ({ ...notification, read: true })))
+    axios.patch('/notifications/read-all').catch(() => {})
+  }
 
-  const markRead = (id) =>
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
+  const markRead = (id) => {
+    const notification = notifications.find(item => item.id === id)
+    setNotifications(prev => prev.map(item => item.id === id ? { ...item, read: true } : item))
+    if (notification?.persistent) {
+      axios.patch(`/notifications/${id}/read`).catch(() => {})
+    }
+  }
 
   const clearAll = () => {
     setNotifications([])
-    localStorage.removeItem('settl_notifications')
+    if (notificationUserId) {
+      localStorage.removeItem(storageKeyFor(notificationUserId))
+      axios.delete('/notifications').catch(() => {})
+    }
   }
 
   const joinGroup = (groupId) => {

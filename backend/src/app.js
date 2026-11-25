@@ -9,6 +9,7 @@ import settlementRoutes from "./routes/settlements.js";
 import messageRoutes from "./routes/messages.js";
 import insightRoutes from "./routes/insights.js";
 import mentorRoutes from "./routes/mentor.js";
+import notificationRoutes from "./routes/notifications.js";
 
 const app = express();
 
@@ -29,6 +30,7 @@ app.use("/api/settlements", settlementRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/insights", insightRoutes);
 app.use("/api/mentor", mentorRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 app.get("/health", (req, res) => {
   res.json({

@@ -50,14 +50,6 @@ const settlementScheduleSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
-    fromReminderSentAt: {
-      type: Date,
-      default: null,
-    },
-    toReminderSentAt: {
-      type: Date,
-      default: null,
-    },
     paymentSettlement: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Settlement",
@@ -77,5 +69,6 @@ settlementScheduleSchema.index(
 );
 
 settlementScheduleSchema.index({ group: 1, active: 1, dueDate: 1 });
+settlementScheduleSchema.index({ status: 1, active: 1, dueDate: 1 });
 
 export default mongoose.model("SettlementSchedule", settlementScheduleSchema);
