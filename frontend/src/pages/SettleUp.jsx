@@ -37,7 +37,7 @@ export default function SettleUp() {
     const day = String(now.getDate()).padStart(2, '0')
     return `${now.getFullYear()}-${month}-${day}`
   }
-    const getTomorrowDateOnly = () => {
+  const getTomorrowDateOnly = () => {
     const tomorrow = new Date()
     tomorrow.setDate(tomorrow.getDate() + 1)
     const month = String(tomorrow.getMonth() + 1).padStart(2, '0')
