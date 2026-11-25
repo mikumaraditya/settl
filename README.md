@@ -340,7 +340,7 @@ Settl uses Socket.IO to keep connected clients synchronized. Clients join rooms 
 | `settlement_undone` | Server → Client | `{ fromId, toId }` | Emitted when a settlement is cancelled by payer or rejected by receiver. |
 | `schedule_proposed` / `schedule_accepted` / `schedule_rejected` | Server → Client | Populated `SettlementSchedule` | Notifies participants about a proposal and its response. |
 | `schedule_cancelled` | Server → Client | Populated `SettlementSchedule` | Notifies participants that a proposed or accepted schedule was cancelled. |
-| `schedule_reminder` | Server → Client | Populated `SettlementSchedule` | In-app reminder emitted once per participant when Settle Up is opened on the due date or the day before. |
+| `notification_created` | Server → Client (private user room) | Persistent notification | Delivers a stored settlement reminder to the relevant payer or receiver. |
 | `message_created` | Server → Client | Populated `Message` | Broadcasts new group chat messages. |
 
 ---
@@ -600,7 +600,7 @@ All application endpoints are mounted under `/api` and require authenticated HTT
 | `GET` | `/api/settlements/simplify/:id` | Protected | Compute net balances and simplified debt transactions for a group. |
 | `POST` | `/api/settlements/settle` | Protected | Payer records a payment as pending; the receiver must confirm before it clears debt. An accepted schedule can be linked by `scheduleId`. |
 | `POST` | `/api/settlements/schedule` | Protected | Payer proposes an amount and optional future date; if omitted, Settl defaults the due date to 7 calendar days from today in the payer's timezone. The proposal does not change balances. |
-| `GET` | `/api/settlements/schedules/:groupId` | Protected | Retrieve active payment schedules for a group, including overdue state. |
+| `GET` | `/api/settlements/schedules/:groupId` | Protected | Retrieve active payment schedules for the current user, including due tomorrow, due today, and overdue states. |
 | `POST` | `/api/settlements/schedule/:scheduleId/respond` | Protected | Recipient accepts or rejects a proposed repayment date. |
 | `POST` | `/api/settlements/schedule/:scheduleId/cancel` | Protected | Either participant cancels a proposed or accepted schedule. |
 
@@ -610,7 +610,15 @@ All application endpoints are mounted under `/api` and require authenticated HTT
 | `POST` | `/api/settlements/cancel` | Protected | Alternate endpoint for payer cancellation. |
 | `GET` | `/api/settlements/group/:id/activity` | Protected | Fetch paginated activity audit logs for a group. |
 
-> Due-date reminders are sent independently to each participant when they open or refresh Settle Up on the due date or the day before, using their local timezone. This first version is request-driven; it does not send background push notifications while the app is closed.
+### Notifications (`/api/notifications`)
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/notifications` | Protected | Retrieve the current user's latest persistent in-app reminders. |
+| `PATCH` | `/api/notifications/:notificationId/read` | Protected | Mark one of the current user's notifications as read. |
+| `PATCH` | `/api/notifications/read-all` | Protected | Mark all of the current user's notifications as read. |
+| `DELETE` | `/api/notifications` | Protected | Clear the current user's notifications without removing reminder deduplication records. |
+
+> Accepted payment schedules create persistent reminders for both participants one day before the due date and again on the due date. The backend worker scans at startup and every 15 minutes; reminders remain available if a participant is offline. Notifications are private to each participant and do not change balances or Trust Score. No email or browser push notifications are sent.
 
 ### Insights & Trust Score (`/api/insights`)
 | Method | Endpoint | Access | Description |
@@ -656,7 +664,7 @@ User ────< Group (members.user)
   │          │
   │          └────< Message (sender)
   │
-  ├────< ScoreHistory (user, score, delta, reason)
+  ├────< Notification (user, schedule, readAt, deletedAt)\n  ├────< ScoreHistory (user, score, delta, reason)
   ├────< MentorConversation (user, messages)
   └────< UserFinancialProfile (user, goals, consent)
 ```
@@ -803,7 +811,7 @@ For deployments on Vercel or similar platforms, [`frontend/vercel.json`](fronten
 | **Trust Score Interactive UI** | **Implemented** | Score gauge, trend pill, quick actions, factors, commitments, ledger. |
 | **Redis-Backed Rate Limiting** | Planned | Distributed rate limiting across multiple server instances. |
 | **Multi-Session Mentor Conversations** | Planned | Ability to save, name, and archive separate conversation threads. |
-| **Settlement Due Date Customization** | **Implemented** | Payer proposes a date or gets a 7-day default; receiver accepts or declines, and linked payment confirmation completes the schedule without changing balances early. |
+| **Settlement Due Date Customization** | **Implemented** | Payer proposes a date or gets a 7-day default; receiver accepts or declines, and linked payment confirmation completes the schedule without changing balances early. |\n| **Persistent In-App Settlement Reminders** | **Implemented** | Private reminders for payer and receiver one day before and on the agreed due date, with deduplication and persisted read/clear state. |
 
 ### Contributing
 1. Fork the repository and create a feature branch (`git checkout -b feature/amazing-feature`).
