@@ -59,6 +59,7 @@ export default function GroupDetail() {
 
   // ── Core state ──────────────────────────────────────────────────────────────
   const [group, setGroup]     = useState(null)
+  const [groupLoadError, setGroupLoadError] = useState('')
   const [expenses, setExpenses] = useState([])
   const [loading, setLoading]   = useState(true)
 
@@ -322,6 +323,7 @@ export default function GroupDetail() {
   const fetchData = async () => {
     try {
       setLoading(true)
+      setGroupLoadError('')
       const [groupRes, expenseRes] = await Promise.all([
         axios.get(`/groups/${id}`),
         axios.get(`/expenses/group/${id}?months=3&page=1`)
@@ -333,7 +335,8 @@ export default function GroupDetail() {
       setTotalMonths(tm)
       setCurrentPage(1)
     } catch (err) {
-      console.error(err)
+      setGroupLoadError(err.response?.data?.message || 'We could not load this group. Check your connection and try again.')
+      setGroup(null)
     } finally {
       setLoading(false)
     }
@@ -865,6 +868,25 @@ export default function GroupDetail() {
     </div>
   )
 
+
+  if (groupLoadError || !group) {
+    return (
+      <div className="app-page min-h-screen flex flex-col md:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
+        <Navbar />
+        <main className="app-main flex-1 flex items-center justify-center">
+          <section className="app-card w-full max-w-md p-7 text-center" role="alert">
+            <span className="material-symbols-outlined app-muted text-3xl" aria-hidden="true">groups</span>
+            <h1 className="text-lg font-bold mt-3">Group unavailable</h1>
+            <p className="text-sm app-muted mt-2">{groupLoadError || 'This group could not be found or you no longer have access to it.'}</p>
+            <div className="flex justify-center gap-2 mt-5">
+              <button type="button" onClick={fetchData} className="app-button-primary">Try again</button>
+              <button type="button" onClick={() => navigate('/groups')} className="app-button-secondary">All groups</button>
+            </div>
+          </section>
+        </main>
+      </div>
+    )
+  }
 
   // ─────────────────────────────────────────────────────────────────────────────
   return (
