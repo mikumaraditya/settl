@@ -98,6 +98,75 @@ after(async () => {
   if (mongoose.connection.readyState) await mongoose.disconnect();
 });
 
+test("payer-provided UPI references are validated and visible only to settlement participants", async () => {
+  const invalidShort = await request(app)
+    .post("/api/settlements/settle")
+    .set("Authorization", `Bearer ${tokenA}`)
+    .send({
+      groupId,
+      toUserId: userB._id.toString(),
+      amount: 100,
+      upiReference: "123",
+    });
+  assert.equal(invalidShort.status, 400);
+
+  const invalidCharacters = await request(app)
+    .post("/api/settlements/settle")
+    .set("Authorization", `Bearer ${tokenA}`)
+    .send({
+      groupId,
+      toUserId: userB._id.toString(),
+      amount: 100,
+      upiReference: "UPI 123456",
+    });
+  assert.equal(invalidCharacters.status, 400);
+
+  const payment = await request(app)
+    .post("/api/settlements/settle")
+    .set("Authorization", `Bearer ${tokenA}`)
+    .send({
+      groupId,
+      toUserId: userB._id.toString(),
+      amount: 100,
+      upiReference: "123456789012",
+    });
+  assert.equal(payment.status, 201, JSON.stringify(payment.body));
+  assert.equal(payment.body.upiReference, "123456789012");
+
+  const saved = await Settlement.findById(payment.body._id).lean();
+  assert.equal(saved.upiReference, "123456789012");
+
+  const payerView = await request(app)
+    .get(`/api/settlements/simplify/${groupId}`)
+    .set("Authorization", `Bearer ${tokenA}`);
+  const receiverView = await request(app)
+    .get(`/api/settlements/simplify/${groupId}`)
+    .set("Authorization", `Bearer ${tokenB}`);
+  const otherMemberView = await request(app)
+    .get(`/api/settlements/simplify/${groupId}`)
+    .set("Authorization", `Bearer ${tokenC}`);
+
+  assert.equal(payerView.body.pendingRequests[0].upiReference, "123456789012");
+  assert.equal(receiverView.body.pendingRequests[0].upiReference, "123456789012");
+  assert.equal(
+    Object.hasOwn(otherMemberView.body.pendingRequests[0], "upiReference"),
+    false,
+    "non-participating group members must not receive the reference",
+  );
+
+  const rejected = await request(app)
+    .post("/api/settlements/reject")
+    .set("Authorization", `Bearer ${tokenB}`)
+    .send({ groupId, fromUserId: userA._id.toString(), reason: "Reference does not match receipt" });
+  assert.equal(rejected.status, 200);
+  assert.equal(rejected.body.settlement.upiReference, "123456789012");
+
+  const balance = await request(app)
+    .get(`/api/settlements/simplify/${groupId}`)
+    .set("Authorization", `Bearer ${tokenA}`);
+  assert.equal(balance.body.transactions[0].amount, 500, "rejecting an unverified reference must not clear any debt");
+});
+
 test("payer can propose a date without changing the group's debt", async () => {
   const today = new Date().toISOString().slice(0, 10);
   const due = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
