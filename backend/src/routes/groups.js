@@ -322,9 +322,13 @@ router.delete("/:id", async (req, res) => {
           $or: [
             { activeMutations: 0 },
             { activeMutations: { $exists: false } },
+            {
+              activeMutations: { $gt: 0 },
+              mutationExpiresAt: { $type: "date", $lte: new Date() },
+            },
           ],
         },
-        { $set: { isDeleting: true } },
+        { $set: { isDeleting: true, mutationExpiresAt: null } },
         { new: true },
       );
 
