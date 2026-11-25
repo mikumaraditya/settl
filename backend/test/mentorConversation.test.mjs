@@ -10,14 +10,14 @@ import {
 } from "../src/services/mentorConversation.js";
 import { getTestDbConfig } from "./testDbHelper.mjs";
 
-describe("Mentor conversation request coordination", () => {
+describe("Multi-session mentor conversation coordination", () => {
   let user;
 
   before(async () => {
     const { testUri } = getTestDbConfig();
     await mongoose.connect(testUri);
-    // Ensure the unique user index exists before testing concurrent first-time requests.
-    await MentorConversation.init();
+    // Drop the legacy unique user index and create the current multi-session indexes.
+    await MentorConversation.syncIndexes();
     user = await User.create({
       name: "Mentor Lease Test",
       email: "mentor-lease-" + Date.now() + "@example.com",
@@ -34,30 +34,60 @@ describe("Mentor conversation request coordination", () => {
     await mongoose.disconnect();
   });
 
-  it("allows only one active request per user and atomically stores a completed turn", async () => {
-    const lease = await acquireMentorConversation(user._id.toString());
-    assert.equal(lease.conversation.messages.length, 0);
+  it("allows independent requests in separate sessions but serializes each individual session", async () => {
+    const [first, second] = await MentorConversation.create([
+      { user: user._id, title: "First chat", messages: [] },
+      { user: user._id, title: "Second chat", messages: [] },
+    ]);
+
+    const firstLease = await acquireMentorConversation(user._id.toString(), first._id.toString());
+    const secondLease = await acquireMentorConversation(user._id.toString(), second._id.toString());
+
+    assert.equal(firstLease.conversationId, first._id.toString());
+    assert.equal(secondLease.conversationId, second._id.toString());
+    assert.notEqual(firstLease.requestId, secondLease.requestId);
 
     await assert.rejects(
-      () => acquireMentorConversation(user._id.toString()),
-      (error) => error.status === 409 && error.code === "MENTOR_REQUEST_IN_PROGRESS"
+      () => acquireMentorConversation(user._id.toString(), first._id.toString()),
+      (error) => error.status === 409 && error.code === "MENTOR_REQUEST_IN_PROGRESS",
     );
 
     await appendMentorTurn(
       user._id.toString(),
-      lease.requestId,
+      first._id.toString(),
+      firstLease.requestId,
       "How much should I save?",
       "Start with a realistic monthly target.",
-      []
+      [],
     );
 
-    const stored = await MentorConversation.findOne({ user: user._id }).lean();
-    assert.equal(stored.messages.length, 2);
-    assert.equal(stored.messages[0].role, "user");
-    assert.equal(stored.messages[1].role, "assistant");
-    assert.equal(stored.messages[0].content, "How much should I save?");
+    const [storedFirst, storedSecond] = await Promise.all([
+      MentorConversation.findById(first._id).lean(),
+      MentorConversation.findById(second._id).lean(),
+    ]);
+    assert.equal(storedFirst.messages.length, 2);
+    assert.equal(storedFirst.messages[0].role, "user");
+    assert.equal(storedFirst.messages[1].role, "assistant");
+    assert.equal(storedFirst.messages[0].content, "How much should I save?");
+    assert.equal(storedSecond.messages.length, 0, "a turn must not leak into another session");
 
-    const nextLease = await acquireMentorConversation(user._id.toString());
-    await releaseMentorConversation(user._id.toString(), nextLease.requestId);
+    await releaseMentorConversation(user._id.toString(), second._id.toString(), secondLease.requestId);
+    const nextLease = await acquireMentorConversation(user._id.toString(), first._id.toString());
+    await releaseMentorConversation(user._id.toString(), first._id.toString(), nextLease.requestId);
+  });
+
+  it("creates a default session for legacy clients and rejects archived sessions", async () => {
+    const lease = await acquireMentorConversation(user._id.toString());
+    assert.ok(lease.conversationId);
+    await releaseMentorConversation(user._id.toString(), lease.conversation._id.toString(), lease.requestId);
+
+    await MentorConversation.updateOne(
+      { _id: lease.conversation._id, user: user._id },
+      { $set: { archivedAt: new Date() } },
+    );
+    await assert.rejects(
+      () => acquireMentorConversation(user._id.toString(), lease.conversation._id.toString()),
+      (error) => error.status === 409 && error.code === "MENTOR_CONVERSATION_ARCHIVED",
+    );
   });
 });
