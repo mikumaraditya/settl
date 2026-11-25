@@ -28,6 +28,7 @@ router.post("/", async (req, res) => {
     category: rawCategory,
     splits,
   } = req.body || {};
+  let reservedGroupId = null;
 
   try {
     const targetGroupId = groupId || groupBodyId;
@@ -68,15 +69,29 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ message: "Please select a valid expense category" });
     }
 
-    const group = await Group.findById(targetGroupId);
-    if (!group) {
-      return res.status(404).json({ message: "Group not found" });
-    }
+    const group = await Group.findOneAndUpdate(
+      {
+        _id: targetGroupId,
+        "members.user": req.user.id,
+        isDeleting: { $ne: true },
+      },
+      { $inc: { activeMutations: 1 } },
+      { new: true },
+    );
 
-    const memberIds = new Set(group.members.map(member => member.user.toString()));
-    if (!memberIds.has(req.user.id)) {
+    if (!group) {
+      const existingGroup = await Group.findById(targetGroupId).select("isDeleting");
+      if (!existingGroup) {
+        return res.status(404).json({ message: "Group not found" });
+      }
+      if (existingGroup.isDeleting) {
+        return res.status(409).json({ message: "This group is being deleted and can no longer accept expenses" });
+      }
       return res.status(403).json({ message: "You are not a member of this group" });
     }
+
+    reservedGroupId = group._id;
+    const memberIds = new Set(group.members.map(member => member.user.toString()));
 
     const paidBy = paidByBody || req.user.id;
     if (!mongoose.isValidObjectId(paidBy) || paidBy.toString() !== req.user.id) {
@@ -244,6 +259,17 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ message: "Please check the expense details and try again" });
     }
     return res.status(500).json({ message: "We could not save this expense. Please try again." });
+  } finally {
+    if (reservedGroupId) {
+      try {
+        await Group.updateOne(
+          { _id: reservedGroupId, activeMutations: { $gt: 0 } },
+          { $inc: { activeMutations: -1 } },
+        );
+      } catch (releaseError) {
+        console.error("Could not release the group expense-create guard:", releaseError);
+      }
+    }
   }
 });
 
@@ -331,6 +357,7 @@ router.get("/group/:groupId", protect, async (req, res) => {
 // Once a payment is pending/confirmed or an active schedule exists, preserve
 // the expense as part of the group's financial history.
 router.delete("/:id", async (req, res) => {
+  let reservedGroupId = null;
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {
       return res.status(400).json({ message: "Invalid expense id" });
@@ -345,13 +372,26 @@ router.delete("/:id", async (req, res) => {
       return res.status(403).json({ message: "Only the person who paid can delete this expense" });
     }
 
-    const group = await Group.findById(expense.group);
+    const group = await Group.findOneAndUpdate(
+      {
+        _id: expense.group,
+        "members.user": req.user.id,
+        isDeleting: { $ne: true },
+      },
+      { $inc: { activeMutations: 1 } },
+      { new: true },
+    );
     if (!group) {
-      return res.status(409).json({ message: "This expense belongs to a group that no longer exists" });
-    }
-    if (!group.members.some(member => member.user.toString() === req.user.id)) {
+      const existingGroup = await Group.findById(expense.group).select("isDeleting");
+      if (!existingGroup) {
+        return res.status(409).json({ message: "This expense belongs to a group that no longer exists" });
+      }
+      if (existingGroup.isDeleting) {
+        return res.status(409).json({ message: "This group is being deleted. Refresh the page to see the latest state." });
+      }
       return res.status(403).json({ message: "You must be a current group member to delete this expense" });
     }
+    reservedGroupId = group._id;
 
     const now = Date.now();
     const createdAt = new Date(expense.createdAt).getTime();
@@ -420,6 +460,17 @@ router.delete("/:id", async (req, res) => {
       return res.status(400).json({ message: "Invalid expense id" });
     }
     return res.status(500).json({ message: "We could not delete this expense. Please try again." });
+  } finally {
+    if (reservedGroupId) {
+      try {
+        await Group.updateOne(
+          { _id: reservedGroupId, activeMutations: { $gt: 0 } },
+          { $inc: { activeMutations: -1 } },
+        );
+      } catch (releaseError) {
+        console.error("Could not release the group expense-delete guard:", releaseError);
+      }
+    }
   }
 });
 
