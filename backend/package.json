@@ -24,7 +24,9 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.3.1",
     "nodemailer": "^9.0.3",
-    "socket.io": "^4.7.5"
+    "socket.io": "^4.7.5",
+    "@redis/client": "1.6.1",
+    "rate-limit-redis": "5.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
