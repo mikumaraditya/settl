@@ -1,6 +1,9 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import Expense from '../models/Expense.js';
 import Group from '../models/Group.js';
+import Settlement from '../models/Settlement.js';
+import SettlementSchedule from '../models/SettlementSchedule.js';
 import ActivityLog from '../models/ActivityLog.js';
 import protect from '../middleware/auth.js';
 import requireVerified from '../middleware/requireVerified.js';
@@ -13,173 +16,266 @@ router.use(protect, requireVerified);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ADD EXPENSE
-// ─────────────────────────────────────────────────────────────────────────────
-router.post("/", protect, async (req, res) => {
-  const { description, amount, groupId, group: groupBodyId, paidBy: paidByBody, members: membersBody, splitType, category, splits } = req.body;
+router.post("/", async (req, res) => {
+  const {
+    description: rawDescription,
+    amount: rawAmount,
+    groupId,
+    group: groupBodyId,
+    paidBy: paidByBody,
+    members: membersBody,
+    splitType: rawSplitType,
+    category: rawCategory,
+    splits,
+  } = req.body || {};
+  let reservedGroupId = null;
 
   try {
     const targetGroupId = groupId || groupBodyId;
-    const group = await Group.findById(targetGroupId);
-    if (!group) {
-      return res.status(404).json({ message: "Group not found" });
+    if (!mongoose.isValidObjectId(targetGroupId)) {
+      return res.status(400).json({ message: "A valid group is required" });
     }
 
-    const memberIds = new Set(group.members.map((member) => member.user.toString()));
-    if (!memberIds.has(req.user.id)) {
+    const description = typeof rawDescription === "string" ? rawDescription.trim() : "";
+    if (!description) {
+      return res.status(400).json({ message: "Expense description is required" });
+    }
+    if (description.length > 120) {
+      return res.status(400).json({ message: "Expense description cannot exceed 120 characters" });
+    }
+
+    const amount = Number(rawAmount);
+    const totalPaise = Math.round(amount * 100);
+    if (
+      !Number.isFinite(amount) ||
+      !Number.isSafeInteger(totalPaise) ||
+      totalPaise <= 0 ||
+      Math.abs(amount * 100 - totalPaise) > 0.000001
+    ) {
+      return res.status(400).json({ message: "Amount must be a positive value with at most two decimal places" });
+    }
+
+    const splitType = rawSplitType || "equal";
+    if (!["equal", "exact", "percentage"].includes(splitType)) {
+      return res.status(400).json({ message: "Invalid split type" });
+    }
+
+    const category = rawCategory || "other";
+    const allowedCategories = [
+      "food", "travel", "shopping", "rent", "entertainment",
+      "fuel", "groceries", "medical", "other",
+    ];
+    if (!allowedCategories.includes(category)) {
+      return res.status(400).json({ message: "Please select a valid expense category" });
+    }
+
+    const group = await Group.findOneAndUpdate(
+      {
+        _id: targetGroupId,
+        "members.user": req.user.id,
+        isDeleting: { $ne: true },
+      },
+      {
+        $inc: { activeMutations: 1 },
+        $set: { mutationExpiresAt: new Date(Date.now() + 5 * 60 * 1000) },
+      },
+      { new: true },
+    );
+
+    if (!group) {
+      const existingGroup = await Group.findById(targetGroupId).select("isDeleting");
+      if (!existingGroup) {
+        return res.status(404).json({ message: "Group not found" });
+      }
+      if (existingGroup.isDeleting) {
+        return res.status(409).json({ message: "This group is being deleted and can no longer accept expenses" });
+      }
       return res.status(403).json({ message: "You are not a member of this group" });
     }
 
+    reservedGroupId = group._id;
+    const memberIds = new Set(group.members.map(member => member.user.toString()));
+
     const paidBy = paidByBody || req.user.id;
-    if (paidBy.toString() !== req.user.id) {
+    if (!mongoose.isValidObjectId(paidBy) || paidBy.toString() !== req.user.id) {
       return res.status(403).json({ message: "You can only record expenses that you paid" });
     }
 
-    const splitMembers = membersBody || group.members.map((m) => m.user.toString());
+    const rawSplitMembers = membersBody === undefined
+      ? group.members.map(member => member.user.toString())
+      : membersBody;
 
-    if (!Array.isArray(splitMembers) || splitMembers.length === 0) {
-      return res.status(400).json({ message: "No members specified for splitting" });
+    if (!Array.isArray(rawSplitMembers) || rawSplitMembers.length === 0) {
+      return res.status(400).json({ message: "Select at least one group member to split this expense" });
     }
 
-    const splitMemberIds = splitMembers.map((memberId) => memberId?.toString());
+    const splitMemberIds = rawSplitMembers.map(memberId => memberId?.toString());
     if (
-      splitMemberIds.some((memberId) => !memberIds.has(memberId)) ||
+      splitMemberIds.some(memberId => !mongoose.isValidObjectId(memberId) || !memberIds.has(memberId)) ||
       new Set(splitMemberIds).size !== splitMemberIds.length
     ) {
       return res.status(400).json({ message: "Split members must be unique members of this group" });
     }
 
+    const splitListMatchesSelection = (finalSplits) => {
+      const ids = finalSplits.map(split => split.user?.toString());
+      return (
+        ids.length === splitMemberIds.length &&
+        new Set(ids).size === ids.length &&
+        ids.every(memberId => splitMemberIds.includes(memberId))
+      );
+    };
+
     let finalSplits = [];
-    const totalAmount = Math.round(Number(amount) * 100) / 100;
 
-    if (!Number.isFinite(amount) || totalAmount <= 0 || amount !== totalAmount) {
-      return res.status(400).json({ message: "Amount must be a positive value with at most two decimal places" });
-    }
-
-    if (splitType === "equal" || !splitType) {
-      const numMembers = splitMembers.length;
-      const totalPaise = Math.round(totalAmount * 100);
-      const baseShare = Math.floor(totalPaise / numMembers);
-      const remainder = totalPaise % numMembers;
-
-      finalSplits = splitMembers.map((userId, index) => ({
+    if (splitType === "equal") {
+      const baseShare = Math.floor(totalPaise / splitMemberIds.length);
+      const remainder = totalPaise % splitMemberIds.length;
+      finalSplits = splitMemberIds.map((userId, index) => ({
         user: userId,
-        // Add the modulus remainder paise to the first person in the split array to guarantee absolute precision.
-        amount: (index === 0 ? baseShare + remainder : baseShare) / 100,
-        paid: userId === paidBy,
+        amount: (baseShare + (index === 0 ? remainder : 0)) / 100,
+        paid: userId === paidBy.toString(),
       }));
-    } else if (splitType === "exact") {
-      if (!splits || splits.length === 0) {
-        return res.status(400).json({ message: "Splits details are required for exact split type" });
-      }
-
-      if (!Array.isArray(splits)) {
-        return res.status(400).json({ message: "Splits must be an array" });
-      }
-      if (splits.some((split) => !split || typeof split !== "object")) {
-        return res.status(400).json({ message: "Each split must include a member and amount" });
-      }
-
-      finalSplits = splits.map((s) => ({
-        user: s.user,
-        amount: Math.round(Number(s.amount) * 100) / 100,
-        paid: s.user?.toString() === paidBy.toString(),
-      }));
-
-      const exactTotalPaise = finalSplits.reduce((sum, split) => sum + Math.round(split.amount * 100), 0);
-      if (
-        finalSplits.some((split) => !Number.isFinite(split.amount) || split.amount <= 0) ||
-        exactTotalPaise !== Math.round(totalAmount * 100)
-      ) {
-        return res.status(400).json({ message: "Exact splits must be positive amounts with at most two decimal places and add up to the expense amount" });
-      }
-    } else if (splitType === "percentage") {
-      if (!splits || splits.length === 0) {
-        return res.status(400).json({ message: "Splits details are required for percentage split type" });
-      }
-      if (!Array.isArray(splits)) {
-        return res.status(400).json({ message: "Splits must be an array" });
-      }
-      if (splits.some((split) => !split || typeof split !== "object")) {
-        return res.status(400).json({ message: "Each split must include a member and percentage" });
-      }
-
-      const totalPercentage = splits.reduce((sum, split) => sum + split.percentage, 0);
-      if (
-        splits.some((split) => !Number.isFinite(split.percentage) || split.percentage <= 0) ||
-        Math.abs(totalPercentage - 100) > 0.000001
-      ) {
-        return res.status(400).json({ message: "Split percentages must be positive and add up to 100" });
-      }
-
-      const totalPaise = Math.round(totalAmount * 100);
-      let sumOfSplits = 0;
-      finalSplits = splits.map((s) => {
-        const share = Math.floor((s.percentage / 100) * totalPaise);
-        sumOfSplits += share;
-        return {
-          user: s.user,
-          amount: share / 100,
-          paid: s.user?.toString() === paidBy.toString(),
-        };
-      });
-      // Distribute any float rounding leftover to the first member
-      const remainder = totalPaise - sumOfSplits;
-      if (remainder > 0 && finalSplits.length > 0) {
-        finalSplits[0].amount += remainder / 100;
-      }
     } else {
-      return res.status(400).json({ message: "Invalid split type" });
-    }
+      if (!Array.isArray(splits) || splits.length === 0) {
+        return res.status(400).json({ message: "Add the split amounts before saving this expense" });
+      }
+      if (splits.some(split => !split || typeof split !== "object")) {
+        return res.status(400).json({ message: "Each split must include a group member and a value" });
+      }
 
-    const finalSplitUserIds = finalSplits.map((split) => split.user?.toString());
-    if (
-      finalSplitUserIds.some((memberId) => !memberIds.has(memberId)) ||
-      new Set(finalSplitUserIds).size !== finalSplitUserIds.length
-    ) {
-      return res.status(400).json({ message: "Split members must be unique members of this group" });
+      if (splitType === "exact") {
+        finalSplits = splits.map(split => {
+          const value = Number(split.amount);
+          const paise = Math.round(value * 100);
+          return {
+            user: split.user,
+            amount: paise / 100,
+            paise,
+            paid: split.user?.toString() === paidBy.toString(),
+            validAmount: Number.isFinite(value) &&
+              Number.isSafeInteger(paise) &&
+              paise > 0 &&
+              Math.abs(value * 100 - paise) <= 0.000001,
+          };
+        });
+
+        if (finalSplits.some(split => !split.validAmount)) {
+          return res.status(400).json({ message: "Each exact split must be a positive amount with at most two decimal places" });
+        }
+        if (finalSplits.reduce((sum, split) => sum + split.paise, 0) !== totalPaise) {
+          return res.status(400).json({ message: "Exact split amounts must add up to the expense total" });
+        }
+        if (!splitListMatchesSelection(finalSplits)) {
+          return res.status(400).json({ message: "Each selected group member must have exactly one split amount" });
+        }
+        finalSplits = finalSplits.map(({ user, amount, paid }) => ({ user, amount, paid }));
+      } else {
+        const percentages = splits.map(split => Number(split.percentage));
+        if (
+          percentages.some(value => !Number.isFinite(value) || value <= 0 || value > 100) ||
+          Math.abs(percentages.reduce((sum, value) => sum + value, 0) - 100) > 0.000001
+        ) {
+          return res.status(400).json({ message: "Split percentages must be positive and add up to 100" });
+        }
+        if (!splitListMatchesSelection(splits)) {
+          return res.status(400).json({ message: "Each selected group member must have exactly one split percentage" });
+        }
+
+        const allocations = splits.map((split, index) => {
+          const exactPaise = (percentages[index] / 100) * totalPaise;
+          const basePaise = Math.floor(exactPaise);
+          return {
+            user: split.user,
+            paid: split.user?.toString() === paidBy.toString(),
+            paise: basePaise,
+            remainder: exactPaise - basePaise,
+          };
+        });
+        let unallocatedPaise = totalPaise - allocations.reduce((sum, item) => sum + item.paise, 0);
+        const remainderOrder = allocations
+          .map((item, index) => ({ index, remainder: item.remainder }))
+          .sort((a, b) => b.remainder - a.remainder || a.index - b.index);
+        for (let index = 0; index < unallocatedPaise; index += 1) {
+          allocations[remainderOrder[index].index].paise += 1;
+        }
+        if (allocations.some(item => item.paise <= 0)) {
+          return res.status(400).json({ message: "Each selected member must receive at least ₹0.01 in a percentage split" });
+        }
+        finalSplits = allocations.map(item => ({
+          user: item.user,
+          amount: item.paise / 100,
+          paid: item.paid,
+        }));
+      }
     }
 
     const expense = await Expense.create({
       description,
-      amount: totalAmount,
+      amount: totalPaise / 100,
       paidBy,
       group: targetGroupId,
       splits: finalSplits,
-      splitType: splitType || "equal",
-      category: category || "other",
+      splitType,
+      category,
     });
 
-    const populated = await Expense.findById(expense._id)
-      .populate("paidBy", "name email")
-      .populate("splits.user", "name email upiId");
+    let responseExpense = expense;
+    try {
+      responseExpense = await Expense.findById(expense._id)
+        .populate("paidBy", "name email")
+        .populate("splits.user", "name email upiId") || expense;
+    } catch (populateError) {
+      console.error("Expense was saved but could not be populated:", populateError);
+    }
 
-    try { getIO()?.to(targetGroupId.toString()).emit('expense_added', populated); } catch { console.warn("Socket emission warning"); }
-
-    // Log activity
-    await ActivityLog.create({
+    // Activity history is best-effort: a log outage must not make a successful
+    // expense creation look failed and cause the client to submit it twice.
+    ActivityLog.create({
       group: targetGroupId,
       actor: req.user.id,
-      type: 'expense_added',
+      type: "expense_added",
       meta: {
         description: expense.description,
-        amount:      expense.amount,
-        category:    expense.category,
-        splitType:   expense.splitType,
+        amount: expense.amount,
+        category: expense.category,
+        splitType: expense.splitType,
       },
-    });
+    }).catch(error => console.error("Could not record expense-added activity:", error));
 
-    res.status(201).json(populated);
+    try {
+      getIO()?.to(targetGroupId.toString()).emit("expense_added", responseExpense);
+    } catch (socketError) {
+      console.warn("Expense notification could not be delivered:", socketError);
+    }
 
-    // Bust the trust-score cache for the expense payer — their contribution
-    // ratio and spending consistency may have changed.
-    clearInsightCaches([paidBy, ...finalSplits.map((split) => split.user)]);
+    try {
+      clearInsightCaches([paidBy, ...finalSplits.map(split => split.user)]);
+    } catch (cacheError) {
+      console.warn("Expense insight cache could not be cleared:", cacheError);
+    }
+
+    return res.status(201).json(responseExpense);
   } catch (error) {
     console.error("Error creating expense:", error);
-    res.status(500).json({ message: "Internal server error" });
+    if (error.name === "ValidationError" || error.name === "CastError") {
+      return res.status(400).json({ message: "Please check the expense details and try again" });
+    }
+    return res.status(500).json({ message: "We could not save this expense. Please try again." });
+  } finally {
+    if (reservedGroupId) {
+      try {
+        await Group.updateOne(
+          { _id: reservedGroupId, activeMutations: { $gt: 0 } },
+          { $inc: { activeMutations: -1 } },
+        );
+      } catch (releaseError) {
+        console.error("Could not release the group expense-create guard:", releaseError);
+      }
+    }
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
 // GET EXPENSES FOR A GROUP — with month-wise pagination
 //
 // Query params:
@@ -261,54 +357,146 @@ router.get("/group/:groupId", protect, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // DELETE EXPENSE
 // Only the payer can delete, and only within 2 hours of creation.
-// ─────────────────────────────────────────────────────────────────────────────
-router.delete("/:id", protect, async (req, res) => {
+// Once a payment is pending/confirmed or an active schedule exists, preserve
+// the expense as part of the group's financial history.
+router.delete("/:id", async (req, res) => {
+  let reservedGroupId = null;
   try {
-    const expense = await Expense.findById(req.params.id);
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ message: "Invalid expense id" });
+    }
 
+    const expense = await Expense.findById(req.params.id);
     if (!expense) {
       return res.status(404).json({ message: "Expense not found" });
     }
 
     if (expense.paidBy.toString() !== req.user.id) {
-      return res
-        .status(401)
-        .json({ message: "Only the person who paid can delete this expense" });
+      return res.status(403).json({ message: "Only the person who paid can delete this expense" });
     }
 
-    // ── 2-hour window check ───────────────────────────────────────────────────
-    const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
-    const ageMs = Date.now() - new Date(expense.createdAt).getTime();
-    if (ageMs > TWO_HOURS_MS) {
+    const group = await Group.findOneAndUpdate(
+      {
+        _id: expense.group,
+        "members.user": req.user.id,
+        isDeleting: { $ne: true },
+      },
+      {
+        $inc: { activeMutations: 1 },
+        $set: { mutationExpiresAt: new Date(Date.now() + 5 * 60 * 1000) },
+      },
+      { new: true },
+    );
+    if (!group) {
+      const existingGroup = await Group.findById(expense.group).select("isDeleting");
+      if (!existingGroup) {
+        return res.status(409).json({ message: "This expense belongs to a group that no longer exists" });
+      }
+      if (existingGroup.isDeleting) {
+        return res.status(409).json({ message: "This group is being deleted. Refresh the page to see the latest state." });
+      }
+      return res.status(403).json({ message: "You must be a current group member to delete this expense" });
+    }
+    reservedGroupId = group._id;
+
+    const now = Date.now();
+    const createdAt = new Date(expense.createdAt).getTime();
+    const twoHoursMs = 2 * 60 * 60 * 1000;
+    if (!Number.isFinite(createdAt) || createdAt > now || now - createdAt > twoHoursMs) {
       return res.status(403).json({
-        message:
-          "Expenses can only be deleted within 2 hours of being added. This window has expired.",
+        message: "Expenses can only be deleted within 2 hours of being added. This window has expired.",
       });
     }
-    // ─────────────────────────────────────────────────────────────────────────
 
-    await expense.deleteOne();
+    // The data model does not link a settlement to a specific expense.
+    // Block deletion only when relevant payment activity was created after this
+    // expense (or is legacy data without a timestamp).
+    const [hasSettlement, hasActiveSchedule] = await Promise.all([
+      Settlement.exists({
+        group: expense.group,
+        $and: [
+          {
+            $or: [
+              { status: { $in: ["pending", "confirmed"] } },
+              { status: { $exists: false } },
+            ],
+          },
+          {
+            $or: [
+              { createdAt: { $gte: expense.createdAt } },
+              { createdAt: { $exists: false } },
+            ],
+          },
+        ],
+      }),
+      SettlementSchedule.exists({
+        group: expense.group,
+        active: true,
+        $or: [
+          { createdAt: { $gte: expense.createdAt } },
+          { createdAt: { $exists: false } },
+        ],
+      }),
+    ]);
 
-    // Log activity
-    await ActivityLog.create({
-      group: expense.group,
-      actor: req.user.id,
-      type:  'expense_deleted',
-      meta: {
-        description: expense.description,
-        amount:      expense.amount,
-      },
+    if (hasSettlement || hasActiveSchedule) {
+      return res.status(409).json({
+        message: "A payment was requested or scheduled after this expense was added. To protect the payment history, this expense cannot be deleted. Add a correcting expense instead.",
+      });
+    }
+
+    // Delete conditionally so two simultaneous delete requests cannot both
+    // report success or create duplicate activity entries.
+    const deletedExpense = await Expense.findOneAndDelete({
+      _id: expense._id,
+      paidBy: req.user.id,
+      createdAt: { $gte: new Date(now - twoHoursMs), $lte: new Date(now) },
     });
 
-    // Emit real-time event
-    try { getIO()?.to(expense.group.toString()).emit('expense_deleted', { expenseId: req.params.id }); } catch { console.warn("Socket emission warning"); }
+    if (!deletedExpense) {
+      return res.status(409).json({ message: "This expense has already been changed or deleted. Refresh the group and try again." });
+    }
 
-    clearInsightCaches([expense.paidBy, ...expense.splits.map((split) => split.user)]);
+    ActivityLog.create({
+      group: deletedExpense.group,
+      actor: req.user.id,
+      type: "expense_deleted",
+      meta: {
+        description: deletedExpense.description,
+        amount: deletedExpense.amount,
+      },
+    }).catch(error => console.error("Could not record expense-deleted activity:", error));
 
-    res.json({ message: "Expense deleted" });
+    try {
+      getIO()?.to(deletedExpense.group.toString()).emit("expense_deleted", { expenseId: deletedExpense._id.toString() });
+    } catch (socketError) {
+      console.warn("Expense deletion notification could not be delivered:", socketError);
+    }
+
+    try {
+      clearInsightCaches([deletedExpense.paidBy, ...deletedExpense.splits.map(split => split.user)]);
+    } catch (cacheError) {
+      console.warn("Expense deletion cache could not be cleared:", cacheError);
+    }
+
+    return res.json({ message: "Expense deleted", expenseId: deletedExpense._id });
   } catch (error) {
     console.error("Error deleting expense:", error);
-    res.status(500).json({ message: "Internal server error" });
+    if (error.name === "CastError") {
+      return res.status(400).json({ message: "Invalid expense id" });
+    }
+    return res.status(500).json({ message: "We could not delete this expense. Please try again." });
+  } finally {
+    if (reservedGroupId) {
+      try {
+        await Group.updateOne(
+          { _id: reservedGroupId, activeMutations: { $gt: 0 } },
+          { $inc: { activeMutations: -1 } },
+        );
+      } catch (releaseError) {
+        console.error("Could not release the group expense-delete guard:", releaseError);
+      }
+    }
   }
 });
 

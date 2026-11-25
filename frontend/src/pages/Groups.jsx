@@ -32,6 +32,7 @@ export default function Groups() {
 
   const loadGroups = useCallback(async () => {
     setLoading(true)
+    setError('')
     try {
       const { data } = await axios.get('/groups')
       setGroups(data)
@@ -47,7 +48,8 @@ export default function Groups() {
           })
           return [group._id, balance]
         } catch {
-          return [group._id, 0]
+          // Do not present a failed balance request as a settled group.
+          return [group._id, null]
         }
       }))
       setBalances(Object.fromEntries(results))
@@ -80,17 +82,26 @@ export default function Groups() {
 
   const handleCreate = async (event) => {
     event.preventDefault()
-    if (!name.trim()) return
+    const cleanName = name.trim()
+    const cleanDescription = description.trim()
+    if (!cleanName) {
+      setError('Enter a group name before creating the group.')
+      return
+    }
+    if (cleanName.length > 80 || cleanDescription.length > 280) {
+      setError('Group names can contain up to 80 characters and descriptions up to 280 characters.')
+      return
+    }
     setCreating(true)
     setError('')
     try {
-      const { data } = await axios.post('/groups', { name: name.trim(), description: description.trim() })
+      const { data } = await axios.post('/groups', { name: cleanName, description: cleanDescription })
       setShowCreate(false)
       setName('')
       setDescription('')
       navigate(`/group/${data._id}`)
     } catch (err) {
-      setError(err.response?.data?.message || 'Could not create this group.')
+      setError(err.response?.data?.message || 'We could not create this group. Check your connection and try again.')
     } finally {
       setCreating(false)
     }
@@ -151,7 +162,7 @@ export default function Groups() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {visibleGroups.map(group => {
-              const balance = balances[group._id] || 0
+              const balance = balances[group._id]
               const members = group.members || []
               return (
                 <Link key={group._id} to={`/group/${group._id}`} className="app-card app-card-hover p-5 sm:p-6 flex flex-col min-h-[224px] group">
@@ -167,7 +178,13 @@ export default function Groups() {
                     <div>
                       <p className="app-stat-label mb-1.5">Your position</p>
                       <p className={`text-sm font-bold tabular-nums ${balance > 0.005 ? 'app-balance-positive' : balance < -0.005 ? 'app-balance-negative' : ''}`}>
-                        {balance > 0.005 ? `You receive ${money(balance)}` : balance < -0.005 ? `You pay ${money(balance)}` : 'All settled'}
+                        {balance === null
+                          ? 'Balance unavailable'
+                          : balance > 0.005
+                            ? `You receive ${money(balance)}`
+                            : balance < -0.005
+                              ? `You pay ${money(balance)}`
+                              : 'All settled'}
                       </p>
                     </div>
                     <div className="flex -space-x-2 shrink-0">
@@ -193,9 +210,9 @@ export default function Groups() {
                 <button type="button" onClick={() => setShowCreate(false)} className="w-9 h-9 rounded-xl hover:bg-[var(--surface-container-low)] app-muted"><span className="material-symbols-outlined">close</span></button>
               </div>
               <label className="app-page-kicker block mb-2">Group name</label>
-              <input autoFocus value={name} onChange={event => setName(event.target.value)} className="app-input mb-4" placeholder="e.g. Hostel Room 204" required maxLength={80}/>
+              <input autoFocus value={name} onChange={event => { setName(event.target.value); setError('') }} className="app-input mb-4" placeholder="e.g. Hostel Room 204" required maxLength={80}/>
               <label className="app-page-kicker block mb-2">Description <span className="normal-case tracking-normal font-medium">(optional)</span></label>
-              <input value={description} onChange={event => setDescription(event.target.value)} className="app-input" placeholder="What is this group for?"/>
+              <input value={description} onChange={event => { setDescription(event.target.value); setError('') }} className="app-input" placeholder="What is this group for?" maxLength={280}/>
               {error && <p className="text-xs text-rose-500 mt-3">{error}</p>}
               <div className="flex justify-end gap-2 mt-7">
                 <button type="button" onClick={() => setShowCreate(false)} className="app-button-secondary">Cancel</button>

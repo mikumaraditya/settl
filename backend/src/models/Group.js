@@ -33,6 +33,22 @@ const groupSchema = new mongoose.Schema(
       type: String,
       default: "INR",
     },
+    // Lifecycle guard: prevents a group being deleted while an expense
+    // create/delete request is in flight. Existing documents default safely.
+    isDeleting: {
+      type: Boolean,
+      default: false,
+    },
+    activeMutations: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    // A crashed process cannot leave the group permanently blocked.
+    mutationExpiresAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true },
 );
