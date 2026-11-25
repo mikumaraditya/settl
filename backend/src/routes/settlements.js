@@ -132,7 +132,7 @@ export async function autoExpirePendingSettlements(groupId = null) {
         { $set: { status: "accepted", paymentSettlement: null } },
       );
 
-      ActivityLog.create({
+      await ActivityLog.create({
         group: expired.group,
         actor: expired.from,
         type: "settlement_expired",
@@ -525,7 +525,7 @@ router.post("/confirm", protect, async (req, res) => {
       { new: true },
     );
     if (linkedSchedule) {
-      ActivityLog.create({
+      await ActivityLog.create({
         group: linkedSchedule.group,
         actor: req.user.id,
         type: "schedule_completed",
@@ -538,7 +538,7 @@ router.post("/confirm", protect, async (req, res) => {
       .populate("to", "name email upiId");
 
     safeEmit(groupId, "settlement_done", populated);
-    ActivityLog.create({
+    await ActivityLog.create({
       group: groupId,
       actor: req.user.id,
       type: "settlement_confirmed",
@@ -600,7 +600,7 @@ const handlePayerCancel = async (req, res) => {
       { $set: { status: "accepted", paymentSettlement: null } },
     );
 
-    ActivityLog.create({
+    await ActivityLog.create({
       group: groupId,
       actor: req.user.id,
       type: "settlement_cancelled",
@@ -685,7 +685,7 @@ router.post("/reject", protect, async (req, res) => {
       fromId: fromUserId,
       toId: req.user.id,
     });
-    ActivityLog.create({
+    await ActivityLog.create({
       group: groupId,
       actor: req.user.id,
       type: "settlement_rejected",
@@ -914,7 +914,7 @@ router.post("/schedule/:scheduleId/respond", async (req, res) => {
     }
 
     safeEmitSchedule(schedule, action === "accept" ? "schedule_accepted" : "schedule_rejected");
-    ActivityLog.create({
+    await ActivityLog.create({
       group: schedule.group, actor: req.user.id,
       type: action === "accept" ? "schedule_accepted" : "schedule_rejected",
       meta: { amount: schedule.amount, fromId: schedule.from?._id?.toString(), toId: schedule.to?._id?.toString(), dueDate: schedule.dueDate.toISOString().slice(0, 10) },
@@ -971,7 +971,7 @@ router.post("/schedule/:scheduleId/cancel", async (req, res) => {
     if (!schedule) return res.status(404).json({ message: "No cancellable payment schedule found" });
 
     safeEmitSchedule(schedule, "schedule_cancelled");
-    ActivityLog.create({
+    await ActivityLog.create({
       group: schedule.group, actor: req.user.id, type: "schedule_cancelled",
       meta: { amount: schedule.amount, fromId: schedule.from?._id?.toString(), toId: schedule.to?._id?.toString() },
     }).catch(error => console.error("Could not record schedule-cancelled activity:", error));
