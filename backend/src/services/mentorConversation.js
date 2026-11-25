@@ -1,73 +1,108 @@
 import { randomUUID } from "node:crypto";
+import mongoose from "mongoose";
 import MentorConversation from "../models/MentorConversation.js";
 
 const REQUEST_LEASE_MS = 5 * 60 * 1000;
 const MAX_STORED_MESSAGES = 60;
 
 function createBusyError() {
-  const error = new Error("Finn is already processing a message for this account. Please wait for that reply before sending another.");
+  const error = new Error("Finn is already processing a message in this conversation. Please wait for that reply before sending another.");
   error.status = 409;
   error.code = "MENTOR_REQUEST_IN_PROGRESS";
   return error;
 }
 
-/**
- * Acquire a short per-user lease so two requests cannot build from the same
- * conversation history and overwrite or interleave each other's turns.
- * The lease expires after five minutes to recover from a crashed worker.
- */
-export async function acquireMentorConversation(userId) {
-  const requestId = randomUUID();
-  const now = new Date();
-  const filter = {
-    user: userId,
-    $or: [
-      { activeRequestExpiresAt: { $exists: false } },
-      { activeRequestExpiresAt: { $lte: now } },
-    ],
-  };
-  const update = {
-    $set: {
-      activeRequestId: requestId,
-      activeRequestExpiresAt: new Date(now.getTime() + REQUEST_LEASE_MS),
-    },
-    $setOnInsert: {
-      user: userId,
-      messages: [],
-    },
-  };
+function createNotFoundError() {
+  const error = new Error("Conversation not found.");
+  error.status = 404;
+  error.code = "MENTOR_CONVERSATION_NOT_FOUND";
+  return error;
+}
 
-  let conversation;
-  try {
-    conversation = await MentorConversation.findOneAndUpdate(filter, update, {
-      new: true,
-      upsert: true,
-      setDefaultsOnInsert: true,
-    });
-  } catch (error) {
-    // Two first-time requests can race to create the unique user conversation.
-    // The loser retries as an ordinary lock acquisition and receives 409.
-    if (error?.code !== 11000) throw error;
-    conversation = await MentorConversation.findOneAndUpdate(filter, {
-      $set: {
-        activeRequestId: requestId,
-        activeRequestExpiresAt: new Date(Date.now() + REQUEST_LEASE_MS),
-      },
-    }, { new: true });
-  }
-
-  if (!conversation) throw createBusyError();
-  return { conversation, requestId };
+function createArchivedError() {
+  const error = new Error("This conversation is archived. Restore it before sending a message.");
+  error.status = 409;
+  error.code = "MENTOR_CONVERSATION_ARCHIVED";
+  return error;
 }
 
 /**
- * Append a completed turn atomically and release its lease. $push avoids
- * replacing a stale in-memory document, while $slice bounds stored history.
+ * Acquire a short lease for one conversation. Different conversations owned
+ * by the same user can run independently; only one request can mutate a
+ * particular thread at a time.
+ *
+ * Omitting conversationId retains compatibility with older clients by using
+ * the user's most recently active conversation, or creating one when needed.
  */
-export async function appendMentorTurn(userId, requestId, message, reply, toolsUsed = []) {
+export async function acquireMentorConversation(userId, conversationId = null) {
+  let target;
+
+  if (conversationId) {
+    if (!mongoose.isValidObjectId(conversationId)) throw createNotFoundError();
+    target = await MentorConversation.findOne({ _id: conversationId, user: userId })
+      .select("+activeRequestId +activeRequestExpiresAt");
+    if (!target) throw createNotFoundError();
+    if (target.archivedAt) throw createArchivedError();
+  } else {
+    target = await MentorConversation.findOne({ user: userId, archivedAt: null })
+      .sort({ lastActiveAt: -1, updatedAt: -1 })
+      .select("+activeRequestId +activeRequestExpiresAt");
+
+    if (!target) {
+      target = await MentorConversation.create({
+        user: userId,
+        title: "New conversation",
+        messages: [],
+      });
+    }
+  }
+
+  const requestId = randomUUID();
+  const now = new Date();
+  const conversation = await MentorConversation.findOneAndUpdate(
+    {
+      _id: target._id,
+      user: userId,
+      archivedAt: null,
+      $or: [
+        { activeRequestExpiresAt: { $exists: false } },
+        { activeRequestExpiresAt: { $lte: now } },
+      ],
+    },
+    {
+      $set: {
+        activeRequestId: requestId,
+        activeRequestExpiresAt: new Date(now.getTime() + REQUEST_LEASE_MS),
+      },
+    },
+    { new: true },
+  );
+
+  if (!conversation) {
+    const current = await MentorConversation.findOne({ _id: target._id, user: userId })
+      .select("+activeRequestExpiresAt");
+    if (!current) throw createNotFoundError();
+    if (current.archivedAt) throw createArchivedError();
+    throw createBusyError();
+  }
+
+  return { conversation, conversationId: conversation._id.toString(), requestId };
+}
+
+/**
+ * Append a completed turn to the selected thread and release only its lease.
+ */
+export async function appendMentorTurn(
+  userId,
+  conversationId,
+  requestId,
+  message,
+  reply,
+  toolsUsed = [],
+) {
   const now = new Date();
   const result = await MentorConversation.updateOne(
-    { user: userId, activeRequestId: requestId },
+    { _id: conversationId, user: userId, activeRequestId: requestId, archivedAt: null },
     {
       $push: {
         messages: {
@@ -94,11 +129,11 @@ export async function appendMentorTurn(userId, requestId, message, reply, toolsU
   }
 }
 
-/** Release a lease after failure, cancellation, or a provider error. */
-export async function releaseMentorConversation(userId, requestId) {
-  if (!userId || !requestId) return;
+/** Release one thread's lease after failure, cancellation, or provider error. */
+export async function releaseMentorConversation(userId, conversationId, requestId) {
+  if (!userId || !conversationId || !requestId) return;
   await MentorConversation.updateOne(
-    { user: userId, activeRequestId: requestId },
+    { _id: conversationId, user: userId, activeRequestId: requestId },
     {
       $unset: {
         activeRequestId: 1,
