@@ -49,6 +49,15 @@ const groupSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // Membership changes are exclusive with expense writes and group deletion.
+    membershipMutation: {
+      type: Boolean,
+      default: false,
+    },
+    membershipMutationExpiresAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true },
 );

@@ -15,6 +15,69 @@ const router = express.Router();
 
 router.use(protect, requireVerified);
 
+const acquireMembershipMutation = async (groupId) => Group.findOneAndUpdate(
+  {
+    _id: groupId,
+    isDeleting: { $ne: true },
+    $and: [
+      {
+        $or: [
+          { membershipMutation: { $ne: true } },
+          {
+            membershipMutation: true,
+            membershipMutationExpiresAt: { $type: "date", $lte: new Date() },
+          },
+        ],
+      },
+      {
+        $or: [
+          { activeMutations: 0 },
+          { activeMutations: { $exists: false } },
+          {
+            activeMutations: { $gt: 0 },
+            mutationExpiresAt: { $type: "date", $lte: new Date() },
+          },
+        ],
+      },
+    ],
+  },
+  {
+    $set: {
+      membershipMutation: true,
+      membershipMutationExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      activeMutations: 0,
+      mutationExpiresAt: null,
+    },
+  },
+  { new: true },
+);
+
+const releaseMembershipMutation = async (groupId, leaseExpiresAt) => {
+  if (!groupId || !leaseExpiresAt) return;
+  await Group.updateOne(
+    {
+      _id: groupId,
+      membershipMutation: true,
+      membershipMutationExpiresAt: leaseExpiresAt,
+    },
+    { $set: { membershipMutation: false, membershipMutationExpiresAt: null } },
+  );
+};
+
+const membershipMutationConflict = async (groupId) => {
+  const current = await Group.findById(groupId).select("isDeleting membershipMutation membershipMutationExpiresAt activeMutations mutationExpiresAt");
+  if (!current) {
+    return { status: 404, message: "Group not found" };
+  }
+  if (current.isDeleting) {
+    return { status: 409, message: "This group is being deleted and cannot be changed" };
+  }
+  return {
+    status: 409,
+    message: "This group is being updated. Please wait a moment and try again.",
+  };
+};
+
 // CREATE GROUP
 router.post("/", async (req, res) => {
   const rawName = req.body?.name;
@@ -99,74 +162,135 @@ router.get("/:id", protect, async (req, res) => {
 });
 
 // ADD MEMBER TO GROUP (admin only)
-router.post("/:id/members", protect, async (req, res) => {
-  const { email } = req.body;
-
+router.post("/:id/members", async (req, res) => {
+  let reservedGroupId = null;
+  let reservedMembershipLease = null;
   try {
-    const group = await Group.findById(req.params.id);
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ message: "Invalid group id" });
+    }
+
+    const rawEmail = req.body?.email;
+    if (typeof rawEmail !== "string") {
+      return res.status(400).json({ message: "Enter the email address of the person to add" });
+    }
+    const email = rawEmail.trim().toLowerCase();
+    if (
+      !email ||
+      email.length > 254 ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    ) {
+      return res.status(400).json({ message: "Enter a valid email address" });
+    }
+
+    const group = await acquireMembershipMutation(req.params.id);
     if (!group) {
-      return res.status(404).json({ message: "Group not found" });
+      const conflict = await membershipMutationConflict(req.params.id);
+      return res.status(conflict.status).json({ message: conflict.message });
     }
+    reservedGroupId = group._id;
+    reservedMembershipLease = group.membershipMutationExpiresAt;
 
-    // Only admins can add members
-    const requester = group.members.find(
-      (m) => m.user.toString() === req.user.id,
-    );
+    const requester = group.members.find(member => member.user.toString() === req.user.id);
     if (!requester || requester.role !== "admin") {
-      return res.status(403).json({ message: "Only admins can add members" });
+      return res.status(403).json({ message: "Only group admins can add members" });
     }
 
-    // find user by email
     const userToAdd = await User.findOne({ email });
     if (!userToAdd) {
-      return res.status(404).json({ message: "No user found with that email" });
+      return res.status(404).json({ message: "No Settl account was found with that email. Ask them to register first." });
     }
 
-    // check if already a member
-    const alreadyMember = group.members.find(
-      (m) => m.user.toString() === userToAdd._id.toString(),
-    );
-    if (alreadyMember) {
-      return res.status(400).json({ message: "User already in group" });
+    if (group.members.some(member => member.user.toString() === userToAdd._id.toString())) {
+      return res.status(409).json({ message: "This person is already a member of the group" });
     }
 
-    group.members.push({ user: userToAdd._id, role: "member" });
-    await group.save();
+    // The membership lock serializes group edits; the query also checks the
+    // target is not already present so duplicate requests cannot add twice.
+    const updated = await Group.findOneAndUpdate(
+      {
+        _id: group._id,
+        isDeleting: { $ne: true },
+        membershipMutation: true,
+        membershipMutationExpiresAt: reservedMembershipLease,
+        "members.user": { $ne: userToAdd._id },
+        members: {
+          $elemMatch: { user: req.user.id, role: "admin" },
+        },
+      },
+      {
+        $push: { members: { user: userToAdd._id, role: "member" } },
+      },
+      { new: true },
+    ).populate("members.user", "name email upiId");
 
-    const updated = await Group.findById(req.params.id).populate(
-      "members.user",
-      "name email upiId",
-    );
+    if (!updated) {
+      const latest = await Group.findById(group._id);
+      if (!latest) {
+        return res.status(404).json({ message: "Group not found" });
+      }
+      if (latest.isDeleting) {
+        return res.status(409).json({ message: "This group is being deleted and can no longer accept members" });
+      }
+      if (latest.members.some(member => member.user.toString() === userToAdd._id.toString())) {
+        return res.status(409).json({ message: "This person is already a member of the group" });
+      }
+      return res.status(403).json({ message: "Your admin permission changed. Refresh the group and try again." });
+    }
 
-    res.json(updated);
-
-    // Log activity (non-blocking)
     ActivityLog.create({
-      group: req.params.id,
+      group: group._id,
       actor: req.user.id,
-      type: 'member_added',
+      type: "member_added",
       meta: { memberName: userToAdd.name, memberEmail: userToAdd.email },
-    }).catch(() => {});
+    }).catch(error => console.error("Could not record member-added activity:", error));
+
+    try {
+      await releaseMembershipMutation(reservedGroupId, reservedMembershipLease);
+    } catch (releaseError) {
+      console.error("Could not release group membership lock before response:", releaseError);
+    }
+    reservedGroupId = null;
+    reservedMembershipLease = null;
+    return res.status(201).json(updated);
   } catch (error) {
     console.error("Error adding member to group:", error);
-    res.status(500).json({ message: "Internal server error" });
+    if (error.name === "CastError" || error.name === "ValidationError") {
+      return res.status(400).json({ message: "Please check the member details and try again" });
+    }
+    return res.status(500).json({ message: "We could not add this member. Please try again." });
+  } finally {
+    if (reservedGroupId) {
+      try {
+        await releaseMembershipMutation(reservedGroupId, reservedMembershipLease);
+      } catch (releaseError) {
+        console.error("Could not release group membership lock:", releaseError);
+      }
+    }
   }
 });
 
 // REMOVE MEMBER FROM GROUP
-// - Admin can remove any other member (not the sole admin)
-// - Any member can remove themselves (leave group)
-// - In both cases, the target member must have zero pending balance
-router.delete("/:id/members/:userId", protect, async (req, res) => {
+// - Admins can remove another member.
+// - Any member can leave voluntarily.
+// - The target must have no unpaid balance or unresolved payment activity.
+router.delete("/:id/members/:userId", async (req, res) => {
+  let reservedGroupId = null;
+  let reservedMembershipLease = null;
   try {
-    const group = await Group.findById(req.params.id);
-    if (!group) {
-      return res.status(404).json({ message: "Group not found" });
+    if (!mongoose.isValidObjectId(req.params.id) || !mongoose.isValidObjectId(req.params.userId)) {
+      return res.status(400).json({ message: "Invalid group or member id" });
     }
 
-    const requester = group.members.find(
-      (m) => m.user.toString() === req.user.id,
-    );
+    const group = await acquireMembershipMutation(req.params.id);
+    if (!group) {
+      const conflict = await membershipMutationConflict(req.params.id);
+      return res.status(conflict.status).json({ message: conflict.message });
+    }
+    reservedGroupId = group._id;
+    reservedMembershipLease = group.membershipMutationExpiresAt;
+
+    const requester = group.members.find(member => member.user.toString() === req.user.id);
     if (!requester) {
       return res.status(403).json({ message: "You are not a member of this group" });
     }
@@ -174,92 +298,146 @@ router.delete("/:id/members/:userId", protect, async (req, res) => {
     const targetId = req.params.userId;
     const isSelf = req.user.id === targetId;
 
-    // Permission check:
-    // - A member can only remove themselves
-    // - An admin can remove anyone (except the sole admin restriction below)
     if (!isSelf && requester.role !== "admin") {
       return res.status(403).json({ message: "Only admins can remove other members" });
     }
 
-    // Make sure the target is actually in the group
-    const targetMember = group.members.find(
-      (m) => m.user.toString() === targetId,
-    );
+    const targetMember = group.members.find(member => member.user.toString() === targetId);
     if (!targetMember) {
       return res.status(404).json({ message: "Member not found in group" });
     }
 
-    // Cannot remove the only admin (applies to both self-leave and admin removal)
-    const admins = group.members.filter((m) => m.role === "admin");
-    const targetIsAdmin = targetMember.role === "admin";
-    if (targetIsAdmin && admins.length === 1) {
-      return res.status(400).json({
+    const admins = group.members.filter(member => member.role === "admin");
+    if (targetMember.role === "admin" && admins.length === 1) {
+      return res.status(409).json({
         message: isSelf
-          ? "You are the only admin. Please assign another admin before leaving."
-          : "Cannot remove the only admin",
+          ? "You are the only admin. Assign another admin before leaving this group."
+          : "The only admin cannot be removed. Assign another admin first.",
       });
     }
 
-    // ── Balance check ────────────────────────────────────────────────────────
-    // Run the same settlement algorithm used by the simplify endpoint so we
-    // know whether this member still has a pending debt or credit.
-    const [expenses, settlements] = await Promise.all([
-      Expense.find({ group: req.params.id })
+    const [expenses, settlements, pendingSettlement, activeSchedule] = await Promise.all([
+      Expense.find({ group: group._id })
         .populate("paidBy", "name")
         .populate("splits.user", "name"),
-      Settlement.find({ group: req.params.id }),
+      Settlement.find({ group: group._id }),
+      Settlement.exists({
+        group: group._id,
+        status: "pending",
+        $or: [{ from: targetId }, { to: targetId }],
+      }),
+      SettlementSchedule.exists({
+        group: group._id,
+        active: true,
+        $or: [{ from: targetId }, { to: targetId }],
+      }),
     ]);
 
-    const confirmedSettlements = settlements.filter(s => !s.status || s.status === 'confirmed');
-    const rawTxns = simplifyDebts(expenses, confirmedSettlements);
+    if (pendingSettlement) {
+      return res.status(409).json({
+        message: isSelf
+          ? "You have a payment awaiting confirmation. Finish or cancel it before leaving."
+          : "This member has a payment awaiting confirmation. Finish or cancel it before removal.",
+      });
+    }
 
-    const hasPendingBalance = rawTxns.some(
-      (t) => t.from === targetId || t.to === targetId,
+    if (activeSchedule) {
+      return res.status(409).json({
+        message: isSelf
+          ? "You have an active payment schedule. Complete or cancel it before leaving."
+          : "This member has an active payment schedule. Complete or cancel it before removal.",
+      });
+    }
+
+    const confirmedSettlements = settlements.filter(
+      settlement => !settlement.status || settlement.status === "confirmed",
+    );
+    const pendingTransactions = simplifyDebts(expenses, confirmedSettlements);
+    const hasPendingBalance = pendingTransactions.some(
+      transaction => transaction.from === targetId || transaction.to === targetId,
     );
 
     if (hasPendingBalance) {
-      return res.status(400).json({
+      return res.status(409).json({
         message: isSelf
-          ? "You still have a pending balance in this group. Please settle all dues before leaving."
-          : "This member still has a pending balance. Please settle all dues before removing them.",
+          ? "You still have an unpaid balance in this group. Settle all dues before leaving."
+          : "This member still has an unpaid balance. Settle all dues before removal.",
       });
     }
-    // ────────────────────────────────────────────────────────────────────────
 
-    group.members = group.members.filter(
-      (m) => m.user.toString() !== targetId,
-    );
-    await group.save();
-
-    // If the member left themselves, no need to return the updated group (they're no longer in it)
+    const updateQuery = {
+      _id: group._id,
+      isDeleting: { $ne: true },
+      membershipMutation: true,
+      membershipMutationExpiresAt: reservedMembershipLease,
+      "members.user": targetId,
+    };
     if (isSelf) {
-      // Log leave
-      ActivityLog.create({
-        group: req.params.id,
-        actor: req.user.id,
-        type: 'member_left',
-        meta: {},
-      }).catch(() => {});
-      return res.json({ message: 'You have left the group' });
+      updateQuery["members.user"] = req.user.id;
+    } else {
+      updateQuery.members = {
+        $elemMatch: { user: req.user.id, role: "admin" },
+      };
     }
 
-    const updated = await Group.findById(req.params.id).populate(
-      "members.user",
-      "name email upiId",
-    );
+    const updated = await Group.findOneAndUpdate(
+      updateQuery,
+      { $pull: { members: { user: targetId } } },
+      { new: true },
+    ).populate("members.user", "name email upiId");
 
-    res.json(updated);
+    if (!updated) {
+      return res.status(409).json({
+        message: "The group membership changed while this request was being processed. Refresh and try again.",
+      });
+    }
 
-    // Log removal (non-blocking)
+    if (isSelf) {
+      ActivityLog.create({
+        group: group._id,
+        actor: req.user.id,
+        type: "member_left",
+        meta: {},
+      }).catch(error => console.error("Could not record member-left activity:", error));
+      try {
+        await releaseMembershipMutation(reservedGroupId, reservedMembershipLease);
+      } catch (releaseError) {
+        console.error("Could not release group membership lock before response:", releaseError);
+      }
+      reservedGroupId = null;
+      reservedMembershipLease = null;
+      return res.json({ message: "You have left the group" });
+    }
+
     ActivityLog.create({
-      group: req.params.id,
+      group: group._id,
       actor: req.user.id,
-      type: 'member_removed',
+      type: "member_removed",
       meta: { removedId: targetId },
-    }).catch(() => {});
+    }).catch(error => console.error("Could not record member-removed activity:", error));
+
+    try {
+      await releaseMembershipMutation(reservedGroupId, reservedMembershipLease);
+    } catch (releaseError) {
+      console.error("Could not release group membership lock before response:", releaseError);
+    }
+    reservedGroupId = null;
+    reservedMembershipLease = null;
+    return res.json(updated);
   } catch (error) {
     console.error("Error removing member from group:", error);
-    res.status(500).json({ message: "Internal server error" });
+    if (error.name === "CastError" || error.name === "ValidationError") {
+      return res.status(400).json({ message: "Please check the member details and try again" });
+    }
+    return res.status(500).json({ message: "We could not update the group membership. Please try again." });
+  } finally {
+    if (reservedGroupId) {
+      try {
+        await releaseMembershipMutation(reservedGroupId, reservedMembershipLease);
+      } catch (releaseError) {
+        console.error("Could not release group membership lock:", releaseError);
+      }
+    }
   }
 });
 
@@ -319,16 +497,29 @@ router.delete("/:id", async (req, res) => {
           _id: group._id,
           createdBy: req.user.id,
           isDeleting: { $ne: true },
-          $or: [
-            { activeMutations: 0 },
-            { activeMutations: { $exists: false } },
+          $and: [
             {
-              activeMutations: { $gt: 0 },
-              mutationExpiresAt: { $type: "date", $lte: new Date() },
+              $or: [
+                { membershipMutation: { $ne: true } },
+                {
+                  membershipMutation: true,
+                  membershipMutationExpiresAt: { $type: "date", $lte: new Date() },
+                },
+              ],
+            },
+            {
+              $or: [
+                { activeMutations: 0 },
+                { activeMutations: { $exists: false } },
+                {
+                  activeMutations: { $gt: 0 },
+                  mutationExpiresAt: { $type: "date", $lte: new Date() },
+                },
+              ],
             },
           ],
         },
-        { $set: { isDeleting: true, mutationExpiresAt: null } },
+        { $set: { isDeleting: true, mutationExpiresAt: null, membershipMutation: false, membershipMutationExpiresAt: null } },
         { new: true },
       );
 

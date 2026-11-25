@@ -74,21 +74,35 @@ router.post("/", async (req, res) => {
         _id: targetGroupId,
         "members.user": req.user.id,
         isDeleting: { $ne: true },
+        $or: [
+          { membershipMutation: { $ne: true } },
+          {
+            membershipMutation: true,
+            membershipMutationExpiresAt: { $type: "date", $lte: new Date() },
+          },
+        ],
       },
       {
         $inc: { activeMutations: 1 },
-        $set: { mutationExpiresAt: new Date(Date.now() + 5 * 60 * 1000) },
+        $set: {
+          mutationExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
+          membershipMutation: false,
+          membershipMutationExpiresAt: null,
+        },
       },
       { new: true },
     );
 
     if (!group) {
-      const existingGroup = await Group.findById(targetGroupId).select("isDeleting");
+      const existingGroup = await Group.findById(targetGroupId).select("isDeleting membershipMutation membershipMutationExpiresAt");
       if (!existingGroup) {
         return res.status(404).json({ message: "Group not found" });
       }
       if (existingGroup.isDeleting) {
         return res.status(409).json({ message: "This group is being deleted and can no longer accept expenses" });
+      }
+      if (existingGroup.membershipMutation) {
+        return res.status(409).json({ message: "Group membership is being updated. Please try again in a moment." });
       }
       return res.status(403).json({ message: "You are not a member of this group" });
     }
@@ -255,6 +269,11 @@ router.post("/", async (req, res) => {
       console.warn("Expense insight cache could not be cleared:", cacheError);
     }
 
+    await Group.updateOne(
+      { _id: reservedGroupId, activeMutations: { $gt: 0 } },
+      { $inc: { activeMutations: -1 } },
+    );
+    reservedGroupId = null;
     return res.status(201).json(responseExpense);
   } catch (error) {
     console.error("Error creating expense:", error);
@@ -380,20 +399,34 @@ router.delete("/:id", async (req, res) => {
         _id: expense.group,
         "members.user": req.user.id,
         isDeleting: { $ne: true },
+        $or: [
+          { membershipMutation: { $ne: true } },
+          {
+            membershipMutation: true,
+            membershipMutationExpiresAt: { $type: "date", $lte: new Date() },
+          },
+        ],
       },
       {
         $inc: { activeMutations: 1 },
-        $set: { mutationExpiresAt: new Date(Date.now() + 5 * 60 * 1000) },
+        $set: {
+          mutationExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
+          membershipMutation: false,
+          membershipMutationExpiresAt: null,
+        },
       },
       { new: true },
     );
     if (!group) {
-      const existingGroup = await Group.findById(expense.group).select("isDeleting");
+      const existingGroup = await Group.findById(expense.group).select("isDeleting membershipMutation membershipMutationExpiresAt");
       if (!existingGroup) {
         return res.status(409).json({ message: "This expense belongs to a group that no longer exists" });
       }
       if (existingGroup.isDeleting) {
         return res.status(409).json({ message: "This group is being deleted. Refresh the page to see the latest state." });
+      }
+      if (existingGroup.membershipMutation) {
+        return res.status(409).json({ message: "Group membership is being updated. Please try again in a moment." });
       }
       return res.status(403).json({ message: "You must be a current group member to delete this expense" });
     }
@@ -479,6 +512,11 @@ router.delete("/:id", async (req, res) => {
       console.warn("Expense deletion cache could not be cleared:", cacheError);
     }
 
+    await Group.updateOne(
+      { _id: reservedGroupId, activeMutations: { $gt: 0 } },
+      { $inc: { activeMutations: -1 } },
+    );
+    reservedGroupId = null;
     return res.json({ message: "Expense deleted", expenseId: deletedExpense._id });
   } catch (error) {
     console.error("Error deleting expense:", error);

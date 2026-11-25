@@ -148,6 +148,7 @@ export default function GroupDetail() {
   const [showAddMember, setShowAddMember]     = useState(false)
   const [showDeleteGroup, setShowDeleteGroup] = useState(false)
   const [showLeaveGroup, setShowLeaveGroup]   = useState(false)
+  const [memberToRemove, setMemberToRemove] = useState(null)
   const [expenseToDelete, setExpenseToDelete] = useState(null)
   const [deletingExpense, setDeletingExpense] = useState(false)
   const [deleteExpenseError, setDeleteExpenseError] = useState('')
@@ -561,16 +562,21 @@ export default function GroupDetail() {
 
   const handleAddMember = async (e) => {
     e.preventDefault()
-    if (!memberEmail) return
+    const email = memberEmail.trim()
+    if (!email) {
+      setAddMemberError('Enter the email address of the person to add.')
+      return
+    }
     setAddingMember(true)
     setAddMemberError('')
     try {
-      const { data } = await axios.post(`/groups/${id}/members`, { email: memberEmail })
+      const { data } = await axios.post(`/groups/${id}/members`, { email })
       setGroup(data)
       setMemberEmail('')
       setShowAddMember(false)
+      if (activityFetched) fetchActivity()
     } catch (err) {
-      setAddMemberError(err.response?.data?.message || 'Error adding member')
+      setAddMemberError(err.response?.data?.message || 'We could not add this member. Check the email and try again.')
     } finally {
       setAddingMember(false)
     }
@@ -619,27 +625,38 @@ export default function GroupDetail() {
     }
   }
 
-  const handleRemoveMember = async (memberId) => {
+  const handleRemoveMember = async () => {
+    if (!memberToRemove || removingMemberId) return
+    const memberId = memberToRemove.user?._id
+    if (!memberId) {
+      setRemoveError('This member could not be identified. Refresh the group and try again.')
+      return
+    }
+
     setRemovingMemberId(memberId)
     setRemoveError('')
     try {
       const { data } = await axios.delete(`/groups/${id}/members/${memberId}`)
       setGroup(data)
+      setMemberToRemove(null)
+      if (activityFetched) fetchActivity()
     } catch (err) {
-      setRemoveError(err.response?.data?.message || 'Error removing member')
+      setRemoveError(err.response?.data?.message || 'We could not remove this member. Refresh the group and try again.')
     } finally {
       setRemovingMemberId(null)
     }
   }
 
   const handleLeaveGroup = async () => {
+    if (leavingGroup) return
     setLeavingGroup(true)
     setLeaveError('')
     try {
       await axios.delete(`/groups/${id}/members/${user._id}`)
       navigate('/dashboard')
     } catch (err) {
-      setLeaveError(err.response?.data?.message || 'Error leaving group')
+      setLeaveError(err.response?.data?.message || 'You could not leave this group. Please try again.')
+    } finally {
       setLeavingGroup(false)
     }
   }
@@ -1937,7 +1954,7 @@ export default function GroupDetail() {
                         )}
                         {isAdmin && !isSelf && (
                           <button
-                            onClick={() => handleRemoveMember(m.user?._id)}
+                            onClick={() => { setMemberToRemove(m); setRemoveError('') }}
                             disabled={removingMemberId === m.user?._id}
                             className="w-7 h-7 rounded-xl flex items-center justify-center text-on-surface-variant hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all cursor-pointer disabled:opacity-40"
                             title={`Remove ${m.user?.name}`}
@@ -2278,6 +2295,49 @@ export default function GroupDetail() {
         </div>
       )}
 
+      {/* ── Remove Member Confirmation ───────────────────────────────────────── */}
+      {memberToRemove && (
+        <div className="modal-overlay bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200" role="presentation">
+          <div className="glass-card rounded-3xl max-w-sm w-full border border-rose-500/20 shadow-2xl p-6 animate-in zoom-in-95 duration-200 relative overflow-hidden" role="dialog" aria-modal="true" aria-labelledby="remove-member-title">
+            <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-rose-500/5 blur-xl pointer-events-none" />
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mx-auto mb-4">
+              <span className="material-symbols-outlined text-rose-400 text-2xl">person_remove</span>
+            </div>
+            <h3 id="remove-member-title" className="text-base font-extrabold text-white text-center">Remove member?</h3>
+            <p className="text-xs text-on-surface-variant text-center mt-3 leading-relaxed">
+              Remove <span className="font-bold text-white">{memberToRemove.user?.name || 'this member'}</span> from <span className="font-bold text-white">{group?.name}</span>? Their past expenses and payment history will remain.
+            </p>
+            <p className="text-[11px] text-on-surface-variant text-center mt-2">
+              Removal is allowed only when their balance is settled and no payment request or active schedule remains.
+            </p>
+            {removeError && (
+              <div role="alert" aria-live="polite" className="mt-4 flex items-start gap-2 rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2.5 text-xs text-rose-300">
+                <span className="material-symbols-outlined text-[15px] flex-shrink-0">warning</span>
+                <span className="font-semibold leading-relaxed">{removeError}</span>
+              </div>
+            )}
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => { if (!removingMemberId) { setMemberToRemove(null); setRemoveError('') } }}
+                disabled={!!removingMemberId}
+                className="flex-1 py-3 border border-white/10 rounded-2xl text-white font-bold text-xs uppercase tracking-wider hover:bg-white/5 transition-all cursor-pointer disabled:opacity-50"
+              >Cancel</button>
+              <button
+                type="button"
+                onClick={handleRemoveMember}
+                disabled={!!removingMemberId}
+                className="flex-1 py-3 bg-rose-500 text-white rounded-2xl font-bold text-xs uppercase tracking-wider hover:brightness-110 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {removingMemberId
+                  ? <><span className="material-symbols-outlined text-[15px] animate-spin">sync</span> Removing...</>
+                  : 'Remove member'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Add Member Modal ──────────────────────────────────────────────────── */}
       {showAddMember && (
         <div className="modal-overlay bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={(e) => { if (e.target === e.currentTarget) { setShowAddMember(false); setAddMemberError(''); setMemberEmail('') } }}>
@@ -2340,7 +2400,7 @@ export default function GroupDetail() {
             
             <h3 className="text-base font-extrabold text-white text-center">Leave Group?</h3>
             <p className="text-xs text-on-surface-variant text-center mt-3 leading-relaxed font-semibold">
-              You will be removed from <span className="font-bold text-white">{group?.name}</span>. You can only leave if your balance is fully settled.
+              You will be removed from <span className="font-bold text-white">{group?.name}</span>. Your balance must be settled, and you must have no pending payment request or active payment schedule.
             </p>
             
             {leaveError && (

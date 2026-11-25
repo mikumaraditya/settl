@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import Expense from '../models/Expense.js';
 import Group from '../models/Group.js';
 import Settlement from '../models/Settlement.js';
@@ -10,6 +11,55 @@ import requireVerified from '../middleware/requireVerified.js';
 import simplifyDebts from '../utils/debtSimplify.js';
 import { getIO } from '../socket.js';
 const safeEmit = (room, event, payload) => { try { getIO()?.to(room)?.emit(event, payload); } catch { /* ignore */ } };
+
+const reserveGroupWrite = async (groupId, userId) => Group.findOneAndUpdate(
+  {
+    _id: groupId,
+    "members.user": userId,
+    isDeleting: { $ne: true },
+    $or: [
+      { membershipMutation: { $ne: true } },
+      {
+        membershipMutation: true,
+        membershipMutationExpiresAt: { $type: "date", $lte: new Date() },
+      },
+    ],
+  },
+  {
+    $inc: { activeMutations: 1 },
+    $set: {
+      mutationExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      membershipMutation: false,
+      membershipMutationExpiresAt: null,
+    },
+  },
+  { new: true },
+);
+
+const releaseGroupWrite = async (groupId) => {
+  if (!groupId) return;
+  await Group.updateOne(
+    { _id: groupId, activeMutations: { $gt: 0 } },
+    { $inc: { activeMutations: -1 } },
+  );
+};
+
+const groupWriteFailure = async (groupId, userId) => {
+  const group = await Group.findById(groupId).select(
+    "isDeleting membershipMutation membershipMutationExpiresAt activeMutations mutationExpiresAt members.user",
+  );
+  if (!group) return { status: 404, message: "Group not found" };
+  if (group.isDeleting) {
+    return { status: 409, message: "This group is being deleted and cannot accept payment changes" };
+  }
+  if (group.membershipMutation) {
+    return { status: 409, message: "Group membership is being updated. Please try again in a moment." };
+  }
+  if (!group.members.some(member => member.user.toString() === userId)) {
+    return { status: 403, message: "Not a member of this group" };
+  }
+  return { status: 409, message: "This group is being updated. Please try again in a moment." };
+};
 const safeEmitUser = (userId, event, payload) => {
   try { if (userId) getIO()?.to(`user:${userId}`)?.emit(event, payload); } catch { /* ignore */ }
 };
@@ -229,23 +279,31 @@ router.get("/simplify/:groupId", protect, async (req, res) => {
 // REQUEST SETTLEMENT (payer marks as paid — awaits receiver confirmation)
 // ─────────────────────────────────────────────────────────────────────────────
 router.post("/settle", protect, async (req, res) => {
+  let reservedGroupId = null;
   try {
-    const { groupId, toUserId, scheduleId } = req.body;
+    const body = req.body || {};
+    const { groupId, toUserId, scheduleId } = body;
+
+    if (!groupId || !toUserId || body.amount === undefined) {
+      return res.status(400).json({ message: 'groupId, toUserId and amount are required' });
+    }
+    if (!mongoose.isValidObjectId(groupId) || !mongoose.isValidObjectId(toUserId)) {
+      return res.status(400).json({ message: 'Invalid group or recipient id' });
+    }
+
+    const amount = Math.round(Number(body.amount) * 100) / 100;
+    if (!Number.isFinite(body.amount) || amount <= 0 || body.amount !== amount) {
+      return res.status(400).json({ message: 'Amount must be positive and have at most two decimal places' });
+    }
+
+    const group = await reserveGroupWrite(groupId, req.user.id);
+    if (!group) {
+      const failure = await groupWriteFailure(groupId, req.user.id);
+      return res.status(failure.status).json({ message: failure.message });
+    }
+    reservedGroupId = group._id;
+
     await autoExpirePendingSettlements(groupId);
-
-    const amount = Math.round(Number(req.body.amount) * 100) / 100;
-
-    if (!groupId || !toUserId || req.body.amount === undefined) {
-      return res.status(400).json({ message: 'groupId, toUserId and amount are required' })
-    }
-    if (!Number.isFinite(req.body.amount) || amount <= 0 || req.body.amount !== amount) {
-      return res.status(400).json({ message: 'Amount must be positive and have at most two decimal places' })
-    }
-
-    const group = await Group.findById(groupId);
-    if (!group) return res.status(404).json({ message: 'Group not found' });
-    const isMember = group.members.some(m => m.user.toString() === req.user.id);
-    if (!isMember) return res.status(403).json({ message: 'Not a member of this group' });
     if (toUserId === req.user.id) {
       return res.status(400).json({ message: 'You cannot settle a payment with yourself' });
     }
@@ -379,21 +437,34 @@ router.post("/settle", protect, async (req, res) => {
     safeEmit(groupId, 'settlement_requested', populated);
 
     // Log activity
-    await ActivityLog.create({
+    ActivityLog.create({
       group: groupId,
       actor: req.user.id,
       type: 'settlement_requested',
       meta: { amount, toName: populated.to?.name, toId: toUserId },
-    });
+    }).catch(error => console.error("Could not record settlement-requested activity:", error));
 
     res.status(201).json(populated);
 
     // Bust the payer's cached trust score — a new pending settlement
     // changes their repayment-reliability picture immediately.
     clearInsightCaches([req.user.id]);
+    await releaseGroupWrite(reservedGroupId);
+    reservedGroupId = null;
   } catch (error) {
     console.error("Error creating settlement request:", error);
-    res.status(500).json({ message: "Internal server error" });
+    if (error.name === "CastError" || error.name === "ValidationError") {
+      return res.status(400).json({ message: "Please check the settlement details and try again" });
+    }
+    return res.status(500).json({ message: "We could not create this payment request. Please try again." });
+  } finally {
+    if (reservedGroupId) {
+      try {
+        await releaseGroupWrite(reservedGroupId);
+      } catch (releaseError) {
+        console.error("Could not release settlement group write reservation:", releaseError);
+      }
+    }
   }
 });
 
@@ -619,20 +690,32 @@ router.get("/schedules/:groupId", async (req, res) => {
 });
 
 router.post("/schedule", async (req, res) => {
+  let reservedGroupId = null;
   try {
-    const { groupId, toUserId, dueDate } = req.body;
-    const amount = Number(req.body.amount);
-    if (!groupId || !toUserId || req.body.amount === undefined) {
+    const body = req.body || {};
+    const { groupId, toUserId, dueDate } = body;
+    const amount = Number(body.amount);
+    if (!groupId || !toUserId || body.amount === undefined) {
       return res.status(400).json({ message: "groupId, toUserId and amount are required" });
+    }
+    if (!mongoose.isValidObjectId(groupId) || !mongoose.isValidObjectId(toUserId)) {
+      return res.status(400).json({ message: "Invalid group or recipient id" });
     }
     if (!Number.isFinite(amount) || amount <= 0 || Math.round(amount * 100) !== amount * 100) {
       return res.status(400).json({ message: "Amount must be positive and have at most two decimal places" });
     }
 
+    const group = await reserveGroupWrite(groupId, req.user.id);
+    if (!group) {
+      const failure = await groupWriteFailure(groupId, req.user.id);
+      return res.status(failure.status).json({ message: failure.message });
+    }
+    reservedGroupId = group._id;
+
     // If the payer leaves the date empty, default to seven calendar days
     // from today in their local timezone.
     const resolvedDueDate = dueDate === undefined || dueDate === null || dueDate === ""
-      ? addDaysToDateOnly(getDateInTimeZone(req.body.timeZone), 7)
+      ? addDaysToDateOnly(getDateInTimeZone(body.timeZone), 7)
       : dueDate;
     if (typeof resolvedDueDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(resolvedDueDate)) {
       return res.status(400).json({ message: "Due date must use YYYY-MM-DD format" });
@@ -641,14 +724,11 @@ router.post("/schedule", async (req, res) => {
     if (Number.isNaN(parsedDueDate.getTime()) || parsedDueDate.toISOString().slice(0, 10) !== resolvedDueDate) {
       return res.status(400).json({ message: "Please provide a valid calendar date" });
     }
-    if (resolvedDueDate < getDateInTimeZone(req.body.timeZone)) {
+    if (resolvedDueDate < getDateInTimeZone(body.timeZone)) {
       return res.status(400).json({ message: "Due date cannot be in the past" });
     }
 
-    const group = await Group.findById(groupId);
-    if (!group) return res.status(404).json({ message: "Group not found" });
-    const isMember = group.members.some((member) => member.user?.toString() === req.user.id);
-    if (!isMember) return res.status(403).json({ message: "Not a member of this group" });
+
     if (toUserId === req.user.id) {
       return res.status(400).json({ message: "You cannot schedule a payment to yourself" });
     }
@@ -702,17 +782,30 @@ router.post("/schedule", async (req, res) => {
       .populate("to", "name email upiId");
 
     safeEmitSchedule(populated, "schedule_proposed");
-    await ActivityLog.create({
+    ActivityLog.create({
       group: groupId, actor: req.user.id, type: "schedule_proposed",
       meta: { amount, fromId: req.user.id, toId: toUserId, dueDate: resolvedDueDate },
-    });
+    }).catch(error => console.error("Could not record schedule-proposed activity:", error));
+    await releaseGroupWrite(reservedGroupId);
+    reservedGroupId = null;
     res.status(201).json(populated);
   } catch (error) {
     if (error?.code === 11000) {
       return res.status(409).json({ message: "An active payment schedule already exists for this member" });
     }
     console.error("Error creating payment schedule:", error);
-    res.status(500).json({ message: "Internal server error" });
+    if (error.name === "CastError" || error.name === "ValidationError") {
+      return res.status(400).json({ message: "Please check the payment schedule details and try again" });
+    }
+    return res.status(500).json({ message: "We could not create this payment schedule. Please try again." });
+  } finally {
+    if (reservedGroupId) {
+      try {
+        await releaseGroupWrite(reservedGroupId);
+      } catch (releaseError) {
+        console.error("Could not release schedule group write reservation:", releaseError);
+      }
+    }
   }
 });
 
