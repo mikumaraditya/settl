@@ -357,6 +357,20 @@ export default function SettleUp() {
                           </span>
                         </div>
 
+                        {p.upiReference && (
+                          <div className="rounded-2xl border border-blue-500/15 bg-blue-500/5 px-4 py-3">
+                            <p className="text-[9px] font-bold uppercase tracking-wider text-blue-200/70">
+                              UPI transaction reference · payer-provided
+                            </p>
+                            <p className="mt-1 break-all font-mono text-xs font-bold text-white">{p.upiReference}</p>
+                            {iAmReceiver && (
+                              <p className="mt-1.5 text-[10px] leading-relaxed text-slate-400">
+                                Not verified by Settl. Check your own UPI or bank app before confirming receipt.
+                              </p>
+                            )}
+                          </div>
+                        )}
+
                         {iAmPayer && (
                           <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-2xl px-4 py-3 text-xs">
                             <span className="text-on-surface-variant font-semibold flex items-center gap-1.5">
@@ -831,7 +845,11 @@ export default function SettleUp() {
         <UPIPaymentModal
           transaction={activeTransaction}
           onClose={() => { setShowPaymentModal(false); setActiveTransaction(null) }}
-          onPaymentInitiated={() => { setShowPaymentModal(false); setShowConfirmPopup(true) }}
+          onPaymentInitiated={(upiReference) => {
+            setActiveTransaction((current) => ({ ...current, upiReference: upiReference || null }))
+            setShowPaymentModal(false)
+            setShowConfirmPopup(true)
+          }}
         />
       )}
       {showConfirmPopup && activeTransaction && (
