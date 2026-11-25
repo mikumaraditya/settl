@@ -270,7 +270,12 @@ describe("Expense creation and deletion lifecycle", () => {
       });
 
     assert.equal(response.status, 201);
-    const updatedGroup = await Group.findById(group._id);
+    let updatedGroup;
+    for (let attempt = 0; attempt < 25; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+      updatedGroup = await Group.findById(group._id);
+      if (!updatedGroup.membershipMutation && updatedGroup.activeMutations === 0) break;
+    }
     assert.equal(updatedGroup.membershipMutation, false);
     assert.equal(updatedGroup.activeMutations, 0);
   });
