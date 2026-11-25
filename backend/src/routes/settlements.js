@@ -206,9 +206,21 @@ router.get("/simplify/:groupId", protect, async (req, res) => {
       return { ...schedule.toObject(), dueDateOnly, dueStatus };
     });
 
+    // Keep payer-provided UPI references visible only to the two participants.
+    // Other group members still receive pending amounts/status for debt context.
+    const settlementsForViewer = allSettlements.map((settlement) => {
+      const payerId = settlement.from?._id?.toString();
+      const receiverId = settlement.to?._id?.toString();
+      if (payerId === req.user.id || receiverId === req.user.id) return settlement;
+
+      const safeSettlement = settlement.toObject();
+      delete safeSettlement.upiReference;
+      return safeSettlement;
+    });
+
     // Separate by status (legacy settlements have no status and should be treated as confirmed)
-    const confirmedSettlements  = allSettlements.filter((s) => !s.status || s.status === "confirmed");
-    const pendingRequests       = allSettlements.filter((s) => s.status === "pending");
+    const confirmedSettlements = settlementsForViewer.filter((s) => !s.status || s.status === "confirmed");
+    const pendingRequests = settlementsForViewer.filter((s) => s.status === "pending");
 
     if (expenses.length === 0) {
       return res.json({
@@ -280,6 +292,20 @@ router.post("/settle", protect, async (req, res) => {
   try {
     const body = req.body || {};
     const { groupId, toUserId, scheduleId } = body;
+
+    let upiReference = null;
+    if (body.upiReference !== undefined && body.upiReference !== null) {
+      if (typeof body.upiReference !== "string") {
+        return res.status(400).json({ message: "UPI reference must be text." });
+      }
+      upiReference = body.upiReference.trim();
+      if (upiReference && !/^[A-Za-z0-9][A-Za-z0-9/_-]{5,63}$/.test(upiReference)) {
+        return res.status(400).json({
+          message: "UPI reference must be 6–64 characters and contain only letters, numbers, /, _ or -.",
+        });
+      }
+      if (!upiReference) upiReference = null;
+    }
 
     if (!groupId || !toUserId || body.amount === undefined) {
       return res.status(400).json({ message: 'groupId, toUserId and amount are required' });
@@ -407,6 +433,7 @@ router.post("/settle", protect, async (req, res) => {
         amount,
         status: "pending",
         dueDate: defaultDueDate,
+        upiReference,
       });
       if (linkedSchedule) {
         linkedSchedule.paymentSettlement = settlement._id;
