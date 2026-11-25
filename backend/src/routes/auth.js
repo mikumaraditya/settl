@@ -8,6 +8,7 @@ import User from "../models/User.js";
 import { sendVerificationEmail } from "../utils/emailService.js";
 import protect from "../middleware/auth.js";
 import requireVerified from "../middleware/requireVerified.js";
+import { createRateLimitStore } from "../config/rateLimitStore.js";
 
 const router = express.Router();
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -15,6 +16,7 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
+  store: createRateLimitStore("auth-login"),
   standardHeaders: "draft-8",
   legacyHeaders: false,
   message: { message: "Too many login attempts. Please try again in 15 minutes." },
@@ -23,6 +25,7 @@ const loginLimiter = rateLimit({
 const registrationLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: 5,
+  store: createRateLimitStore("auth-register"),
   standardHeaders: "draft-8",
   legacyHeaders: false,
   message: { message: "Too many registration attempts. Please try again later." },
@@ -31,6 +34,7 @@ const registrationLimiter = rateLimit({
 const resendVerificationLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: 3,
+  store: createRateLimitStore("auth-resend-verification"),
   standardHeaders: "draft-8",
   legacyHeaders: false,
   message: { message: "Too many verification emails requested. Please try again later." },
