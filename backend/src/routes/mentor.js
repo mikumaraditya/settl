@@ -1,4 +1,5 @@
 import express from "express";
+import mongoose from "mongoose";
 import rateLimit from "express-rate-limit";
 import protect from "../middleware/auth.js";
 import requireVerified from "../middleware/requireVerified.js";
@@ -177,19 +178,196 @@ router.delete("/profile", async (req, res) => {
   }
 });
 
+
+router.get("/conversations", async (req, res) => {
+  try {
+    const conversations = await MentorConversation.find({ user: req.user.id })
+      .select("+activeRequestExpiresAt")
+      .sort({ archivedAt: 1, lastActiveAt: -1, updatedAt: -1 })
+      .lean();
+    const now = Date.now();
+
+    return res.json({
+      conversations: conversations.map((conversation) => ({
+        id: conversation._id.toString(),
+        title: conversation.title || "New conversation",
+        archivedAt: conversation.archivedAt || null,
+        lastActiveAt: conversation.lastActiveAt,
+        updatedAt: conversation.updatedAt,
+        messageCount: conversation.messages?.length || 0,
+        isBusy: Boolean(conversation.activeRequestExpiresAt
+          && new Date(conversation.activeRequestExpiresAt).getTime() > now),
+      })),
+    });
+  } catch (err) {
+    console.error("Error listing mentor conversations:", err);
+    return res.status(500).json({ message: "Unable to load conversations." });
+  }
+});
+
+router.post("/conversations", async (req, res) => {
+  try {
+    const requestedTitle = req.body?.title;
+    if (requestedTitle !== undefined && typeof requestedTitle !== "string") {
+      return res.status(400).json({ message: "Conversation title must be text." });
+    }
+    const title = requestedTitle?.trim()
+      ? sanitizePromptText(requestedTitle.trim(), 100)
+      : "New conversation";
+    if (!title) return res.status(400).json({ message: "Conversation title is required." });
+
+    const conversation = await MentorConversation.create({
+      user: req.user.id,
+      title,
+      messages: [],
+    });
+    return res.status(201).json({
+      conversation: {
+        id: conversation._id.toString(),
+        title: conversation.title,
+        archivedAt: null,
+        lastActiveAt: conversation.lastActiveAt,
+        updatedAt: conversation.updatedAt,
+        messageCount: 0,
+        isBusy: false,
+      },
+    });
+  } catch (err) {
+    console.error("Error creating mentor conversation:", err);
+    return res.status(500).json({ message: "Unable to create conversation." });
+  }
+});
+
+router.patch("/conversations/:conversationId", async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const requestedTitle = req.body?.title;
+    if (!mongoose.isValidObjectId(conversationId)) {
+      return res.status(400).json({ message: "Invalid conversation id." });
+    }
+    if (typeof requestedTitle !== "string" || !requestedTitle.trim()) {
+      return res.status(400).json({ message: "Conversation title is required." });
+    }
+
+    const title = sanitizePromptText(requestedTitle.trim(), 100);
+    if (!title) return res.status(400).json({ message: "Conversation title is required." });
+
+    const now = new Date();
+    const conversation = await MentorConversation.findOneAndUpdate(
+      {
+        _id: conversationId,
+        user: req.user.id,
+        $or: [
+          { activeRequestExpiresAt: { $exists: false } },
+          { activeRequestExpiresAt: { $lte: now } },
+        ],
+      },
+      { $set: { title } },
+      { new: true },
+    );
+
+    if (!conversation) {
+      const owned = await MentorConversation.findOne({ _id: conversationId, user: req.user.id });
+      if (!owned) return res.status(404).json({ message: "Conversation not found." });
+      return res.status(409).json({ message: "Wait for Finn to finish before renaming this conversation." });
+    }
+
+    return res.json({ conversation: { id: conversation._id.toString(), title: conversation.title } });
+  } catch (err) {
+    console.error("Error renaming mentor conversation:", err);
+    return res.status(500).json({ message: "Unable to rename conversation." });
+  }
+});
+
+const setConversationArchived = async (req, res, archived) => {
+  try {
+    const { conversationId } = req.params;
+    if (!mongoose.isValidObjectId(conversationId)) {
+      return res.status(400).json({ message: "Invalid conversation id." });
+    }
+
+    const now = new Date();
+    const stateFilter = archived
+      ? { $or: [{ archivedAt: null }, { archivedAt: { $exists: false } }] }
+      : { archivedAt: { $ne: null } };
+    const conversation = await MentorConversation.findOneAndUpdate(
+      {
+        _id: conversationId,
+        user: req.user.id,
+        ...stateFilter,
+        $and: [{
+          $or: [
+            { activeRequestExpiresAt: { $exists: false } },
+            { activeRequestExpiresAt: { $lte: now } },
+          ],
+        }],
+      },
+      { $set: { archivedAt: archived ? now : null } },
+      { new: true },
+    );
+
+    if (!conversation) {
+      const owned = await MentorConversation.findOne({ _id: conversationId, user: req.user.id });
+      if (!owned) return res.status(404).json({ message: "Conversation not found." });
+      const alreadyInState = archived ? Boolean(owned.archivedAt) : !owned.archivedAt;
+      if (alreadyInState) {
+        return res.json({
+          conversation: {
+            id: owned._id.toString(),
+            title: owned.title,
+            archivedAt: owned.archivedAt || null,
+          },
+        });
+      }
+      return res.status(409).json({ message: "Wait for Finn to finish before changing this conversation." });
+    }
+
+    return res.json({
+      conversation: {
+        id: conversation._id.toString(),
+        title: conversation.title,
+        archivedAt: conversation.archivedAt || null,
+      },
+    });
+  } catch (err) {
+    console.error("Error changing mentor conversation archive state:", err);
+    return res.status(500).json({ message: "Unable to update conversation." });
+  }
+};
+
+router.post("/conversations/:conversationId/archive", (req, res) =>
+  setConversationArchived(req, res, true));
+router.post("/conversations/:conversationId/unarchive", (req, res) =>
+  setConversationArchived(req, res, false));
+
 /**
  * GET /api/mentor/history
  * Fetch conversation history for the authenticated user
  */
 router.get("/history", async (req, res) => {
   try {
-    const conversation = await MentorConversation.findOne({ user: req.user.id }).lean();
-    if (!conversation) {
-      return res.json({ messages: [], conversationId: null });
+    const { conversationId } = req.query;
+    let conversation;
+    if (conversationId !== undefined) {
+      if (!mongoose.isValidObjectId(conversationId)) {
+        return res.status(400).json({ message: "Invalid conversation id." });
+      }
+      conversation = await MentorConversation.findOne({ _id: conversationId, user: req.user.id }).lean();
+    } else {
+      conversation = await MentorConversation.findOne({ user: req.user.id, archivedAt: null })
+        .sort({ lastActiveAt: -1, updatedAt: -1 }).lean();
     }
+
+    if (!conversation) {
+      if (conversationId !== undefined) return res.status(404).json({ message: "Conversation not found." });
+      return res.json({ messages: [], conversationId: null, title: null, archivedAt: null });
+    }
+
     return res.json({
       messages: conversation.messages || [],
-      conversationId: conversation._id,
+      conversationId: conversation._id.toString(),
+      title: conversation.title || "New conversation",
+      archivedAt: conversation.archivedAt || null,
       lastActiveAt: conversation.lastActiveAt,
     });
   } catch (err) {
@@ -204,8 +382,41 @@ router.get("/history", async (req, res) => {
  */
 router.delete("/history", async (req, res) => {
   try {
-    await MentorConversation.findOneAndDelete({ user: req.user.id });
-    return res.json({ message: "Conversation history cleared successfully." });
+    const { conversationId } = req.query;
+    let target;
+    if (conversationId !== undefined) {
+      if (!mongoose.isValidObjectId(conversationId)) {
+        return res.status(400).json({ message: "Invalid conversation id." });
+      }
+      target = { _id: conversationId, user: req.user.id };
+    } else {
+      const latest = await MentorConversation.findOne({ user: req.user.id, archivedAt: null })
+        .sort({ lastActiveAt: -1, updatedAt: -1 }).select("_id").lean();
+      if (!latest) return res.json({ message: "Conversation history is already empty." });
+      target = { _id: latest._id, user: req.user.id };
+    }
+
+    const now = new Date();
+    const conversation = await MentorConversation.findOneAndUpdate(
+      {
+        ...target,
+        $or: [
+          { activeRequestExpiresAt: { $exists: false } },
+          { activeRequestExpiresAt: { $lte: now } },
+        ],
+      },
+      { $set: { messages: [], lastActiveAt: now } },
+      { new: true },
+    );
+    if (!conversation) {
+      const owned = await MentorConversation.findOne(target);
+      if (!owned) return res.status(404).json({ message: "Conversation not found." });
+      return res.status(409).json({ message: "Wait for Finn to finish before clearing this conversation." });
+    }
+    return res.json({
+      message: "Conversation history cleared successfully.",
+      conversationId: conversation._id.toString(),
+    });
   } catch (err) {
     console.error("Error clearing mentor history:", err);
     return res.status(500).json({ message: "Unable to clear conversation history." });
@@ -217,7 +428,7 @@ router.delete("/history", async (req, res) => {
  * Standard JSON endpoint for conversing with the mentor agent
  */
 router.post("/chat", chatLimiter, async (req, res) => {
-  const { message } = req.body || {};
+  const { message, conversationId } = req.body || {};
 
   if (typeof message !== "string" || !message.trim()) {
     return res.status(400).json({ message: "Message content must be a non-empty string." });
@@ -236,7 +447,7 @@ router.post("/chat", chatLimiter, async (req, res) => {
 
   let lease;
   try {
-    lease = await acquireMentorConversation(req.user.id);
+    lease = await acquireMentorConversation(req.user.id, conversationId);
     const { conversation } = lease;
     const { reply, toolsUsed } = await runMentorAgent(
       req.user.id,
@@ -244,12 +455,20 @@ router.post("/chat", chatLimiter, async (req, res) => {
       conversation.messages
     );
 
-    await appendMentorTurn(req.user.id, lease.requestId, message.trim(), reply, toolsUsed || []);
+    await appendMentorTurn(req.user.id, lease.conversation._id, lease.requestId, message.trim(), reply, toolsUsed || []);
+    const suggestedTitle = sanitizePromptText(message.trim().replace(/\s+/g, " "), 80);
+    if (lease.conversation.title === "New conversation" && suggestedTitle) {
+      await MentorConversation.updateOne(
+        { _id: lease.conversation._id, user: req.user.id, title: "New conversation" },
+        { $set: { title: suggestedTitle } },
+      );
+    }
 
     return res.json({
       reply,
       toolsUsed: toolsUsed || [],
       timestamp: new Date().toISOString(),
+      conversationId: lease.conversationId,
     });
   } catch (err) {
     console.error("AI Mentor chat error:", err.message);
@@ -266,7 +485,7 @@ router.post("/chat", chatLimiter, async (req, res) => {
     });
   } finally {
     if (lease?.requestId) {
-      await releaseMentorConversation(req.user.id, lease.requestId).catch((releaseError) => {
+      await releaseMentorConversation(req.user.id, lease.conversation._id, lease.requestId).catch((releaseError) => {
         console.error("Unable to release mentor conversation lease:", releaseError.message);
       });
     }
@@ -278,7 +497,7 @@ router.post("/chat", chatLimiter, async (req, res) => {
  * Server-Sent Events (SSE) streaming endpoint for live responses
  */
 router.post("/chat/stream", chatLimiter, async (req, res) => {
-  const { message } = req.body || {};
+  const { message, conversationId } = req.body || {};
 
   if (typeof message !== "string" || !message.trim()) {
     return res.status(400).json({ message: "Message content must be a non-empty string." });
@@ -311,7 +530,7 @@ router.post("/chat/stream", chatLimiter, async (req, res) => {
 
   let lease;
   try {
-    lease = await acquireMentorConversation(req.user.id);
+    lease = await acquireMentorConversation(req.user.id, conversationId);
     const { conversation } = lease;
     sendEvent("status", { message: "Analyzing..." });
 
@@ -327,12 +546,20 @@ router.post("/chat/stream", chatLimiter, async (req, res) => {
 
     if (controller.signal.aborted || clientDisconnected) return;
 
-    await appendMentorTurn(req.user.id, lease.requestId, message.trim(), reply, toolsUsed || []);
+    await appendMentorTurn(req.user.id, lease.conversation._id, lease.requestId, message.trim(), reply, toolsUsed || []);
+    const suggestedTitle = sanitizePromptText(message.trim().replace(/\s+/g, " "), 80);
+    if (lease.conversation.title === "New conversation" && suggestedTitle) {
+      await MentorConversation.updateOne(
+        { _id: lease.conversation._id, user: req.user.id, title: "New conversation" },
+        { $set: { title: suggestedTitle } },
+      );
+    }
 
     sendEvent("done", {
       reply,
       toolsUsed: toolsUsed || [],
       timestamp: new Date().toISOString(),
+      conversationId: lease.conversationId,
     });
     res.end();
   } catch (err) {
@@ -348,7 +575,7 @@ router.post("/chat/stream", chatLimiter, async (req, res) => {
     if (!res.writableEnded && !res.destroyed) res.end();
   } finally {
     if (lease?.requestId) {
-      await releaseMentorConversation(req.user.id, lease.requestId).catch((releaseError) => {
+      await releaseMentorConversation(req.user.id, lease.conversation._id, lease.requestId).catch((releaseError) => {
         console.error("Unable to release mentor conversation lease:", releaseError.message);
       });
     }
