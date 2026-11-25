@@ -44,6 +44,11 @@ const groupSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    // A crashed process cannot leave the group permanently blocked.
+    mutationExpiresAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true },
 );
