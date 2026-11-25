@@ -825,7 +825,8 @@ For deployments on Vercel or similar platforms, [`frontend/vercel.json`](fronten
 | **Redis-Backed Rate Limiting** | **Implemented** | Shared counters for auth, verification, Trust Score, financial tips, and Finn chat; configure `REDIS_URL` in production to enable it. |
 | **Multi-Session Mentor Conversations** | **Implemented** | Create, switch, rename, archive, and restore independent sessions with per-thread request locking and history isolation. |
 | **Settlement Due Date Customization** | **Implemented** | Payer proposes a date or gets a 7-day default; receiver accepts or declines, and linked payment confirmation completes the schedule without changing balances early. |
-| **Persistent In-App Settlement Reminders** | **Implemented** | Private reminders for payer and receiver one day before and on the agreed due date, with deduplication and persisted read/clear state. |\n| **UPI Reference Capture** | **Implemented** | Optional payer-provided UTR/RRN stored on pending settlements and shown only to the payer and receiver; never treated as bank-verified proof. |
+| **Persistent In-App Settlement Reminders** | **Implemented** | Private reminders for payer and receiver one day before and on the agreed due date, with deduplication and persisted read/clear state. |
+| **UPI Reference Capture** | **Implemented** | Optional payer-provided UTR/RRN stored on pending settlements and shown only to the payer and receiver; never treated as bank-verified proof. |
 
 ### Contributing
 1. Fork the repository and create a feature branch (`git checkout -b feature/amazing-feature`).
