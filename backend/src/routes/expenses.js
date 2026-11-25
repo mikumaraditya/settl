@@ -75,7 +75,10 @@ router.post("/", async (req, res) => {
         "members.user": req.user.id,
         isDeleting: { $ne: true },
       },
-      { $inc: { activeMutations: 1 } },
+      {
+        $inc: { activeMutations: 1 },
+        $set: { mutationExpiresAt: new Date(Date.now() + 5 * 60 * 1000) },
+      },
       { new: true },
     );
 
@@ -378,7 +381,10 @@ router.delete("/:id", async (req, res) => {
         "members.user": req.user.id,
         isDeleting: { $ne: true },
       },
-      { $inc: { activeMutations: 1 } },
+      {
+        $inc: { activeMutations: 1 },
+        $set: { mutationExpiresAt: new Date(Date.now() + 5 * 60 * 1000) },
+      },
       { new: true },
     );
     if (!group) {
