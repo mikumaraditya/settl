@@ -8,6 +8,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import groupsRouter from "../src/routes/groups.js";
+import settlementsRouter from "../src/routes/settlements.js";
 import User from "../src/models/User.js";
 import Group from "../src/models/Group.js";
 import Expense from "../src/models/Expense.js";
@@ -20,6 +21,7 @@ import { getTestDbConfig } from "./testDbHelper.mjs";
 const app = express();
 app.use(express.json());
 app.use("/api/groups", groupsRouter);
+app.use("/api/settlements", settlementsRouter);
 
 describe("Group lifecycle routes", () => {
   let creator;
@@ -422,6 +424,44 @@ describe("Group lifecycle routes", () => {
 
     assert.equal(response.status, 200);
     assert.equal(await Group.exists({ _id: group._id }), null);
+  });
+
+  it("does not create settlements or payment schedules during a membership update", async () => {
+    const group = await makeGroup();
+    await Group.updateOne(
+      { _id: group._id },
+      {
+        $set: {
+          membershipMutation: true,
+          membershipMutationExpiresAt: new Date(Date.now() + 60_000),
+        },
+      },
+    );
+
+    const settlementResponse = await request(app)
+      .post("/api/settlements/settle")
+      .set("Authorization", `Bearer ${memberToken}`)
+      .send({
+        groupId: group._id.toString(),
+        toUserId: creator._id.toString(),
+        amount: 10,
+      });
+
+    const scheduleResponse = await request(app)
+      .post("/api/settlements/schedule")
+      .set("Authorization", `Bearer ${memberToken}`)
+      .send({
+        groupId: group._id.toString(),
+        toUserId: creator._id.toString(),
+        amount: 10,
+        dueDate: "2026-12-20",
+        timeZone: "UTC",
+      });
+
+    assert.equal(settlementResponse.status, 409);
+    assert.equal(scheduleResponse.status, 409);
+    assert.equal(await Settlement.countDocuments({ group: group._id }), 0);
+    assert.equal(await SettlementSchedule.countDocuments({ group: group._id }), 0);
   });
 
   it("does not delete a group while a payment request is pending", async () => {
