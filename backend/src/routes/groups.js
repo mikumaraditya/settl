@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import Group from '../models/Group.js';
 import User from '../models/User.js';
 import Expense from '../models/Expense.js';
@@ -15,10 +16,24 @@ const router = express.Router();
 router.use(protect, requireVerified);
 
 // CREATE GROUP
-router.post("/", protect, async (req, res) => {
-  const { name, description } = req.body;
+router.post("/", async (req, res) => {
+  const rawName = req.body?.name;
+  const rawDescription = req.body?.description;
 
   try {
+    const name = typeof rawName === "string" ? rawName.trim() : "";
+    const description = typeof rawDescription === "string" ? rawDescription.trim() : "";
+
+    if (!name) {
+      return res.status(400).json({ message: "Group name is required" });
+    }
+    if (name.length > 80) {
+      return res.status(400).json({ message: "Group name cannot exceed 80 characters" });
+    }
+    if (description.length > 280) {
+      return res.status(400).json({ message: "Group description cannot exceed 280 characters" });
+    }
+
     const group = await Group.create({
       name,
       description,
@@ -26,18 +41,20 @@ router.post("/", protect, async (req, res) => {
       members: [{ user: req.user.id, role: "admin" }],
     });
 
-    res.status(201).json(group);
-
-    // Log activity (non-blocking)
     ActivityLog.create({
       group: group._id,
       actor: req.user.id,
-      type: 'group_created',
+      type: "group_created",
       meta: { groupName: group.name },
-    }).catch(() => {});
+    }).catch(error => console.error("Could not record group-created activity:", error));
+
+    return res.status(201).json(group);
   } catch (error) {
     console.error("Error creating group:", error);
-    res.status(500).json({ message: "Internal server error" });
+    if (error.name === "ValidationError" || error.name === "CastError") {
+      return res.status(400).json({ message: "Please check the group details and try again" });
+    }
+    return res.status(500).json({ message: "We could not create this group. Please try again." });
   }
 });
 
@@ -246,42 +263,80 @@ router.delete("/:id/members/:userId", protect, async (req, res) => {
   }
 });
 
-// DELETE GROUP (only when all member balances are fully cleared)
-router.delete("/:id", protect, async (req, res) => {
+// DELETE GROUP (only when all balances and pending payment activity are clear)
+router.delete("/:id", async (req, res) => {
   try {
-    const group = await Group.findById(req.params.id);
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ message: "Invalid group id" });
+    }
 
+    const group = await Group.findById(req.params.id);
     if (!group) {
       return res.status(404).json({ message: "Group not found" });
     }
 
     if (group.createdBy.toString() !== req.user.id) {
-      return res
-        .status(401)
-        .json({ message: "Only the group creator can delete it" });
+      return res.status(403).json({ message: "Only the group creator can delete it" });
     }
 
-    // ── Balance check ────────────────────────────────────────────────────────
-    // Block deletion if any member still has a pending balance.
-    const [expenses, settlements] = await Promise.all([
-      Expense.find({ group: req.params.id })
-        .populate("paidBy", "name")
-        .populate("splits.user", "name"),
-      Settlement.find({ group: req.params.id }),
-    ]);
+    // A previous deletion attempt may have completed part of the cleanup.
+    // Keep the group locked and let its creator safely retry the idempotent cleanup.
+    if (!group.isDeleting) {
+      const [expenses, settlements, activeSchedule, pendingSettlement] = await Promise.all([
+        Expense.find({ group: group._id })
+          .populate("paidBy", "name")
+          .populate("splits.user", "name"),
+        Settlement.find({ group: group._id }),
+        SettlementSchedule.exists({ group: group._id, active: true }),
+        Settlement.exists({ group: group._id, status: "pending" }),
+      ]);
 
-    const confirmedSettlements = settlements.filter(s => !s.status || s.status === 'confirmed');
-    const pendingTxns = simplifyDebts(expenses, confirmedSettlements);
+      const confirmedSettlements = settlements.filter(
+        settlement => !settlement.status || settlement.status === "confirmed",
+      );
+      const pendingTransactions = simplifyDebts(expenses, confirmedSettlements);
 
-    if (pendingTxns.length > 0) {
-      return res.status(400).json({
-        message:
-          "All balances must be settled before the group can be deleted. Please clear all pending dues first.",
-      });
+      if (pendingTransactions.length > 0) {
+        return res.status(409).json({
+          message: "This group still has unpaid balances. Settle all dues before deleting it.",
+        });
+      }
+      if (pendingSettlement) {
+        return res.status(409).json({
+          message: "A payment is still awaiting confirmation. Finish or cancel it before deleting this group.",
+        });
+      }
+      if (activeSchedule) {
+        return res.status(409).json({
+          message: "This group has an active payment schedule. Complete or cancel it before deleting the group.",
+        });
+      }
+
+      // Acquire the deletion lock only when no expense create/delete operation
+      // is in flight. New expense writes reserve activeMutations atomically.
+      const lock = await Group.findOneAndUpdate(
+        {
+          _id: group._id,
+          createdBy: req.user.id,
+          isDeleting: { $ne: true },
+          $or: [
+            { activeMutations: 0 },
+            { activeMutations: { $exists: false } },
+          ],
+        },
+        { $set: { isDeleting: true } },
+        { new: true },
+      );
+
+      if (!lock) {
+        return res.status(409).json({
+          message: "This group is being updated right now. Please wait a moment and try deleting it again.",
+        });
+      }
     }
-    // ────────────────────────────────────────────────────────────────────────
 
-    // Remove all data owned by this group so no orphaned records remain.
+    // Each operation is idempotent. If a step fails, the group remains locked
+    // so the creator can retry and finish cleanup without accepting new expenses.
     await Promise.all([
       Expense.deleteMany({ group: group._id }),
       Settlement.deleteMany({ group: group._id }),
@@ -290,11 +345,24 @@ router.delete("/:id", protect, async (req, res) => {
       Message.deleteMany({ group: group._id }),
     ]);
 
-    await group.deleteOne();
-    res.json({ message: "Group deleted" });
+    const deleted = await Group.deleteOne({
+      _id: group._id,
+      createdBy: req.user.id,
+      isDeleting: true,
+    });
+
+    if (deleted.deletedCount !== 1) {
+      return res.status(409).json({
+        message: "The group changed while it was being deleted. Refresh and try again.",
+      });
+    }
+
+    return res.json({ message: "Group deleted" });
   } catch (error) {
     console.error("Error deleting group:", error);
-    res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({
+      message: "We could not finish deleting this group. Your group is locked against new expenses; retry the deletion to finish cleanup.",
+    });
   }
 });
 
