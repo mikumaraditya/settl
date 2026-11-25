@@ -190,32 +190,21 @@ router.get("/simplify/:groupId", protect, async (req, res) => {
         .sort({ dueDate: 1 }),
     ]);
 
-    // Deliver a single in-app reminder when a participant opens the group
-    // on the due date or the day before. This is request-driven, not a
-    // background push scheduler; no notifications are emitted for old dates.
+    // Keep date labels consistent with the viewer's calendar without emitting
+    // reminders from a read request; the background worker owns delivery.
     const today = getDateInTimeZone(req.query.timeZone);
-    const todayUtc = Date.parse(`${today}T00:00:00.000Z`);
-    await Promise.all(scheduleRequests.map(async (schedule) => {
-      if (schedule.status !== "accepted") return;
-      const isPayer = schedule.from?._id?.toString() === req.user.id;
-      const reminderField = isPayer ? "fromReminderSentAt" : "toReminderSentAt";
-      if (schedule[reminderField]) return;
+    const tomorrow = addDaysToDateOnly(today, 1);
+    const scheduleRequestsWithStatus = scheduleRequests.map((schedule) => {
       const dueDateOnly = schedule.dueDate.toISOString().slice(0, 10);
-      const daysUntilDue = (Date.parse(`${dueDateOnly}T00:00:00.000Z`) - todayUtc) / (24 * 60 * 60 * 1000);
-      if (daysUntilDue < 0 || daysUntilDue > 1) return;
-
-      const reminder = await SettlementSchedule.findOneAndUpdate(
-        {
-          _id: schedule._id,
-          status: "accepted",
-          active: true,
-          [reminderField]: null,
-        },
-        { $set: { [reminderField]: new Date() } },
-        { new: true },
-      ).populate("from to", "name email upiId");
-      if (reminder) safeEmitUser(req.user.id, "schedule_reminder", reminder);
-    }));
+      const dueStatus = dueDateOnly < today
+        ? "overdue"
+        : dueDateOnly === today
+          ? "due_today"
+          : dueDateOnly === tomorrow
+            ? "due_tomorrow"
+            : "upcoming";
+      return { ...schedule.toObject(), dueDateOnly, dueStatus };
+    });
 
     // Separate by status (legacy settlements have no status and should be treated as confirmed)
     const confirmedSettlements  = allSettlements.filter((s) => !s.status || s.status === "confirmed");
@@ -226,7 +215,7 @@ router.get("/simplify/:groupId", protect, async (req, res) => {
         transactions: [],
         confirmedSettlements,
         pendingRequests,
-        scheduleRequests,
+        scheduleRequests: scheduleRequestsWithStatus,
       });
     }
 
@@ -275,7 +264,7 @@ router.get("/simplify/:groupId", protect, async (req, res) => {
       transactions,
       confirmedSettlements,
       pendingRequests,
-      scheduleRequests,
+      scheduleRequests: scheduleRequestsWithStatus,
     });
   } catch (error) {
     console.error("Error fetching settlements/transactions:", error);
@@ -734,13 +723,14 @@ router.get("/schedules/:groupId", async (req, res) => {
       .sort({ dueDate: 1, createdAt: -1 });
 
     const today = getDateInTimeZone(req.query.timeZone);
+    const tomorrow = addDaysToDateOnly(today, 1);
     res.json({
       schedules: schedules.map((schedule) => {
         const dueDateOnly = schedule.dueDate.toISOString().slice(0, 10);
         return {
           ...schedule.toObject(),
           dueDateOnly,
-          dueStatus: dueDateOnly < today ? "overdue" : dueDateOnly === today ? "due_today" : "upcoming",
+          dueStatus: dueDateOnly < today ? "overdue" : dueDateOnly === today ? "due_today" : dueDateOnly === tomorrow ? "due_tomorrow" : "upcoming",
         };
       }),
     });
