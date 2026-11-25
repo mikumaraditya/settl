@@ -61,8 +61,8 @@ Settl is a modern full-stack bill-sharing and personal finance platform built fo
 - **Direction & Limit Validation**: Prevents backwards settlements, overpayments beyond simplified debt limits, and duplicate in-flight requests.
 
 ### 5. Two-Sided Settlement Lifecycle & Verification
-- **Payer Initiation**: Payer initiates a settlement request (`pending`), setting a default 7-day due date.
-- **Receiver Confirmation**: Receiver verifies their bank account or UPI app and confirms payment (`confirmed`), which atomically updates balances.
+- **Payer Initiation**: Payer initiates a settlement request (`pending`), setting a default 7-day due date and optionally attaching a UPI transaction reference / UTR / RRN.
+- **Receiver Confirmation**: Receiver independently checks their UPI or bank app and confirms payment (`confirmed`), which atomically updates balances. A payer-supplied reference is shown only to the payer and receiver; Settl does not verify it with a bank.
 - **Audit-Preserved Rejections**: If an unreceived payment is claimed, the receiver rejects it (`rejected`) with an explicit reason. The record is preserved in MongoDB for dispute auditing and penalizes trust scores.
 - **Payer Cancellation**: Payers can cancel accidental or incorrect in-flight requests (`cancelled`) without penalty.
 - **Auto-Expiry**: Stale pending requests older than 7 days automatically transition to `expired`.
@@ -70,7 +70,7 @@ Settl is a modern full-stack bill-sharing and personal finance platform built fo
 ### 6. Indian UPI Payment Facilitation
 - **Mobile Deep Linking**: Instant `upi://pay` URI scheme launch opening installed UPI apps (Google Pay, PhonePe, Paytm, BHIM).
 - **Dynamic Desktop QR Codes**: Automatically generates scan-and-pay dynamic QR codes using `qrcode.react`.
-- **Visibility Detection**: Listens to browser `visibilitychange` events to detect when a user returns from their UPI app and automatically prompts settlement logging.
+- **Return-to-App Prompt**: Detects when a user returns from their UPI app, but requires an explicit payer confirmation; returning to the browser is not treated as proof of payment.
 - **UPI ID Clipboard Copy**: One-click copy with verified format validation.
 
 ### 7. Real-Time Synchronization & Audit Logs
@@ -598,7 +598,7 @@ All application endpoints are mounted under `/api` and require authenticated HTT
 | Method | Endpoint | Access | Description |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/settlements/simplify/:id` | Protected | Compute net balances and simplified debt transactions for a group. |
-| `POST` | `/api/settlements/settle` | Protected | Payer records a payment as pending; the receiver must confirm before it clears debt. An accepted schedule can be linked by `scheduleId`. |
+| `POST` | `/api/settlements/settle` | Protected | Payer records a payment as pending; may include an optional `upiReference` (6–64 characters). The receiver must independently verify receipt and confirm before debt clears. An accepted schedule can be linked by `scheduleId`. |
 | `POST` | `/api/settlements/schedule` | Protected | Payer proposes an amount and optional future date; if omitted, Settl defaults the due date to 7 calendar days from today in the payer's timezone. The proposal does not change balances. |
 | `GET` | `/api/settlements/schedules/:groupId` | Protected | Retrieve active payment schedules for the current user, including due tomorrow, due today, and overdue states. |
 | `POST` | `/api/settlements/schedule/:scheduleId/respond` | Protected | Recipient accepts or rejects a proposed repayment date. |
@@ -678,7 +678,7 @@ User ────< Group (members.user)
 1. **`User`**: Account record with hashed `password`, `upiId`, and email verification flags (`isEmailVerified`, `emailVerificationToken`, `emailVerificationExpires`).
 2. **`Group`**: Shared workspace with `name`, `currency`, and an array of `members` storing `user` reference, `role` (`admin` or `member`), and `joinedAt`.
 3. **`Expense`**: Shared cost containing `amount`, `category`, `paidBy`, and `splits` array (`user`, `amount`, `paid`). `splitType` is constrained to `equal`, `exact`, or `percentage`.
-4. **`Settlement`**: Peer transaction between `from` and `to` members. `status` lifecycle transitions through `pending`, `confirmed`, `cancelled`, `expired`, and `rejected`. Stores `dueDate` and `rejectionReason`.
+4. **`Settlement`**: Peer transaction between `from` and `to` members. `status` lifecycle transitions through `pending`, `confirmed`, `cancelled`, `expired`, and `rejected`. Stores `dueDate`, `rejectionReason`, and an optional payer-provided `upiReference` (not independently verified).
 5. **`SettlementSchedule`**: Separate future-repayment agreement with payer, receiver, amount, date-only due date, response state, and optional linked payment. Only payment confirmation completes a schedule; a proposal or acceptance never changes group balances. Accepted schedules expose due tomorrow, due today, and overdue states.
 6. **`ActivityLog`**: Immutable audit record tracking expense, settlement, and schedule lifecycle events (`schedule_proposed`, `schedule_accepted`, `schedule_rejected`, `schedule_cancelled`, `schedule_completed`) with metadata.
 7. **`ScoreHistory`**: Historical ledger of Trust Scores containing `score`, `delta`, `reason`, `eventId`, and `eventType` (`initial_baseline`, `score_adjustment`, `weekly_snapshot`).
@@ -825,7 +825,7 @@ For deployments on Vercel or similar platforms, [`frontend/vercel.json`](fronten
 | **Redis-Backed Rate Limiting** | **Implemented** | Shared counters for auth, verification, Trust Score, financial tips, and Finn chat; configure `REDIS_URL` in production to enable it. |
 | **Multi-Session Mentor Conversations** | **Implemented** | Create, switch, rename, archive, and restore independent sessions with per-thread request locking and history isolation. |
 | **Settlement Due Date Customization** | **Implemented** | Payer proposes a date or gets a 7-day default; receiver accepts or declines, and linked payment confirmation completes the schedule without changing balances early. |
-| **Persistent In-App Settlement Reminders** | **Implemented** | Private reminders for payer and receiver one day before and on the agreed due date, with deduplication and persisted read/clear state. |
+| **Persistent In-App Settlement Reminders** | **Implemented** | Private reminders for payer and receiver one day before and on the agreed due date, with deduplication and persisted read/clear state. |\n| **UPI Reference Capture** | **Implemented** | Optional payer-provided UTR/RRN stored on pending settlements and shown only to the payer and receiver; never treated as bank-verified proof. |
 
 ### Contributing
 1. Fork the repository and create a feature branch (`git checkout -b feature/amazing-feature`).
