@@ -369,7 +369,7 @@ Settl uses Socket.IO to keep connected clients synchronized. Clients join rooms 
 | `jsonwebtoken` | `^9.0.2` | Cryptographic signing for session tokens |
 | `cookie-parser` | `^1.4.7` | HTTP-only cookie parsing middleware |
 | `bcryptjs` | `^2.4.3` | Salted password hashing |
-| `express-rate-limit` | `^8.2.1` | IP and user rate limiting on sensitive routes |
+| `express-rate-limit` | `^8.2.1` | IP and user rate limiting on sensitive routes |\n| `rate-limit-redis` | `5.0.0` | Shared Redis store for distributed rate limiting |\n| `@redis/client` | `1.6.1` | Redis connection used by the rate-limit store |
 | `google-auth-library` | `^10.6.2` | Verification of Google OAuth 2.0 ID tokens |
 | `nodemailer` | `^9.0.3` | SMTP email dispatch for account verification |
 | `dotenv` | `^16.4.5` | Environment variable management |
@@ -755,7 +755,7 @@ if (!testDbName || !testDbName.endsWith("_test")) {
 - **No Chat Logging**: Server logs do not print conversation text or prompt bodies.
 
 ### Current Limitations
-- **In-Memory Rate Limiting**: `express-rate-limit` uses in-memory tracking which resets upon server restart. Multi-instance production clusters will require Redis.
+- **Rate-Limit Fallback**: Without `REDIS_URL`, limits use the built-in per-process memory store. Configure Redis in production when running multiple backend instances.
 - **Manual UPI Reconciliation**: Settlements depend on receiver peer confirmation. Settl does not connect to banking APIs to independently verify bank ledger entries.
 
 ---
@@ -822,7 +822,7 @@ For deployments on Vercel or similar platforms, [`frontend/vercel.json`](fronten
 | **Authoritative Trust Score (0–100)** | **Implemented** | 4-dimension scoring, staleness decay, dispute penalties, score ledger. |
 | **Finn AI Financial Mentor** | **Implemented** | 16 tools, Gemini loop, keyword knowledge grounding, consent gating. |
 | **Trust Score Interactive UI** | **Implemented** | Score gauge, trend pill, quick actions, factors, commitments, ledger. |
-| **Redis-Backed Rate Limiting** | Planned | Distributed rate limiting across multiple server instances. |
+| **Redis-Backed Rate Limiting** | **Implemented** | Shared counters for auth, verification, Trust Score, financial tips, and Finn chat; configure `REDIS_URL` in production to enable it. |
 | **Multi-Session Mentor Conversations** | **Implemented** | Create, switch, rename, archive, and restore independent sessions with per-thread request locking and history isolation. |
 | **Settlement Due Date Customization** | **Implemented** | Payer proposes a date or gets a 7-day default; receiver accepts or declines, and linked payment confirmation completes the schedule without changing balances early. |
 | **Persistent In-App Settlement Reminders** | **Implemented** | Private reminders for payer and receiver one day before and on the agreed due date, with deduplication and persisted read/clear state. |
