@@ -40,6 +40,14 @@ const settlementSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    // Optional reference supplied by the payer; Settl does not verify it with a bank.
+    upiReference: {
+      type: String,
+      trim: true,
+      minlength: 6,
+      maxlength: 64,
+      default: null,
+    },
   },
   { timestamps: true },
 );
