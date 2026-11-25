@@ -62,6 +62,24 @@ async function migrateMentorConversations() {
     ],
   );
 
+  // The server is stopped during migration, so any persisted lease belongs
+  // to a request that cannot still be running. Clear it to avoid a stale 409
+  // immediately after the updated backend starts.
+  const clearedLeases = await collection.updateMany(
+    {
+      $or: [
+        { activeRequestId: { $exists: true } },
+        { activeRequestExpiresAt: { $exists: true } },
+      ],
+    },
+    {
+      $unset: {
+        activeRequestId: "",
+        activeRequestExpiresAt: "",
+      },
+    },
+  );
+
   await collection.createIndex(
     { user: 1, archivedAt: 1, updatedAt: -1 },
     { name: "user_1_archivedAt_1_updatedAt_-1" },
@@ -77,6 +95,8 @@ async function migrateMentorConversations() {
     total,
     "Documents updated with defaults:",
     defaults.modifiedCount,
+    "Stale request leases cleared:",
+    clearedLeases.modifiedCount,
   );
 }
 
