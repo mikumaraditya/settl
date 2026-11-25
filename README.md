@@ -631,10 +631,15 @@ All application endpoints are mounted under `/api` and require authenticated HTT
 | Method | Endpoint | Access | Description |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/mentor/health` | Public | Check Gemini API key configuration status. |
-| `POST` | `/api/mentor/chat` | Protected | Send message to Finn agent; returns guidance and tool metadata. |
-| `POST` | `/api/mentor/chat/stream` | Protected | Stream Finn responses via Server-Sent Events (SSE). |
-| `GET` | `/api/mentor/history` | Protected | Retrieve stored multi-turn conversation history. |
-| `DELETE`| `/api/mentor/history` | Protected | Clear stored conversation history. |
+| `POST` | `/api/mentor/chat` | Protected | Send a message with an optional `conversationId`; response includes the selected session ID. |
+| `POST` | `/api/mentor/chat/stream` | Protected | Stream Finn responses via SSE with the optional selected `conversationId`. |
+| `GET` | `/api/mentor/conversations` | Protected | List the current user's active and archived conversation sessions. |
+| `POST` | `/api/mentor/conversations` | Protected | Create a new conversation session. |
+| `PATCH` | `/api/mentor/conversations/:conversationId` | Protected | Rename an owned conversation (not while a response is running). |
+| `POST` | `/api/mentor/conversations/:conversationId/archive` | Protected | Archive a session without deleting its messages. |
+| `POST` | `/api/mentor/conversations/:conversationId/unarchive` | Protected | Restore an archived session. |
+| `GET` | `/api/mentor/history?conversationId=...` | Protected | Retrieve history for one owned session; omitting the ID selects the most recent active session. |
+| `DELETE`| `/api/mentor/history?conversationId=...` | Protected | Clear only the selected session's messages; the session itself remains. |
 | `GET` | `/api/mentor/profile` | Protected | Retrieve financial profile and data-mentoring consent status. |
 | `PUT` | `/api/mentor/profile` | Protected | Save financial profile (income, targets, goals, consent flag). |
 | `DELETE`| `/api/mentor/profile` | Protected | Permanently delete financial profile and goals. |
@@ -666,7 +671,7 @@ User ────< Group (members.user)
   │
   ├────< Notification (user, schedule, readAt, deletedAt)
   ├────< ScoreHistory (user, score, delta, reason)
-  ├────< MentorConversation (user, messages)
+  ├────< MentorConversation (user, title, archivedAt, messages)
   └────< UserFinancialProfile (user, goals, consent)
 ```
 
@@ -678,7 +683,7 @@ User ────< Group (members.user)
 6. **`ActivityLog`**: Immutable audit record tracking expense, settlement, and schedule lifecycle events (`schedule_proposed`, `schedule_accepted`, `schedule_rejected`, `schedule_cancelled`, `schedule_completed`) with metadata.
 7. **`ScoreHistory`**: Historical ledger of Trust Scores containing `score`, `delta`, `reason`, `eventId`, and `eventType` (`initial_baseline`, `score_adjustment`, `weekly_snapshot`).
 8. **`UserFinancialProfile`**: Consent-gated profile storing `status`, `monthlyIncome`, `monthlySavingsTarget`, `goals` (`name`, `targetAmount`, `deadline`, `savedSoFar`), `riskComfort`, and `consentToUseForMentor`.
-9. **`MentorConversation`**: Chat turns between `user` and `model`, recording `content`, `toolsUsed`, and timestamps.
+9. **`MentorConversation`**: Multiple named, archivable Finn sessions per user. Each session stores its own message history, activity timestamps, and independent in-flight request lease.
 10. **`Message`**: Real-time group chat message with `group`, `sender`, and `content`.
 11. **`Notification`**: User-scoped persistent reminder with a unique schedule/stage/participant key, read state, and soft-delete state.
 
@@ -752,7 +757,6 @@ if (!testDbName || !testDbName.endsWith("_test")) {
 ### Current Limitations
 - **In-Memory Rate Limiting**: `express-rate-limit` uses in-memory tracking which resets upon server restart. Multi-instance production clusters will require Redis.
 - **Manual UPI Reconciliation**: Settlements depend on receiver peer confirmation. Settl does not connect to banking APIs to independently verify bank ledger entries.
-- **Single Conversation Thread**: Finn currently maintains one conversation thread per user; overlapping requests are serialized and a second in-flight request receives a retryable conflict response.
 
 ---
 
@@ -760,14 +764,13 @@ if (!testDbName || !testDbName.endsWith("_test")) {
 
 ### Mentor Conversation Migration
 
-Before deploying this update, stop the backend and run the one-time migration from the `backend/` directory. It merges any duplicate conversation documents, keeps the latest 60 messages per user, and creates the unique user index required for request locking:
+Before deploying this update, stop the backend and run the one-time migration from the repository root. It removes the legacy unique `user` index, adds title/archive defaults to existing sessions, and creates non-unique indexes for per-user session listing. Existing message histories are preserved:
 
 ```bash
-cd backend
-npm run migrate:mentor-conversations
+npm --prefix backend run migrate:mentor-conversations
 ```
 
-Run this once against the production `MONGO_URI` before starting the updated backend. Do not run it while the application is accepting mentor requests.
+Run this once against the production `MONGO_URI` before starting the updated backend. Do not run it while the application is accepting mentor requests. Each user can then maintain multiple independent sessions; only one response can be active within an individual session.
 
 ### Production Build
 ```bash
@@ -812,7 +815,7 @@ For deployments on Vercel or similar platforms, [`frontend/vercel.json`](fronten
 | **Finn AI Financial Mentor** | **Implemented** | 16 tools, Gemini loop, keyword knowledge grounding, consent gating. |
 | **Trust Score Interactive UI** | **Implemented** | Score gauge, trend pill, quick actions, factors, commitments, ledger. |
 | **Redis-Backed Rate Limiting** | Planned | Distributed rate limiting across multiple server instances. |
-| **Multi-Session Mentor Conversations** | Planned | Ability to save, name, and archive separate conversation threads. |
+| **Multi-Session Mentor Conversations** | **Implemented** | Create, switch, rename, archive, and restore independent sessions with per-thread request locking and history isolation. |
 | **Settlement Due Date Customization** | **Implemented** | Payer proposes a date or gets a 7-day default; receiver accepts or declines, and linked payment confirmation completes the schedule without changing balances early. |
 | **Persistent In-App Settlement Reminders** | **Implemented** | Private reminders for payer and receiver one day before and on the agreed due date, with deduplication and persisted read/clear state. |
 
