@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import axios from '../api/axios'
 import Navbar from '../components/Navbar'
@@ -28,6 +28,7 @@ export default function Groups() {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [creating, setCreating] = useState(false)
+  const createRequestInFlightRef = useRef(false)
   const [error, setError] = useState('')
 
   const loadGroups = useCallback(async () => {
@@ -82,6 +83,7 @@ export default function Groups() {
 
   const handleCreate = async (event) => {
     event.preventDefault()
+    if (createRequestInFlightRef.current) return
     const cleanName = name.trim()
     const cleanDescription = description.trim()
     if (!cleanName) {
@@ -92,6 +94,7 @@ export default function Groups() {
       setError('Group names can contain up to 80 characters and descriptions up to 280 characters.')
       return
     }
+    createRequestInFlightRef.current = true
     setCreating(true)
     setError('')
     try {
@@ -103,6 +106,7 @@ export default function Groups() {
     } catch (err) {
       setError(err.response?.data?.message || 'We could not create this group. Check your connection and try again.')
     } finally {
+      createRequestInFlightRef.current = false
       setCreating(false)
     }
   }
@@ -203,11 +207,11 @@ export default function Groups() {
         )}
 
         {showCreate && (
-          <div className="fixed inset-0 z-[70] glass-modal flex items-center justify-center p-4" onClick={event => event.target === event.currentTarget && setShowCreate(false)}>
+          <div className="fixed inset-0 z-[70] glass-modal flex items-center justify-center p-4" onClick={event => event.target === event.currentTarget && !creating && setShowCreate(false)}>
             <form onSubmit={handleCreate} className="app-card w-full max-w-lg p-6 sm:p-7 shadow-2xl">
               <div className="flex items-start justify-between mb-6">
                 <div><p className="app-page-kicker">New workspace</p><h2 className="text-xl font-bold mt-1">Create a group</h2><p className="app-muted text-xs mt-1.5">Give your shared expenses a home.</p></div>
-                <button type="button" onClick={() => setShowCreate(false)} className="w-9 h-9 rounded-xl hover:bg-[var(--surface-container-low)] app-muted"><span className="material-symbols-outlined">close</span></button>
+                <button type="button" onClick={() => !creating && setShowCreate(false)} disabled={creating} className="w-9 h-9 rounded-xl hover:bg-[var(--surface-container-low)] app-muted"><span className="material-symbols-outlined">close</span></button>
               </div>
               <label className="app-page-kicker block mb-2">Group name</label>
               <input autoFocus value={name} onChange={event => { setName(event.target.value); setError('') }} className="app-input mb-4" placeholder="e.g. Hostel Room 204" required maxLength={80}/>
@@ -215,7 +219,7 @@ export default function Groups() {
               <input value={description} onChange={event => { setDescription(event.target.value); setError('') }} className="app-input" placeholder="What is this group for?" maxLength={280}/>
               {error && <p className="text-xs text-rose-500 mt-3">{error}</p>}
               <div className="flex justify-end gap-2 mt-7">
-                <button type="button" onClick={() => setShowCreate(false)} className="app-button-secondary">Cancel</button>
+                <button type="button" onClick={() => setShowCreate(false)} disabled={creating} className="app-button-secondary">Cancel</button>
                 <button type="submit" disabled={creating || !name.trim()} className="app-button-primary">{creating ? 'Creating…' : 'Create group'}</button>
               </div>
             </form>
