@@ -17,19 +17,18 @@ export const AuthProvider = ({ children }) => {
   const [authError, setAuthError] = useState('')
 
   const refreshSession = useCallback(async () => {
-    setIsAuthLoading(true)
-    setAuthError('')
-
     try {
       const { data } = await axios.get('/auth/me')
       const safeUser = withoutToken(data)
       setUser(safeUser)
       localStorage.setItem('settl_user', JSON.stringify(safeUser))
+      setAuthError('')
       return safeUser
     } catch (error) {
       if (error.response?.status === 401) {
         setUser(null)
         localStorage.removeItem('settl_user')
+        setAuthError('')
         return null
       }
 
@@ -39,6 +38,11 @@ export const AuthProvider = ({ children }) => {
       setIsAuthLoading(false)
     }
   }, [])
+
+  const retrySession = useCallback(() => {
+    setIsAuthLoading(true)
+    return refreshSession()
+  }, [refreshSession])
 
   useEffect(() => {
     refreshSession()
@@ -87,6 +91,7 @@ export const AuthProvider = ({ children }) => {
       isAuthLoading,
       authError,
       refreshSession,
+      retrySession,
       login,
       logout,
       markEmailVerified,
