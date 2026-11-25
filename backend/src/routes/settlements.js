@@ -281,17 +281,18 @@ router.get("/simplify/:groupId", protect, async (req, res) => {
 router.post("/settle", protect, async (req, res) => {
   let reservedGroupId = null;
   try {
-    const { groupId, toUserId, scheduleId } = req.body || {};
+    const body = req.body || {};
+    const { groupId, toUserId, scheduleId } = body;
 
-    if (!groupId || !toUserId || req.body.amount === undefined) {
+    if (!groupId || !toUserId || body.amount === undefined) {
       return res.status(400).json({ message: 'groupId, toUserId and amount are required' });
     }
     if (!mongoose.isValidObjectId(groupId) || !mongoose.isValidObjectId(toUserId)) {
       return res.status(400).json({ message: 'Invalid group or recipient id' });
     }
 
-    const amount = Math.round(Number(req.body.amount) * 100) / 100;
-    if (!Number.isFinite(req.body.amount) || amount <= 0 || req.body.amount !== amount) {
+    const amount = Math.round(Number(body.amount) * 100) / 100;
+    if (!Number.isFinite(body.amount) || amount <= 0 || body.amount !== amount) {
       return res.status(400).json({ message: 'Amount must be positive and have at most two decimal places' });
     }
 
@@ -689,9 +690,10 @@ router.get("/schedules/:groupId", async (req, res) => {
 router.post("/schedule", async (req, res) => {
   let reservedGroupId = null;
   try {
-    const { groupId, toUserId, dueDate } = req.body || {};
-    const amount = Number(req.body?.amount);
-    if (!groupId || !toUserId || req.body.amount === undefined) {
+    const body = req.body || {};
+    const { groupId, toUserId, dueDate } = body;
+    const amount = Number(body.amount);
+    if (!groupId || !toUserId || body.amount === undefined) {
       return res.status(400).json({ message: "groupId, toUserId and amount are required" });
     }
     if (!mongoose.isValidObjectId(groupId) || !mongoose.isValidObjectId(toUserId)) {
@@ -711,7 +713,7 @@ router.post("/schedule", async (req, res) => {
     // If the payer leaves the date empty, default to seven calendar days
     // from today in their local timezone.
     const resolvedDueDate = dueDate === undefined || dueDate === null || dueDate === ""
-      ? addDaysToDateOnly(getDateInTimeZone(req.body.timeZone), 7)
+      ? addDaysToDateOnly(getDateInTimeZone(body.timeZone), 7)
       : dueDate;
     if (typeof resolvedDueDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(resolvedDueDate)) {
       return res.status(400).json({ message: "Due date must use YYYY-MM-DD format" });
@@ -720,7 +722,7 @@ router.post("/schedule", async (req, res) => {
     if (Number.isNaN(parsedDueDate.getTime()) || parsedDueDate.toISOString().slice(0, 10) !== resolvedDueDate) {
       return res.status(400).json({ message: "Please provide a valid calendar date" });
     }
-    if (resolvedDueDate < getDateInTimeZone(req.body.timeZone)) {
+    if (resolvedDueDate < getDateInTimeZone(body.timeZone)) {
       return res.status(400).json({ message: "Due date cannot be in the past" });
     }
 
