@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { streamMentorMessage, fetchMentorHistory, clearMentorHistory, getMentorProfile } from '../api/mentor';
+import { streamMentorMessage, fetchMentorHistory, clearMentorHistory, getMentorProfile, fetchMentorConversations, createMentorConversation, renameMentorConversation, archiveMentorConversation, unarchiveMentorConversation } from '../api/mentor';
 import { MENTOR_NAME } from '../constants/mentor';
 import MentorOnboardingModal from './MentorOnboardingModal';
 
@@ -54,6 +54,10 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
   const [statusMessage, setStatusMessage] = useState('');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState(null);
+  const [conversations, setConversations] = useState([]);
+  const [selectedConversationId, setSelectedConversationId] = useState(null);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
 
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
@@ -92,35 +96,50 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
     sendMessage: (text) => handleSend(text),
   }));
 
+  const createGreeting = () => ({
+    role: 'assistant',
+    content: '👋 Hi! I am ' + MENTOR_NAME + ', your AI Personal Financial Mentor on Settl.\n\nI am here to help you master your money—from understanding your group spending and balances to learning about investing, budgeting, loans, and financial safety.\n\nAsk me any financial question or pick a suggested topic below!',
+    toolsUsed: [],
+    timestamp: new Date().toISOString(),
+  });
+
+  const applyHistory = (historyData) => {
+    const history = Array.isArray(historyData?.messages) ? historyData.messages : [];
+    if (history.length > 0) {
+      setMessages(history.map((message) => ({
+        ...message,
+        content: message.role === 'assistant' && typeof message.content === 'string'
+          ? message.content.replace(/(I'm|I am|This is)\s+Aarav/gi, (match) => match.replace('Aarav', MENTOR_NAME))
+          : message.content,
+      })));
+    } else {
+      setMessages([createGreeting()]);
+    }
+  };
+
   const loadInitialData = async () => {
     setFetchingHistory(true);
     setError('');
     try {
-      const [historyData, profileData] = await Promise.all([
-        fetchMentorHistory().catch(() => ({ messages: [] })),
+      const [conversationData, profileData] = await Promise.all([
+        fetchMentorConversations(),
         getMentorProfile().catch(() => null),
       ]);
 
       if (!mountedRef.current) return;
 
-      if (Array.isArray(historyData?.messages) && historyData.messages.length > 0) {
-        const cleanHistory = historyData.messages.map((m) => ({
-          ...m,
-          content: m.role === 'assistant' && typeof m.content === 'string'
-            ? m.content.replace(/(I'm|I am|This is)\s+Aarav/gi, `$1 ${MENTOR_NAME}`)
-            : m.content,
-        }));
-        setMessages(cleanHistory);
-      } else {
-        setMessages([
-          {
-            role: 'assistant',
-            content: `👋 Hi! I'm **${MENTOR_NAME}**, your AI Personal Financial Mentor on Settl.\n\nI'm here to help you master your money—from understanding your **group spending and balances** to learning about **investing, budgeting, loans, and financial safety**.\n\nAsk me any financial question or pick a suggested topic below!`,
-            toolsUsed: [],
-            timestamp: new Date().toISOString(),
-          },
-        ]);
+      let items = conversationData.conversations || [];
+      let selected = items.find((item) => !item.archivedAt);
+      if (!selected) {
+        selected = await createMentorConversation();
+        items = [selected, ...items];
       }
+
+      setConversations(items);
+      setSelectedConversationId(selected.id);
+      const historyData = await fetchMentorHistory(selected.id);
+      if (!mountedRef.current) return;
+      applyHistory(historyData);
 
       const isDismissed = localStorage.getItem("settl_mentor_onboarding_dismissed");
       if (!isDismissed && (!profileData || profileData.consentToUseForMentor !== true)) {
@@ -129,13 +148,106 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
     } catch (err) {
       if (mountedRef.current) {
         console.error('Failed to load mentor data:', err);
-        setError(`Unable to connect to ${MENTOR_NAME}. Please try again later.`);
+        setError('Unable to connect to ' + MENTOR_NAME + '. Please try again later.');
+        setMessages([createGreeting()]);
       }
     } finally {
       if (mountedRef.current) {
         setFetchingHistory(false);
         setTimeout(() => textareaRef.current?.focus(), 150);
       }
+    }
+  };
+
+  const selectedConversation = conversations.find((item) => item.id === selectedConversationId);
+
+  const handleSelectConversation = async (conversationId) => {
+    if (!conversationId || conversationId === selectedConversationId || loading) return;
+    setFetchingHistory(true);
+    setError('');
+    try {
+      const historyData = await fetchMentorHistory(conversationId);
+      if (!mountedRef.current) return;
+      setSelectedConversationId(conversationId);
+      applyHistory(historyData);
+      setIsRenaming(false);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Unable to open this conversation.');
+    } finally {
+      if (mountedRef.current) setFetchingHistory(false);
+    }
+  };
+
+  const handleCreateConversation = async () => {
+    if (loading || fetchingHistory) return;
+    setError('');
+    try {
+      const created = await createMentorConversation();
+      setConversations((previous) => [created, ...previous]);
+      setSelectedConversationId(created.id);
+      setMessages([createGreeting()]);
+      setIsRenaming(false);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Unable to start a new conversation.');
+    }
+  };
+
+  const handleStartRename = () => {
+    if (!selectedConversation || loading || selectedConversation.isBusy) return;
+    setTitleDraft(selectedConversation.title || '');
+    setIsRenaming(true);
+  };
+
+  const handleRenameConversation = async (event) => {
+    event.preventDefault();
+    if (loading || fetchingHistory) return;
+    const cleanTitle = titleDraft.trim();
+    if (!selectedConversationId || !cleanTitle) return;
+    try {
+      const renamed = await renameMentorConversation(selectedConversationId, cleanTitle);
+      setConversations((previous) => previous.map((item) =>
+        item.id === selectedConversationId ? { ...item, title: renamed.title } : item
+      ));
+      setIsRenaming(false);
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Unable to rename this conversation.');
+    }
+  };
+
+  const handleArchiveConversation = async () => {
+    if (!selectedConversationId || !selectedConversation || loading || selectedConversation.isBusy) return;
+    try {
+      const archived = await archiveMentorConversation(selectedConversationId);
+      setConversations((previous) => previous.map((item) =>
+        item.id === selectedConversationId ? { ...item, archivedAt: archived.archivedAt } : item
+      ));
+      setIsRenaming(false);
+
+      const nextActive = conversations.find((item) => item.id !== selectedConversationId && !item.archivedAt);
+      if (nextActive) {
+        await handleSelectConversation(nextActive.id);
+      } else {
+        const created = await createMentorConversation();
+        setConversations((previous) => [created, ...previous]);
+        setSelectedConversationId(created.id);
+        setMessages([createGreeting()]);
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Unable to archive this conversation.');
+    }
+  };
+
+  const handleRestoreConversation = async () => {
+    if (!selectedConversationId || loading) return;
+    try {
+      const restored = await unarchiveMentorConversation(selectedConversationId);
+      setConversations((previous) => previous.map((item) =>
+        item.id === selectedConversationId ? { ...item, archivedAt: restored.archivedAt } : item
+      ));
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Unable to restore this conversation.');
     }
   };
 
@@ -161,6 +273,11 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
       return;
     }
 
+    if (!selectedConversationId || selectedConversation?.archivedAt) {
+      setError('Choose an active conversation before sending a message.');
+      return;
+    }
+
     setError('');
     setInput('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
@@ -181,6 +298,7 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
     try {
       const res = await streamMentorMessage(textToSend, {
         signal: controller.signal,
+        conversationId: selectedConversationId,
         onStatus: (status) => {
           if (mountedRef.current) setStatusMessage(status);
         },
@@ -196,6 +314,12 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
         timestamp: res.timestamp || new Date().toISOString(),
       };
       setMessages((prev) => [...prev, assistantMsg]);
+      if (res.conversationId && res.conversationId !== selectedConversationId) {
+        setSelectedConversationId(res.conversationId);
+      }
+      fetchMentorConversations().then((data) => {
+        if (mountedRef.current) setConversations(data.conversations || []);
+      }).catch(() => {});
     } catch (err) {
       if (err.name === 'AbortError') {
         if (mountedRef.current && userCancelledRef.current) {
@@ -250,7 +374,8 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
   const handleClearHistory = async () => {
     if (window.confirm(`Are you sure you want to clear your conversation history with ${MENTOR_NAME}?`)) {
       try {
-        await clearMentorHistory();
+        if (!selectedConversationId) return;
+        await clearMentorHistory(selectedConversationId);
         setMessages([
           {
             role: 'assistant',
@@ -261,6 +386,7 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
         ]);
       } catch (err) {
         console.error('Failed to clear history:', err);
+        setError(err.response?.data?.message || 'Unable to clear this conversation.');
       }
     }
   };
@@ -274,6 +400,79 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
 
   return (
     <div className="finn-chat flex flex-col h-full overflow-hidden text-slate-800 dark:text-slate-100">
+      {/* Conversation sessions */}
+      <div className="px-3 py-2 border-b border-slate-200/80 dark:border-white/10 bg-slate-50/80 dark:bg-[#0f172a]/70">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Chats</span>
+          <select
+            value={selectedConversationId || ''}
+            onChange={(event) => handleSelectConversation(event.target.value)}
+            disabled={loading || fetchingHistory || conversations.length === 0}
+            aria-label="Select Finn conversation"
+            className="min-w-0 flex-1 max-w-full sm:max-w-[260px] rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/30 disabled:opacity-50"
+          >
+            {conversations.filter((item) => !item.archivedAt).map((item) => (
+              <option key={item.id} value={item.id}>{item.title || 'New conversation'}</option>
+            ))}
+            {conversations.some((item) => item.archivedAt) && (
+              <optgroup label="Archived">
+                {conversations.filter((item) => item.archivedAt).map((item) => (
+                  <option key={item.id} value={item.id}>Archived · {item.title || 'New conversation'}</option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+          <button
+            type="button"
+            onClick={handleCreateConversation}
+            disabled={loading || fetchingHistory}
+            className="rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/15 disabled:opacity-40"
+          >
+            + New chat
+          </button>
+          {selectedConversation?.archivedAt ? (
+            <button
+              type="button"
+              onClick={handleRestoreConversation}
+              disabled={loading || fetchingHistory}
+              className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/15 disabled:opacity-40"
+            >Restore</button>
+          ) : selectedConversation && !isRenaming ? (
+            <>
+              <button
+                type="button"
+                onClick={handleStartRename}
+                disabled={loading || fetchingHistory || selectedConversation.isBusy}
+                className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-white/10 disabled:opacity-40"
+              >Rename</button>
+              <button
+                type="button"
+                onClick={handleArchiveConversation}
+                disabled={loading || fetchingHistory || selectedConversation.isBusy}
+                className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-white/10 disabled:opacity-40"
+              >Archive</button>
+            </>
+          ) : null}
+          {isRenaming && (
+            <form onSubmit={handleRenameConversation} className="flex min-w-0 flex-1 items-center gap-1.5">
+              <input
+                value={titleDraft}
+                onChange={(event) => setTitleDraft(event.target.value)}
+                maxLength={100}
+                autoFocus
+                aria-label="Conversation title"
+                className="min-w-0 flex-1 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500/30"
+              />
+              <button type="submit" disabled={!titleDraft.trim() || loading || fetchingHistory} className="rounded-lg px-2 py-1.5 text-[11px] font-bold text-indigo-600 dark:text-indigo-300 disabled:opacity-40">Save</button>
+              <button type="button" onClick={() => setIsRenaming(false)} className="rounded-lg px-2 py-1.5 text-[11px] font-semibold text-slate-500">Cancel</button>
+            </form>
+          )}
+        </div>
+        {selectedConversation?.archivedAt && (
+          <p className="mt-1.5 text-[10px] text-amber-600 dark:text-amber-300">Archived conversation · Restore it to continue chatting.</p>
+        )}
+      </div>
+
       {/* Messages List */}
       <div className="finn-message-list flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-5 space-y-5">
         {fetchingHistory ? (
@@ -535,7 +734,7 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
       </div>
 
       {/* Suggested Quick Prompts */}
-      {!loading && messages.length <= 4 && (
+      {!loading && !fetchingHistory && !selectedConversation?.archivedAt && messages.length <= 4 && (
         <div className="finn-suggestions px-4 py-3">
           <p className="finn-suggestions-label text-[10px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1">
             <span className="material-symbols-outlined text-[12px] text-indigo-500">lightbulb</span>
@@ -580,13 +779,13 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDownTextarea}
-              placeholder={`Ask ${MENTOR_NAME} about budgeting, loans, savings, or spending...`}
+              placeholder={selectedConversation?.archivedAt ? "Restore this conversation to continue..." : `Ask ${MENTOR_NAME} about budgeting, loans, savings, or spending...`}
               data-gramm="false"
               data-gramm_editor="false"
               data-enable-grammarly="false"
               autoComplete="off"
               className="finn-chat-textarea w-full bg-transparent border-0 outline-none ring-0 focus:outline-none focus:ring-0 text-[14.5px] leading-[1.6] text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 py-0 px-1 resize-none max-h-[130px] overflow-y-auto custom-scrollbar font-normal"
-              readOnly={loading}
+              readOnly={loading || Boolean(selectedConversation?.archivedAt)}
               aria-label={`Ask ${MENTOR_NAME} a financial question`}
             />
             {input.length > 400 && (
@@ -619,7 +818,7 @@ const MentorChat = forwardRef(function MentorChat({ isMobileSheet: _isMobileShee
           ) : (
           <button
             type="submit"
-            disabled={!input.trim()}
+            disabled={!input.trim() || Boolean(selectedConversation?.archivedAt) || fetchingHistory}
             aria-disabled={!input.trim()}
             aria-label="Send message"
             title="Send message"

@@ -31,6 +31,7 @@ describe("Mentor Routes Supertest Suite", () => {
   before(async () => {
     const { testUri } = getTestDbConfig();
     await mongoose.connect(testUri);
+    await MentorConversation.syncIndexes();
 
     testUser = await User.create({
       name: "Route Test User",
@@ -175,4 +176,124 @@ describe("Mentor Routes Supertest Suite", () => {
       .set("Authorization", `Bearer ${authToken}`);
     assert.strictEqual(checkRes.body.consentToUseForMentor, false);
   });
+
+
+  it("creates, lists, renames, archives and restores only owned conversations", async () => {
+    const createdA = await request(app)
+      .post("/api/mentor/conversations")
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({ title: "Trip planning" });
+    const createdB = await request(app)
+      .post("/api/mentor/conversations")
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({ title: "Monthly budget" });
+
+    assert.equal(createdA.status, 201);
+    assert.equal(createdB.status, 201);
+    const idA = createdA.body.conversation.id;
+    const idB = createdB.body.conversation.id;
+    assert.notEqual(idA, idB);
+
+    const listed = await request(app)
+      .get("/api/mentor/conversations")
+      .set("Authorization", `Bearer ${authToken}`);
+    assert.equal(listed.status, 200);
+    assert.ok(listed.body.conversations.some((item) => item.id === idA));
+    assert.ok(listed.body.conversations.some((item) => item.id === idB));
+
+    const otherUser = await User.create({
+      name: "Other Mentor User",
+      email: `other-mentor-${Date.now()}@example.com`,
+      password: "password123",
+      isEmailVerified: true,
+    });
+    const otherToken = jwt.sign(
+      { id: otherUser._id.toString(), email: otherUser.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" },
+    );
+    const privateHistory = await request(app)
+      .get("/api/mentor/history")
+      .set("Authorization", `Bearer ${otherToken}`)
+      .query({ conversationId: idA });
+    assert.equal(privateHistory.status, 404);
+    await MentorConversation.deleteMany({ user: otherUser._id });
+    await User.deleteOne({ _id: otherUser._id });
+
+    const renamed = await request(app)
+      .patch(`/api/mentor/conversations/${idA}`)
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({ title: "Goa trip plan" });
+    assert.equal(renamed.status, 200);
+    assert.equal(renamed.body.conversation.title, "Goa trip plan");
+
+    const missingOwner = await request(app)
+      .get("/api/mentor/history")
+      .set("Authorization", `Bearer ${authToken}`)
+      .query({ conversationId: new mongoose.Types.ObjectId().toString() });
+    assert.equal(missingOwner.status, 404);
+
+    const archived = await request(app)
+      .post(`/api/mentor/conversations/${idA}/archive`)
+      .set("Authorization", `Bearer ${authToken}`);
+    assert.equal(archived.status, 200);
+    assert.ok(archived.body.conversation.archivedAt);
+
+    const blockedChat = await request(app)
+      .post("/api/mentor/chat")
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({ message: "Continue my trip plan", conversationId: idA });
+    assert.equal(blockedChat.status, 409);
+
+    const restored = await request(app)
+      .post(`/api/mentor/conversations/${idA}/unarchive`)
+      .set("Authorization", `Bearer ${authToken}`);
+    assert.equal(restored.status, 200);
+    assert.equal(restored.body.conversation.archivedAt, null);
+
+    const cleared = await request(app)
+      .delete("/api/mentor/history")
+      .set("Authorization", `Bearer ${authToken}`)
+      .query({ conversationId: idA });
+    assert.equal(cleared.status, 200);
+    const historyA = await request(app)
+      .get("/api/mentor/history")
+      .set("Authorization", `Bearer ${authToken}`)
+      .query({ conversationId: idA });
+    const historyB = await request(app)
+      .get("/api/mentor/history")
+      .set("Authorization", `Bearer ${authToken}`)
+      .query({ conversationId: idB });
+    assert.equal(historyA.status, 200);
+    assert.equal(historyB.status, 200);
+    assert.equal(historyA.body.messages.length, 0);
+    assert.equal(historyB.body.messages.length, 0);
+    assert.equal(historyA.body.conversationId, idA);
+    assert.equal(historyB.body.conversationId, idB);
+  });
+
+  it("saves a streamed or JSON chat turn only in the selected conversation", async () => {
+    const created = await request(app)
+      .post("/api/mentor/conversations")
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({ title: "Selected thread test" });
+    assert.equal(created.status, 201);
+    const conversationId = created.body.conversation.id;
+
+    const chat = await request(app)
+      .post("/api/mentor/chat")
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({ message: "Explain emergency funds briefly.", conversationId });
+    assert.equal(chat.status, 200);
+    assert.equal(chat.body.conversationId, conversationId);
+
+    const history = await request(app)
+      .get("/api/mentor/history")
+      .set("Authorization", `Bearer ${authToken}`)
+      .query({ conversationId });
+    assert.equal(history.status, 200);
+    assert.equal(history.body.messages.length, 2);
+    assert.equal(history.body.messages[0].content, "Explain emergency funds briefly.");
+  });
+
 });
