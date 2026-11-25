@@ -52,6 +52,38 @@ const sendTokenCookie = (res, token) => {
   });
 };
 
+// RESTORE SESSION — GET /api/auth/me
+// This endpoint intentionally allows unverified users to retrieve their own
+// account status so the frontend can show the email-verification prompt.
+router.get("/me", protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select(
+      "name email upiId isEmailVerified",
+    );
+
+    if (!user) {
+      res.clearCookie("token", {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? "none" : "lax",
+      });
+      return res.status(401).json({ message: "Session is no longer valid" });
+    }
+
+    res.set("Cache-Control", "no-store");
+    return res.json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      upiId: user.upiId,
+      isEmailVerified: user.isEmailVerified,
+    });
+  } catch (error) {
+    console.error("Restore session error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 // REGISTER
 router.post("/register", registrationLimiter, async (req, res) => {
   const { name, email, password, upiId } = req.body;
