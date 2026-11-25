@@ -231,7 +231,7 @@ export default function GroupDetail() {
       setExactAmounts(initialExact);
     }
     setShowAddExpense(true);
-  }, [group, setShowAddExpense]);
+  }, [group, setShowAddExpense, setExpenseError]);
 
   // Home can deep-link into the existing add-expense flow without duplicating the form.
   useEffect(() => {
@@ -577,7 +577,7 @@ export default function GroupDetail() {
 
   const getTimeStatus = (createdAt) => {
     const TWO_HOURS_MS = 2 * 60 * 60 * 1000
-    const ageMs = Date.now() - new Date(createdAt).getTime()
+    const ageMs = now - new Date(createdAt).getTime()
     if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs >= TWO_HOURS_MS) return { canDelete: false, label: 'Window expired' }
     const remaining = TWO_HOURS_MS - ageMs
     const mins = Math.floor(remaining / 60000)
