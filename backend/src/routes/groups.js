@@ -65,7 +65,7 @@ const releaseMembershipMutation = async (groupId, leaseExpiresAt) => {
 };
 
 const membershipMutationConflict = async (groupId) => {
-  const current = await Group.findById(groupId).select("isDeleting membershipMutation activeMutations mutationExpiresAt");
+  const current = await Group.findById(groupId).select("isDeleting membershipMutation membershipMutationExpiresAt activeMutations mutationExpiresAt");
   if (!current) {
     return { status: 404, message: "Group not found" };
   }
@@ -212,6 +212,7 @@ router.post("/:id/members", async (req, res) => {
         _id: group._id,
         isDeleting: { $ne: true },
         membershipMutation: true,
+        membershipMutationExpiresAt: reservedMembershipLease,
         "members.user": { $ne: userToAdd._id },
         members: {
           $elemMatch: { user: req.user.id, role: "admin" },
@@ -361,6 +362,7 @@ router.delete("/:id/members/:userId", async (req, res) => {
       _id: group._id,
       isDeleting: { $ne: true },
       membershipMutation: true,
+      membershipMutationExpiresAt: reservedMembershipLease,
       "members.user": targetId,
     };
     if (isSelf) {
