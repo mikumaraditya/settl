@@ -269,6 +269,11 @@ router.post("/", async (req, res) => {
       console.warn("Expense insight cache could not be cleared:", cacheError);
     }
 
+    await Group.updateOne(
+      { _id: reservedGroupId, activeMutations: { $gt: 0 } },
+      { $inc: { activeMutations: -1 } },
+    );
+    reservedGroupId = null;
     return res.status(201).json(responseExpense);
   } catch (error) {
     console.error("Error creating expense:", error);
@@ -507,6 +512,11 @@ router.delete("/:id", async (req, res) => {
       console.warn("Expense deletion cache could not be cleared:", cacheError);
     }
 
+    await Group.updateOne(
+      { _id: reservedGroupId, activeMutations: { $gt: 0 } },
+      { $inc: { activeMutations: -1 } },
+    );
+    reservedGroupId = null;
     return res.json({ message: "Expense deleted", expenseId: deletedExpense._id });
   } catch (error) {
     console.error("Error deleting expense:", error);
