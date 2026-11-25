@@ -225,7 +225,7 @@ describe("Group lifecycle routes", () => {
       .delete(`/api/groups/${group._id}`)
       .set("Authorization", `Bearer ${memberToken}`);
 
-    assert.equal(response.status, 401);
+    assert.equal(response.status, 403);
     assert.ok(await Group.exists({ _id: group._id }));
   });
 
@@ -246,7 +246,7 @@ describe("Group lifecycle routes", () => {
       .delete(`/api/groups/${group._id}`)
       .set("Authorization", `Bearer ${creatorToken}`);
 
-    assert.equal(response.status, 400);
+    assert.equal(response.status, 409);
     assert.ok(await Group.exists({ _id: group._id }));
   });
 });
