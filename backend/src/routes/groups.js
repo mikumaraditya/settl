@@ -19,19 +19,25 @@ const acquireMembershipMutation = async (groupId) => Group.findOneAndUpdate(
   {
     _id: groupId,
     isDeleting: { $ne: true },
-    $or: [
-      { membershipMutation: { $ne: true } },
+    $and: [
       {
-        membershipMutation: true,
-        membershipMutationExpiresAt: { $type: "date", $lte: new Date() },
+        $or: [
+          { membershipMutation: { $ne: true } },
+          {
+            membershipMutation: true,
+            membershipMutationExpiresAt: { $type: "date", $lte: new Date() },
+          },
+        ],
       },
-    ],
-    $or: [
-      { activeMutations: 0 },
-      { activeMutations: { $exists: false } },
       {
-        activeMutations: { $gt: 0 },
-        mutationExpiresAt: { $type: "date", $lte: new Date() },
+        $or: [
+          { activeMutations: 0 },
+          { activeMutations: { $exists: false } },
+          {
+            activeMutations: { $gt: 0 },
+            mutationExpiresAt: { $type: "date", $lte: new Date() },
+          },
+        ],
       },
     ],
   },
@@ -460,19 +466,25 @@ router.delete("/:id", async (req, res) => {
           _id: group._id,
           createdBy: req.user.id,
           isDeleting: { $ne: true },
-          $or: [
-            { membershipMutation: { $ne: true } },
+          $and: [
             {
-              membershipMutation: true,
-              membershipMutationExpiresAt: { $type: "date", $lte: new Date() },
+              $or: [
+                { membershipMutation: { $ne: true } },
+                {
+                  membershipMutation: true,
+                  membershipMutationExpiresAt: { $type: "date", $lte: new Date() },
+                },
+              ],
             },
-          ],
-          $or: [
-            { activeMutations: 0 },
-            { activeMutations: { $exists: false } },
             {
-              activeMutations: { $gt: 0 },
-              mutationExpiresAt: { $type: "date", $lte: new Date() },
+              $or: [
+                { activeMutations: 0 },
+                { activeMutations: { $exists: false } },
+                {
+                  activeMutations: { $gt: 0 },
+                  mutationExpiresAt: { $type: "date", $lte: new Date() },
+                },
+              ],
             },
           ],
         },
