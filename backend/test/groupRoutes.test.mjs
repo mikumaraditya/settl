@@ -163,6 +163,26 @@ describe("Group lifecycle routes", () => {
     assert.equal((await Group.findById(group._id)).isDeleting, false);
   });
 
+  it("can delete a group after an abandoned expense mutation lease has expired", async () => {
+    const group = await makeGroup();
+    await Group.updateOne(
+      { _id: group._id },
+      {
+        $set: {
+          activeMutations: 1,
+          mutationExpiresAt: new Date(Date.now() - 1000),
+        },
+      },
+    );
+
+    const response = await request(app)
+      .delete(`/api/groups/${group._id}`)
+      .set("Authorization", `Bearer ${creatorToken}`);
+
+    assert.equal(response.status, 200);
+    assert.equal(await Group.exists({ _id: group._id }), null);
+  });
+
   it("can retry a group deletion after an earlier cleanup attempt marked it as deleting", async () => {
     const group = await makeGroup();
     const expense = await Expense.create({
