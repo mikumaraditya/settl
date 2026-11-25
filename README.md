@@ -664,7 +664,8 @@ User ────< Group (members.user)
   │          │
   │          └────< Message (sender)
   │
-  ├────< Notification (user, schedule, readAt, deletedAt)\n  ├────< ScoreHistory (user, score, delta, reason)
+  ├────< Notification (user, schedule, readAt, deletedAt)
+  ├────< ScoreHistory (user, score, delta, reason)
   ├────< MentorConversation (user, messages)
   └────< UserFinancialProfile (user, goals, consent)
 ```
@@ -673,12 +674,13 @@ User ────< Group (members.user)
 2. **`Group`**: Shared workspace with `name`, `currency`, and an array of `members` storing `user` reference, `role` (`admin` or `member`), and `joinedAt`.
 3. **`Expense`**: Shared cost containing `amount`, `category`, `paidBy`, and `splits` array (`user`, `amount`, `paid`). `splitType` is constrained to `equal`, `exact`, or `percentage`.
 4. **`Settlement`**: Peer transaction between `from` and `to` members. `status` lifecycle transitions through `pending`, `confirmed`, `cancelled`, `expired`, and `rejected`. Stores `dueDate` and `rejectionReason`.
-5. **`SettlementSchedule`**: Separate future-repayment agreement with payer, receiver, amount, date-only due date, response state, optional linked payment, and one-time reminder timestamp. Only payment confirmation completes a schedule; a proposal or acceptance never changes group balances.
+5. **`SettlementSchedule`**: Separate future-repayment agreement with payer, receiver, amount, date-only due date, response state, and optional linked payment. Only payment confirmation completes a schedule; a proposal or acceptance never changes group balances. Accepted schedules expose due tomorrow, due today, and overdue states.
 6. **`ActivityLog`**: Immutable audit record tracking expense, settlement, and schedule lifecycle events (`schedule_proposed`, `schedule_accepted`, `schedule_rejected`, `schedule_cancelled`, `schedule_completed`) with metadata.
 7. **`ScoreHistory`**: Historical ledger of Trust Scores containing `score`, `delta`, `reason`, `eventId`, and `eventType` (`initial_baseline`, `score_adjustment`, `weekly_snapshot`).
 8. **`UserFinancialProfile`**: Consent-gated profile storing `status`, `monthlyIncome`, `monthlySavingsTarget`, `goals` (`name`, `targetAmount`, `deadline`, `savedSoFar`), `riskComfort`, and `consentToUseForMentor`.
 9. **`MentorConversation`**: Chat turns between `user` and `model`, recording `content`, `toolsUsed`, and timestamps.
 10. **`Message`**: Real-time group chat message with `group`, `sender`, and `content`.
+11. **`Notification`**: User-scoped persistent reminder with a unique schedule/stage/participant key, read state, and soft-delete state.
 
 ---
 
