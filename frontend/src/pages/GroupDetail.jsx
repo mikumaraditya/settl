@@ -577,8 +577,8 @@ export default function GroupDetail() {
 
   const getTimeStatus = (createdAt) => {
     const TWO_HOURS_MS = 2 * 60 * 60 * 1000
-    const ageMs = now - new Date(createdAt).getTime()
-    if (ageMs >= TWO_HOURS_MS) return { canDelete: false, label: 'Window expired' }
+    const ageMs = Date.now() - new Date(createdAt).getTime()
+    if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs >= TWO_HOURS_MS) return { canDelete: false, label: 'Window expired' }
     const remaining = TWO_HOURS_MS - ageMs
     const mins = Math.floor(remaining / 60000)
     const hrs  = Math.floor(mins / 60)
@@ -2000,7 +2000,7 @@ export default function GroupDetail() {
               </div>
               
               <p className="text-[11px] text-on-surface-variant text-center mt-3 leading-relaxed font-semibold">
-                This will permanently remove the expense and recalculate all balances. This action cannot be undone.
+                This removes the expense and recalculates balances. Deletion is blocked after a payment or active payment schedule exists; add a correcting expense instead.
               </p>
               
               <div className={`flex items-center justify-center gap-1.5 mt-4 text-[10px] font-bold uppercase tracking-wider rounded-xl px-3 py-2 border ${
