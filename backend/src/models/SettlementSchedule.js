@@ -77,5 +77,6 @@ settlementScheduleSchema.index(
 );
 
 settlementScheduleSchema.index({ group: 1, active: 1, dueDate: 1 });
+settlementScheduleSchema.index({ status: 1, active: 1, dueDate: 1 });
 
 export default mongoose.model("SettlementSchedule", settlementScheduleSchema);
