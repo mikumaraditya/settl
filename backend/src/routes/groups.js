@@ -19,7 +19,13 @@ const acquireMembershipMutation = async (groupId) => Group.findOneAndUpdate(
   {
     _id: groupId,
     isDeleting: { $ne: true },
-    membershipMutation: { $ne: true },
+    $or: [
+      { membershipMutation: { $ne: true } },
+      {
+        membershipMutation: true,
+        membershipMutationExpiresAt: { $type: "date", $lte: new Date() },
+      },
+    ],
     $or: [
       { activeMutations: 0 },
       { activeMutations: { $exists: false } },
@@ -32,6 +38,7 @@ const acquireMembershipMutation = async (groupId) => Group.findOneAndUpdate(
   {
     $set: {
       membershipMutation: true,
+      membershipMutationExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
       activeMutations: 0,
       mutationExpiresAt: null,
     },
@@ -43,7 +50,7 @@ const releaseMembershipMutation = async (groupId) => {
   if (!groupId) return;
   await Group.updateOne(
     { _id: groupId, membershipMutation: true },
-    { $set: { membershipMutation: false } },
+    { $set: { membershipMutation: false, membershipMutationExpiresAt: null } },
   );
 };
 
@@ -453,7 +460,13 @@ router.delete("/:id", async (req, res) => {
           _id: group._id,
           createdBy: req.user.id,
           isDeleting: { $ne: true },
-          membershipMutation: { $ne: true },
+          $or: [
+            { membershipMutation: { $ne: true } },
+            {
+              membershipMutation: true,
+              membershipMutationExpiresAt: { $type: "date", $lte: new Date() },
+            },
+          ],
           $or: [
             { activeMutations: 0 },
             { activeMutations: { $exists: false } },
@@ -463,7 +476,7 @@ router.delete("/:id", async (req, res) => {
             },
           ],
         },
-        { $set: { isDeleting: true, mutationExpiresAt: null } },
+        { $set: { isDeleting: true, mutationExpiresAt: null, membershipMutation: false, membershipMutationExpiresAt: null } },
         { new: true },
       );
 
