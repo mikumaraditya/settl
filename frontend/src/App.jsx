@@ -34,10 +34,10 @@ const AuthErrorState = ({ onRetry }) => (
 )
 
 const ProtectedRoute = ({ children }) => {
-  const { user, isAuthLoading, authError, refreshSession } = useAuth()
+  const { user, isAuthLoading, authError, retrySession } = useAuth()
 
   if (isAuthLoading) return <AuthLoadingState />
-  if (authError) return <AuthErrorState onRetry={refreshSession} />
+  if (authError) return <AuthErrorState onRetry={retrySession} />
 
   return user ? (
     <>
