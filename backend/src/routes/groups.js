@@ -5,6 +5,7 @@ import Expense from '../models/Expense.js';
 import Settlement from '../models/Settlement.js';
 import ActivityLog from '../models/ActivityLog.js';
 import Message from '../models/Message.js';
+import SettlementSchedule from '../models/SettlementSchedule.js';
 import protect from '../middleware/auth.js';
 import requireVerified from '../middleware/requireVerified.js';
 import simplifyDebts from '../utils/debtSimplify.js';
@@ -284,6 +285,7 @@ router.delete("/:id", protect, async (req, res) => {
     await Promise.all([
       Expense.deleteMany({ group: group._id }),
       Settlement.deleteMany({ group: group._id }),
+      SettlementSchedule.deleteMany({ group: group._id }),
       ActivityLog.deleteMany({ group: group._id }),
       Message.deleteMany({ group: group._id }),
     ]);
