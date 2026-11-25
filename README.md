@@ -772,6 +772,14 @@ npm --prefix backend run migrate:mentor-conversations
 
 Run this once against the production `MONGO_URI` before starting the updated backend. Do not run it while the application is accepting mentor requests. Each user can then maintain multiple independent sessions; only one response can be active within an individual session.
 
+### Redis-Backed Rate Limiting
+
+Set `REDIS_URL` to a private Redis 6.2+ connection URL in the backend environment to share login, registration, verification, Trust Score, financial tips, and Finn chat limits across backend instances. The backend connects to Redis before listening; if a configured Redis server is unreachable, startup fails rather than silently switching to per-process limits.
+
+When `REDIS_URL` is omitted, the app intentionally uses the built-in in-memory store for local development and compatibility. In production this is process-local, so set `REDIS_URL` before running multiple backend instances. Set `RATE_LIMIT_STORE=memory` only when deliberately opting out of Redis (for example, isolated CI tests).
+
+Use a managed Redis instance with TLS where supported, a dedicated ACL user, and a password stored as a deployment secret. Do not commit the connection URL to source control.
+
 ### Production Build
 ```bash
 # Compile frontend production bundle
