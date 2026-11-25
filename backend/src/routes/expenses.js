@@ -74,6 +74,7 @@ router.post("/", async (req, res) => {
         _id: targetGroupId,
         "members.user": req.user.id,
         isDeleting: { $ne: true },
+        membershipMutation: { $ne: true },
       },
       {
         $inc: { activeMutations: 1 },
@@ -83,12 +84,15 @@ router.post("/", async (req, res) => {
     );
 
     if (!group) {
-      const existingGroup = await Group.findById(targetGroupId).select("isDeleting");
+      const existingGroup = await Group.findById(targetGroupId).select("isDeleting membershipMutation");
       if (!existingGroup) {
         return res.status(404).json({ message: "Group not found" });
       }
       if (existingGroup.isDeleting) {
         return res.status(409).json({ message: "This group is being deleted and can no longer accept expenses" });
+      }
+      if (existingGroup.membershipMutation) {
+        return res.status(409).json({ message: "Group membership is being updated. Please try again in a moment." });
       }
       return res.status(403).json({ message: "You are not a member of this group" });
     }
@@ -380,6 +384,7 @@ router.delete("/:id", async (req, res) => {
         _id: expense.group,
         "members.user": req.user.id,
         isDeleting: { $ne: true },
+        membershipMutation: { $ne: true },
       },
       {
         $inc: { activeMutations: 1 },
@@ -388,12 +393,15 @@ router.delete("/:id", async (req, res) => {
       { new: true },
     );
     if (!group) {
-      const existingGroup = await Group.findById(expense.group).select("isDeleting");
+      const existingGroup = await Group.findById(expense.group).select("isDeleting membershipMutation");
       if (!existingGroup) {
         return res.status(409).json({ message: "This expense belongs to a group that no longer exists" });
       }
       if (existingGroup.isDeleting) {
         return res.status(409).json({ message: "This group is being deleted. Refresh the page to see the latest state." });
+      }
+      if (existingGroup.membershipMutation) {
+        return res.status(409).json({ message: "Group membership is being updated. Please try again in a moment." });
       }
       return res.status(403).json({ message: "You must be a current group member to delete this expense" });
     }
