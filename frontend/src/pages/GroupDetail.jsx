@@ -266,6 +266,9 @@ export default function GroupDetail() {
     });
   };
   const [addingExpense, setAddingExpense]     = useState(false)
+  const addExpenseRequestInFlightRef = useRef(false)
+  const deleteExpenseRequestInFlightRef = useRef(false)
+  const deleteGroupRequestInFlightRef = useRef(false)
   const [addingMember, setAddingMember]       = useState(false)
   const [deletingGroup, setDeletingGroup]     = useState(false)
   const [deleteError, setDeleteError]         = useState('')
@@ -514,6 +517,7 @@ export default function GroupDetail() {
   // ── Expense helpers ───────────────────────────────────────────────────────────
   const handleAddExpense = async (e) => {
     e.preventDefault()
+    if (addExpenseRequestInFlightRef.current) return
     const description = expenseForm.description.trim()
     const parsedAmount = Number(expenseForm.amount)
     const totalPaise = Math.round(parsedAmount * 100)
@@ -527,6 +531,7 @@ export default function GroupDetail() {
       return
     }
 
+    addExpenseRequestInFlightRef.current = true
     setAddingExpense(true)
     setExpenseError('')
     try {
@@ -556,6 +561,7 @@ export default function GroupDetail() {
     } catch (err) {
       setExpenseError(err.response?.data?.message || 'We could not save this expense. Check your connection and try again.')
     } finally {
+      addExpenseRequestInFlightRef.current = false
       setAddingExpense(false)
     }
   }
@@ -595,7 +601,8 @@ export default function GroupDetail() {
   }
 
   const handleDeleteExpense = async () => {
-    if (!expenseToDelete || deletingExpense) return
+    if (!expenseToDelete || deleteExpenseRequestInFlightRef.current) return
+    deleteExpenseRequestInFlightRef.current = true
     setDeletingExpense(true)
     setDeleteExpenseError('')
     try {
@@ -609,18 +616,23 @@ export default function GroupDetail() {
     } catch (err) {
       setDeleteExpenseError(err.response?.data?.message || 'We could not delete this expense. Refresh the group and try again.')
     } finally {
+      deleteExpenseRequestInFlightRef.current = false
       setDeletingExpense(false)
     }
   }
 
   const handleDeleteGroup = async () => {
+    if (deleteGroupRequestInFlightRef.current) return
+    deleteGroupRequestInFlightRef.current = true
     setDeletingGroup(true)
     setDeleteError('')
     try {
       await axios.delete(`/groups/${id}`)
       navigate('/dashboard')
     } catch (err) {
-      setDeleteError(err.response?.data?.message || 'Error deleting group')
+      setDeleteError(err.response?.data?.message || 'We could not delete this group. Refresh and try again.')
+    } finally {
+      deleteGroupRequestInFlightRef.current = false
       setDeletingGroup(false)
     }
   }
