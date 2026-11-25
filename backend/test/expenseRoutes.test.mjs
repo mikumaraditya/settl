@@ -289,6 +289,48 @@ describe("Expense creation and deletion lifecycle", () => {
     }
   });
 
+  it("allows deletion of a later expense when earlier settlement history predates it", async () => {
+    const group = await makeGroup();
+    await Settlement.create({
+      group: group._id,
+      from: member._id,
+      to: payer._id,
+      amount: 10,
+      status: "confirmed",
+    });
+    await new Promise(resolve => setTimeout(resolve, 5));
+    const expense = await makeExpense(group);
+
+    const response = await request(app)
+      .delete(`/api/expenses/${expense._id}`)
+      .set("Authorization", `Bearer ${payerToken}`);
+
+    assert.equal(response.status, 200);
+    assert.equal(await Expense.exists({ _id: expense._id }), null);
+  });
+
+  it("allows deletion of a later expense when an active schedule predates it", async () => {
+    const group = await makeGroup();
+    await SettlementSchedule.create({
+      group: group._id,
+      from: member._id,
+      to: payer._id,
+      amount: 10,
+      dueDate: new Date("2026-12-01T12:00:00.000Z"),
+      status: "accepted",
+      active: true,
+    });
+    await new Promise(resolve => setTimeout(resolve, 5));
+    const expense = await makeExpense(group);
+
+    const response = await request(app)
+      .delete(`/api/expenses/${expense._id}`)
+      .set("Authorization", `Bearer ${payerToken}`);
+
+    assert.equal(response.status, 200);
+    assert.equal(await Expense.exists({ _id: expense._id }), null);
+  });
+
   it("preserves expenses while an active settlement schedule exists", async () => {
     const group = await makeGroup();
     const expense = await makeExpense(group);
