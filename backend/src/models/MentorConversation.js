@@ -31,7 +31,18 @@ const mentorConversationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
-      unique: true,
+    },
+    title: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 100,
+      default: "New conversation",
+    },
+    archivedAt: {
+      type: Date,
+      default: null,
+      index: true,
     },
     messages: [messageSchema],
     activeRequestId: {
@@ -51,7 +62,9 @@ const mentorConversationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Index for user queries sorted by last activity
+// Multiple conversations belong to one user. These indexes support the
+// active/archive list without imposing a per-user uniqueness constraint.
+mentorConversationSchema.index({ user: 1, archivedAt: 1, updatedAt: -1 });
 mentorConversationSchema.index({ user: 1, updatedAt: -1 });
 
 export default mongoose.model("MentorConversation", mentorConversationSchema);
