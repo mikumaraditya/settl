@@ -5,8 +5,8 @@ import axios from "./axios";
  * @param {string} message
  * @returns {Promise<{ reply: string, toolsUsed: Array, timestamp: string }>}
  */
-export async function sendMentorMessage(message) {
-  const { data } = await axios.post("/mentor/chat", { message });
+export async function sendMentorMessage(message, conversationId) {
+  const { data } = await axios.post("/mentor/chat", { message, conversationId });
   return data;
 }
 
@@ -19,7 +19,7 @@ export async function sendMentorMessage(message) {
  * Stream a mentor response and surface server-side tool progress.
  * Resolves with the same payload as sendMentorMessage when the stream completes.
  */
-export async function streamMentorMessage(message, { signal, onStatus } = {}) {
+export async function streamMentorMessage(message, { signal, onStatus, conversationId } = {}) {
   const baseURL = axios.defaults.baseURL || "/api";
   const endpoint = new URL(
     `${baseURL.replace(/\/$/, "")}/mentor/chat/stream`,
@@ -30,7 +30,7 @@ export async function streamMentorMessage(message, { signal, onStatus } = {}) {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, conversationId }),
     signal,
   });
 
@@ -93,17 +93,52 @@ export async function streamMentorMessage(message, { signal, onStatus } = {}) {
   return completed;
 }
 
-export async function fetchMentorHistory() {
-  const { data } = await axios.get("/mentor/history");
+export async function fetchMentorHistory(conversationId) {
+  const { data } = await axios.get("/mentor/history", {
+    params: conversationId ? { conversationId } : undefined,
+  });
   return data;
 }
 
 /**
  * Clear the current conversation history
  */
-export async function clearMentorHistory() {
-  const { data } = await axios.delete("/mentor/history");
+export async function clearMentorHistory(conversationId) {
+  const { data } = await axios.delete("/mentor/history", {
+    params: conversationId ? { conversationId } : undefined,
+  });
   return data;
+}
+
+
+/** List the signed-in user's active and archived mentor conversations. */
+export async function fetchMentorConversations() {
+  const { data } = await axios.get("/mentor/conversations");
+  return data;
+}
+
+/** Create a new empty mentor conversation. */
+export async function createMentorConversation(title = "New conversation") {
+  const { data } = await axios.post("/mentor/conversations", { title });
+  return data.conversation;
+}
+
+/** Rename a conversation owned by the current user. */
+export async function renameMentorConversation(conversationId, title) {
+  const { data } = await axios.patch(`/mentor/conversations/${conversationId}`, { title });
+  return data.conversation;
+}
+
+/** Archive a conversation without deleting its messages. */
+export async function archiveMentorConversation(conversationId) {
+  const { data } = await axios.post(`/mentor/conversations/${conversationId}/archive`);
+  return data.conversation;
+}
+
+/** Restore an archived conversation. */
+export async function unarchiveMentorConversation(conversationId) {
+  const { data } = await axios.post(`/mentor/conversations/${conversationId}/unarchive`);
+  return data.conversation;
 }
 
 /**
@@ -143,6 +178,11 @@ export default {
   streamMentorMessage,
   fetchMentorHistory,
   clearMentorHistory,
+  fetchMentorConversations,
+  createMentorConversation,
+  renameMentorConversation,
+  archiveMentorConversation,
+  unarchiveMentorConversation,
   checkMentorHealth,
   getMentorProfile,
   updateMentorProfile,
