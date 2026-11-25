@@ -16,6 +16,7 @@ export default function ConfirmPaymentPopup({ transaction, groupId, onConfirm, o
         toUserId: to._id,
         amount,
         ...(transaction.scheduleId ? { scheduleId: transaction.scheduleId } : {}),
+        ...(transaction.upiReference ? { upiReference: transaction.upiReference } : {}),
       })
       onConfirm()
     } catch (err) {
@@ -63,6 +64,16 @@ export default function ConfirmPaymentPopup({ transaction, groupId, onConfirm, o
           <div className="flex items-start gap-2.5 bg-rose-500/10 border border-rose-500/20 rounded-2xl px-4 py-3 text-xs text-rose-400 animate-in fade-in duration-200">
             <span className="material-symbols-outlined text-[16px] flex-shrink-0 mt-0.5" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
             <span className="font-semibold leading-normal">{error}</span>
+          </div>
+        )}
+
+        {transaction.upiReference && (
+          <div className="rounded-2xl border border-blue-500/15 bg-blue-500/5 px-4 py-3">
+            <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Payer-provided UPI reference</p>
+            <p className="mt-1 break-all font-mono text-xs font-bold text-white">{transaction.upiReference}</p>
+            <p className="mt-1.5 text-[10px] leading-relaxed text-slate-400">
+              This reference has not been verified by Settl. The receiver must independently check their UPI or bank app.
+            </p>
           </div>
         )}
 
