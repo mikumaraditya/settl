@@ -183,6 +183,7 @@ describe("Group message routes", () => {
       createdBy: owner._id,
       members: [
         { user: owner._id, role: "admin" },
+        { user: member._id, role: "member" },
         { user: rateLimitedUser._id, role: "member" },
       ],
     });
@@ -205,6 +206,12 @@ describe("Group message routes", () => {
       "You're sending messages too quickly. Please wait a minute and try again.",
     );
     assert.equal(await Message.countDocuments({ group: group._id }), 30);
+
+    const otherMemberResponse = await request(app)
+      .post("/api/messages")
+      .set("Authorization", `Bearer ${memberToken}`)
+      .send({ groupId: group._id.toString(), content: "Another member can still send" });
+    assert.equal(otherMemberResponse.status, 201);
   });
 
 });
