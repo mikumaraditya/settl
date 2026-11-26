@@ -103,6 +103,72 @@ describe("Expense creation and deletion lifecycle", () => {
     await mongoose.disconnect();
   });
 
+  it("returns recent expenses across months with stable record pagination", async () => {
+    const group = await makeGroup();
+    const oldest = await makeExpense(group, { description: "January expense" });
+    const middle = await makeExpense(group, { description: "February expense" });
+    const newest = await makeExpense(group, { description: "March expense" });
+
+    await Promise.all([
+      Expense.collection.updateOne(
+        { _id: oldest._id },
+        { $set: { createdAt: new Date("2026-01-10T10:00:00.000Z") } },
+      ),
+      Expense.collection.updateOne(
+        { _id: middle._id },
+        { $set: { createdAt: new Date("2026-02-10T10:00:00.000Z") } },
+      ),
+      Expense.collection.updateOne(
+        { _id: newest._id },
+        { $set: { createdAt: new Date("2026-03-10T10:00:00.000Z") } },
+      ),
+    ]);
+
+    const firstPage = await request(app)
+      .get(`/api/expenses/group/${group._id}?limit=2&skip=0`)
+      .set("Authorization", `Bearer ${payerToken}`);
+
+    assert.equal(firstPage.status, 200);
+    assert.deepEqual(
+      firstPage.body.expenses.map(expense => expense.description),
+      ["March expense", "February expense"],
+    );
+    assert.equal(firstPage.body.total, 3);
+    assert.equal(firstPage.body.hasMore, true);
+    assert.equal(firstPage.body.expenses[0].paidBy.name, payer.name);
+
+    const secondPage = await request(app)
+      .get(`/api/expenses/group/${group._id}?limit=2&skip=2`)
+      .set("Authorization", `Bearer ${payerToken}`);
+
+    assert.equal(secondPage.status, 200);
+    assert.deepEqual(
+      secondPage.body.expenses.map(expense => expense.description),
+      ["January expense"],
+    );
+    assert.equal(secondPage.body.total, 3);
+    assert.equal(secondPage.body.hasMore, false);
+  });
+
+  it("validates recent expense pagination and keeps group access checks", async () => {
+    const group = await makeGroup();
+
+    const invalidLimit = await request(app)
+      .get(`/api/expenses/group/${group._id}?limit=101`)
+      .set("Authorization", `Bearer ${payerToken}`);
+    assert.equal(invalidLimit.status, 400);
+
+    const invalidSkip = await request(app)
+      .get(`/api/expenses/group/${group._id}?limit=6&skip=-1`)
+      .set("Authorization", `Bearer ${payerToken}`);
+    assert.equal(invalidSkip.status, 400);
+
+    const outsiderResponse = await request(app)
+      .get(`/api/expenses/group/${group._id}?limit=6`)
+      .set("Authorization", `Bearer ${outsiderToken}`);
+    assert.equal(outsiderResponse.status, 403);
+  });
+
   it("rejects missing or blank expense descriptions with a validation response", async () => {
     const group = await makeGroup();
     for (const description of [undefined, "   "]) {
