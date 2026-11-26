@@ -60,6 +60,8 @@ export default function GroupDetail() {
   // ── Core state ──────────────────────────────────────────────────────────────
   const [group, setGroup]     = useState(null)
   const [groupLoadError, setGroupLoadError] = useState('')
+  const [expenseLoadError, setExpenseLoadError] = useState('')
+  const [expensePageError, setExpensePageError] = useState('')
   const [expenses, setExpenses] = useState([])
   const [loading, setLoading]   = useState(true)
 
@@ -73,6 +75,7 @@ export default function GroupDetail() {
   const [activeTab, setActiveTab] = useState('overview')
   const [messages, setMessages] = useState([])
   const [chatLoading, setChatLoading] = useState(false)
+  const [chatLoadError, setChatLoadError] = useState('')
   const [messageText, setMessageText] = useState('')
   const [sendingMessage, setSendingMessage] = useState(false)
   const [unreadChat, setUnreadChat] = useState(false)
@@ -89,6 +92,7 @@ export default function GroupDetail() {
   const [activityLogs, setActivityLogs]       = useState([])
   const [activityLoading, setActivityLoading] = useState(false)
   const [activityFetched, setActivityFetched] = useState(false)
+  const [activityLoadError, setActivityLoadError] = useState('')
   const [activityHasMore, setActivityHasMore] = useState(false)
   const [activityTotal, setActivityTotal]     = useState(0)
   const [activityFilter, setActivityFilter]   = useState('all')
@@ -309,6 +313,7 @@ export default function GroupDetail() {
   const [confirmedSettlements, setConfirmedSettlements] = useState([])
   const [now, setNow]                               = useState(() => Date.now())
   const [loadingSettlements, setLoadingSettlements] = useState(true)
+  const [settlementLoadError, setSettlementLoadError] = useState('')
   const [memberScores, setMemberScores]             = useState({})
 
   // Fetch trust scores for group members in parallel
@@ -351,22 +356,34 @@ export default function GroupDetail() {
 
   // ── Data fetching ─────────────────────────────────────────────────────────────
   const fetchData = async () => {
+    setLoading(true)
+    setGroupLoadError('')
     try {
-      setLoading(true)
-      setGroupLoadError('')
-      const [groupRes, expenseRes] = await Promise.all([
+      const [groupResult, expenseResult] = await Promise.allSettled([
         axios.get(`/groups/${id}`),
         axios.get(`/expenses/group/${id}?months=3&page=1`)
       ])
-      setGroup(groupRes.data)
-      const { expenses: exps, hasMore: more, totalMonths: tm } = expenseRes.data
-      setExpenses(exps)
-      setHasMore(more)
-      setTotalMonths(tm)
-      setCurrentPage(1)
-    } catch (err) {
-      setGroupLoadError(err.response?.data?.message || 'We could not load this group. Check your connection and try again.')
-      setGroup(null)
+
+      if (groupResult.status === 'fulfilled') {
+        setGroup(groupResult.value.data)
+        setGroupLoadError('')
+      } else {
+        const error = groupResult.reason
+        setGroupLoadError(error.response?.data?.message || 'Group details could not be refreshed. Please try again.')
+      }
+
+      if (expenseResult.status === 'fulfilled') {
+        const data = expenseResult.value.data || {}
+        setExpenses(Array.isArray(data.expenses) ? data.expenses : [])
+        setHasMore(Boolean(data.hasMore))
+        setTotalMonths(Number(data.totalMonths) || 1)
+        setCurrentPage(1)
+        setExpenseLoadError('')
+        setExpensePageError('')
+      } else {
+        const error = expenseResult.reason
+        setExpenseLoadError(error.response?.data?.message || 'Group expenses could not be loaded. Your group is still available; retry to load its expenses.')
+      }
     } finally {
       setLoading(false)
     }
@@ -375,34 +392,37 @@ export default function GroupDetail() {
   const fetchMoreExpenses = async () => {
     if (loadingMore || !hasMore) return
     setLoadingMore(true)
+    setExpensePageError('')
     const nextPage = currentPage + 1
     try {
       const { data } = await axios.get(`/expenses/group/${id}?months=3&page=${nextPage}`)
+      const nextExpenses = Array.isArray(data?.expenses) ? data.expenses : []
       setExpenses(prev => {
         // Merge — avoid duplicates by _id
         const existingIds = new Set(prev.map(e => e._id))
-        const newOnes = data.expenses.filter(e => !existingIds.has(e._id))
+        const newOnes = nextExpenses.filter(e => !existingIds.has(e._id))
         return [...prev, ...newOnes]
       })
-      setHasMore(data.hasMore)
-      setTotalMonths(data.totalMonths)
+      setHasMore(Boolean(data?.hasMore))
+      setTotalMonths(Number(data?.totalMonths) || 1)
       setCurrentPage(nextPage)
     } catch (err) {
-      console.error(err)
+      setExpensePageError(err.response?.data?.message || 'Older expenses could not be loaded. Your existing expenses are still available; retry to continue.')
     } finally {
       setLoadingMore(false)
     }
   }
 
   const fetchSettlements = async () => {
+    setLoadingSettlements(true)
+    setSettlementLoadError('')
     try {
-      setLoadingSettlements(true)
       const { data } = await axios.get(`/settlements/simplify/${id}`)
-      setTransactions(data.transactions || [])
-      setConfirmedSettlements(data.confirmedSettlements || [])
+      setTransactions(Array.isArray(data.transactions) ? data.transactions : [])
+      setConfirmedSettlements(Array.isArray(data.confirmedSettlements) ? data.confirmedSettlements : [])
       setMemberScores({})
     } catch (err) {
-      console.error(err)
+      setSettlementLoadError(err.response?.data?.message || 'Group balances and settlement history could not be loaded. Please retry.')
     } finally {
       setLoadingSettlements(false)
     }
@@ -418,11 +438,16 @@ export default function GroupDetail() {
   }
 
   const fetchMessages = async () => {
+    setChatLoading(true)
+    setChatLoadError('')
     try {
-      setChatLoading(true)
       const { data } = await axios.get(`/messages/group/${id}`)
-      setMessages(data)
-    } finally { setChatLoading(false) }
+      setMessages(Array.isArray(data) ? data : [])
+    } catch (err) {
+      setChatLoadError(err.response?.data?.message || 'Group messages could not be loaded. Check your connection and retry.')
+    } finally {
+      setChatLoading(false)
+    }
   }
 
   const sendMessage = async (event) => {
@@ -526,15 +551,17 @@ export default function GroupDetail() {
 
   const fetchActivity = async (append = false) => {
     setActivityLoading(true)
+    setActivityLoadError('')
     try {
       const skip = append ? activityLogs.length : 0
       const { data } = await axios.get(`/settlements/group/${id}/activity?limit=20&skip=${skip}`)
-      setActivityLogs(prev => append ? [...prev, ...data.logs] : data.logs)
-      setActivityHasMore(data.hasMore)
-      setActivityTotal(data.total)
+      const nextLogs = Array.isArray(data.logs) ? data.logs : []
+      setActivityLogs(prev => append ? [...prev, ...nextLogs] : nextLogs)
+      setActivityHasMore(Boolean(data.hasMore))
+      setActivityTotal(Number(data.total) || 0)
       setActivityFetched(true)
     } catch (err) {
-      console.error(err)
+      setActivityLoadError(err.response?.data?.message || 'Group activity could not be loaded. Your previously loaded activity is still available; retry to continue.')
     } finally {
       setActivityLoading(false)
     }
@@ -990,7 +1017,7 @@ export default function GroupDetail() {
   )
 
 
-  if (groupLoadError || !group) {
+  if (!group) {
     return (
       <div className="app-page min-h-screen flex flex-col md:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
         <Navbar />
@@ -1015,6 +1042,19 @@ export default function GroupDetail() {
       <Navbar />
 
       <main className="app-main flex flex-col gap-6">
+
+        {groupLoadError && (
+          <div role="alert" className="app-card p-4 text-sm text-amber-500 flex items-center justify-between gap-3">
+            <span>{groupLoadError}</span>
+            <button type="button" onClick={fetchData} disabled={loading} className="shrink-0 font-bold underline disabled:opacity-50">Retry</button>
+          </div>
+        )}
+        {expenseLoadError && expenses.length > 0 && (
+          <div role="alert" className="app-card p-4 text-sm text-amber-500 flex items-center justify-between gap-3">
+            <span>Some group expenses could not be refreshed. Your previously loaded expenses remain visible.</span>
+            <button type="button" onClick={fetchData} disabled={loading} className="shrink-0 font-bold underline disabled:opacity-50">Retry</button>
+          </div>
+        )}
 
         {/* Back navigation */}
         <button
@@ -1190,7 +1230,13 @@ export default function GroupDetail() {
                     </div>
                     <button onClick={() => handleTabChange('expenses')} className="text-xs font-bold text-[var(--secondary)] hover:underline whitespace-nowrap">View all</button>
                   </div>
-                  {expenses.length === 0 ? (
+                  {expenses.length === 0 && expenseLoadError ? (
+                    <div role="alert" className="app-card p-5 text-center">
+                      <p className="text-sm font-bold">Expenses unavailable</p>
+                      <p className="text-xs app-muted mt-2">{expenseLoadError}</p>
+                      <button type="button" onClick={fetchData} disabled={loading} className="app-button-primary mt-4 disabled:opacity-50">Retry</button>
+                    </div>
+                  ) : expenses.length === 0 ? (
                     <div className="app-empty-state p-8 text-center">
                       <span className="app-icon-tile w-11 h-11 mx-auto rounded-xl"><span className="material-symbols-outlined">receipt_long</span></span>
                       <p className="text-sm font-bold mt-3">No expenses yet</p>
@@ -1224,7 +1270,14 @@ export default function GroupDetail() {
             {activeTab === 'expenses' && (
               <div className="flex flex-col gap-6 animate-in fade-in duration-200">
 
-                {expenses.length === 0 ? (
+                {expenses.length === 0 && expenseLoadError ? (
+                  <div role="alert" className="app-card p-6 text-center">
+                    <span className="material-symbols-outlined text-3xl text-amber-400 mb-2">cloud_off</span>
+                    <h4 className="text-sm font-bold text-white mb-1">Expenses unavailable</h4>
+                    <p className="text-xs text-on-surface-variant">{expenseLoadError}</p>
+                    <button type="button" onClick={fetchData} disabled={loading} className="app-button-primary mt-4 disabled:opacity-50">Retry</button>
+                  </div>
+                ) : expenses.length === 0 ? (
                   <div className="flex flex-col items-center justify-center border-2 border-dashed border-outline-variant/20 rounded-2xl p-12 bg-white/5 text-center animate-in fade-in duration-200">
                     <span className="material-symbols-outlined text-4xl text-on-surface-variant/40 mb-3">payments</span>
                     <h4 className="text-sm font-bold text-white mb-1">No expenses yet</h4>
@@ -1403,6 +1456,13 @@ export default function GroupDetail() {
                       </div>
                     )}
 
+                    {expensePageError && (
+                      <div role="alert" className="w-full rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-xs text-amber-400 flex items-center justify-between gap-3">
+                        <span>{expensePageError}</span>
+                        <button type="button" onClick={fetchMoreExpenses} disabled={loadingMore} className="shrink-0 font-bold underline disabled:opacity-50">Retry</button>
+                      </div>
+                    )}
+
                     {/* Load More / All loaded */}
                     <div className="flex flex-col items-center gap-2 pt-2">
                       {hasMore ? (
@@ -1473,6 +1533,12 @@ export default function GroupDetail() {
                         </div>
                       ))}
                     </div>
+                  ) : activityLogs.length === 0 && activityLoadError ? (
+                    <div role="alert" className="app-card p-6 text-center">
+                      <h4 className="text-sm font-bold text-white mb-1">Activity unavailable</h4>
+                      <p className="text-xs text-on-surface-variant">{activityLoadError}</p>
+                      <button type="button" onClick={() => fetchActivity(false)} disabled={activityLoading} className="app-button-primary mt-4 disabled:opacity-50">Retry</button>
+                    </div>
                   ) : activityLogs.length === 0 ? (
                     <div className="flex flex-col items-center justify-center border-2 border-dashed border-outline-variant/20 rounded-2xl p-12 bg-white/5 text-center animate-in fade-in duration-200">
                       <span className="material-symbols-outlined text-4xl text-on-surface-variant/40 mb-3">history</span>
@@ -1483,6 +1549,12 @@ export default function GroupDetail() {
                     </div>
                   ) : (
                     <>
+                      {activityLoadError && (
+                        <div role="alert" className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-xs text-amber-400 flex items-center justify-between gap-3 mb-3">
+                          <span>{activityLoadError}</span>
+                          <button type="button" onClick={() => fetchActivity(true)} disabled={activityLoading} className="shrink-0 font-bold underline disabled:opacity-50">Retry</button>
+                        </div>
+                      )}
                       {/* Type Filter Pills */}
                       <div className="flex flex-wrap gap-2 mb-4">
                         {[
@@ -1671,10 +1743,23 @@ export default function GroupDetail() {
                   )}
                 </div>
                 <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-1 scrollbar-thin">
+                  {chatLoadError && messages.length > 0 && (
+                    <div role="alert" className="mx-3 mt-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-xs text-amber-400 flex items-center justify-between gap-3">
+                      <span>{chatLoadError}</span>
+                      <button type="button" onClick={fetchMessages} disabled={chatLoading} className="shrink-0 font-bold underline disabled:opacity-50">Retry</button>
+                    </div>
+                  )}
                   {chatLoading ? (
                     <div className="flex flex-col items-center justify-center pt-24 gap-3">
                       <span className="material-symbols-outlined text-cyan-400 animate-spin text-[32px]">sync</span>
                       <p className="text-on-surface-variant text-sm font-semibold">Loading conversation...</p>
+                    </div>
+                  ) : chatLoadError && messages.length === 0 ? (
+                    <div role="alert" className="text-center pt-24 flex flex-col items-center gap-3 px-5">
+                      <span className="material-symbols-outlined text-3xl text-amber-400">cloud_off</span>
+                      <p className="text-sm font-bold text-white">Messages unavailable</p>
+                      <p className="text-xs text-on-surface-variant">{chatLoadError}</p>
+                      <button type="button" onClick={fetchMessages} disabled={chatLoading} className="app-button-primary mt-2 disabled:opacity-50">Retry</button>
                     </div>
                   ) : messages.length === 0 ? (
                     <div className="text-center pt-24 flex flex-col items-center gap-3">
@@ -1766,7 +1851,15 @@ export default function GroupDetail() {
 
             {activeTab === 'history' && (
               <div className="flex flex-col gap-6 animate-in fade-in duration-200">
-                {confirmedSettlements.length === 0 ? (
+                {loadingSettlements ? (
+                  <div className="app-card p-6 text-center text-xs text-on-surface-variant">Loading settlement history…</div>
+                ) : settlementLoadError ? (
+                  <div role="alert" className="app-card p-6 text-center">
+                    <h4 className="text-sm font-bold text-white mb-1">Settlement history unavailable</h4>
+                    <p className="text-xs text-on-surface-variant">{settlementLoadError}</p>
+                    <button type="button" onClick={fetchSettlements} disabled={loadingSettlements} className="app-button-primary mt-4 disabled:opacity-50">Retry</button>
+                  </div>
+                ) : confirmedSettlements.length === 0 ? (
                   <div className="flex flex-col items-center justify-center border-2 border-dashed border-outline-variant/20 rounded-2xl p-12 bg-white/5 text-center animate-in fade-in duration-200">
                     <span className="material-symbols-outlined text-4xl text-on-surface-variant/40 mb-3">history_edu</span>
                     <h4 className="text-sm font-bold text-white mb-1">No history yet</h4>
@@ -1888,6 +1981,12 @@ export default function GroupDetail() {
                   <div className="h-12 bg-white/5 rounded-2xl animate-pulse" />
                   <div className="h-12 bg-white/5 rounded-2xl animate-pulse" />
                 </div>
+              ) : settlementLoadError ? (
+                <div role="alert" className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 text-center">
+                  <p className="text-xs font-bold text-amber-300">Balance unavailable</p>
+                  <p className="text-[10px] text-on-surface-variant mt-1">{settlementLoadError}</p>
+                  <button type="button" onClick={fetchSettlements} disabled={loadingSettlements} className="mt-3 text-xs font-bold text-amber-300 underline disabled:opacity-50">Retry</button>
+                </div>
               ) : pendingTransactions.length === 0 ? (
                 <div className="text-center py-6 bg-white/[0.02] rounded-2xl border border-white/5 flex flex-col items-center">
                   <span className="material-symbols-outlined text-3xl text-emerald-400 mb-2" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
@@ -1920,7 +2019,7 @@ export default function GroupDetail() {
                 </div>
               )}
 
-              {!loadingSettlements && (
+              {!loadingSettlements && !settlementLoadError && (
                 <div className="border-t border-white/5 pt-4 mt-5 flex justify-between items-center text-xs">
                   <span className="text-on-surface-variant font-semibold">Your Net Balance</span>
                   <span className={`font-black text-sm px-2.5 py-1 rounded-xl text-center flex items-center justify-center gap-1 ${
