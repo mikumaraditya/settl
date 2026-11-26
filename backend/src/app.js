@@ -13,6 +13,11 @@ import notificationRoutes from "./routes/notifications.js";
 
 const app = express();
 
+// Render places one trusted reverse proxy in front of each public web service.
+// Trust only that hop so req.ip uses the visitor address from X-Forwarded-For.
+// Do not use "true": trusting every hop would allow caller-supplied IP spoofing.
+app.set("trust proxy", 1);
+
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || true,
