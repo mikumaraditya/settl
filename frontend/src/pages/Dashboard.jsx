@@ -35,6 +35,8 @@ export default function Dashboard() {
   const [pendingCount, setPendingCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [balanceError, setBalanceError] = useState('')
+  const [balanceSummaryAvailable, setBalanceSummaryAvailable] = useState(false)
   const [showExpensePicker, setShowExpensePicker] = useState(false)
   const [showSettlePicker, setShowSettlePicker] = useState(false)
   const [bannerDismissed, setBannerDismissed] = useState(false)
@@ -47,6 +49,8 @@ export default function Dashboard() {
   const fetchOverview = useCallback(async () => {
     setLoading(true)
     setError('')
+    setBalanceError('')
+    setBalanceSummaryAvailable(false)
     try {
       const { data: groupData } = await axios.get('/groups')
       setGroups(groupData)
@@ -63,9 +67,9 @@ export default function Dashboard() {
               if (fromId === user?._id) owe += Number(transaction.amount || 0)
               if (toId === user?._id) owed += Number(transaction.amount || 0)
             })
-            return { group, owed, owe, pending: (data.pendingRequests || []).length, schedules: data.scheduleRequests || [] }
+            return { group, owed, owe, pending: (data.pendingRequests || []).length, schedules: data.scheduleRequests || [], available: true }
           } catch {
-            return { group, owed: 0, owe: 0, pending: 0, schedules: [] }
+            return { group, owed: 0, owe: 0, pending: 0, schedules: [], available: false }
           }
         })),
         Promise.all(groupData.map(async group => {
@@ -81,15 +85,29 @@ export default function Dashboard() {
       let owe = 0
       let pending = 0
       balanceResults.forEach(result => {
-        balanceMap[result.group._id] = { net: result.owed - result.owe, owed: result.owed, owe: result.owe, pending: result.pending, schedules: result.schedules }
-        owed += result.owed
-        owe += result.owe
-        pending += result.pending
+        balanceMap[result.group._id] = {
+          net: result.owed - result.owe,
+          owed: result.owed,
+          owe: result.owe,
+          pending: result.pending,
+          schedules: result.schedules,
+          available: result.available,
+        }
+        if (result.available) {
+          owed += result.owed
+          owe += result.owe
+          pending += result.pending
+        }
       })
+      const unavailableBalanceCount = balanceResults.filter(result => !result.available).length
       setGroupBalances(balanceMap)
       setTotalOwed(owed)
       setTotalOwe(owe)
       setPendingCount(pending)
+      setBalanceSummaryAvailable(unavailableBalanceCount === 0)
+      setBalanceError(unavailableBalanceCount > 0
+        ? `Balance details could not be loaded for ${unavailableBalanceCount} ${unavailableBalanceCount === 1 ? 'group' : 'groups'}. Retry to see your complete balance.`
+        : '')
       setActivities(expenseResults.flat().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 6))
     } catch (err) {
       setError(err.response?.data?.message || 'Your overview could not be loaded. Please try again.')
@@ -143,7 +161,8 @@ export default function Dashboard() {
           <button onClick={() => navigate('/groups?create=1')} className="app-button-secondary self-start sm:self-auto"><span className="material-symbols-outlined text-[18px]">add</span> Create group</button>
         </div>
 
-        {error && <div className="app-card p-4 mb-6 text-sm text-rose-500 flex items-center justify-between gap-3">{error}<button onClick={fetchOverview} className="font-bold underline">Retry</button></div>}
+        {error && <div role="alert" className="app-card p-4 mb-6 text-sm text-rose-500 flex items-center justify-between gap-3">{error}<button onClick={fetchOverview} className="font-bold underline">Retry</button></div>}
+        {balanceError && !error && <div role="alert" className="app-card p-4 mb-6 text-sm text-amber-600 flex items-center justify-between gap-3">{balanceError}<button onClick={fetchOverview} className="font-bold underline">Retry</button></div>}
 
         <section className="dashboard-overview-grid grid grid-cols-1 xl:grid-cols-[1.45fr_1fr] gap-4 mb-7">
           <div className="dashboard-balance-card rounded-[26px] p-6 sm:p-8 relative overflow-hidden">
@@ -152,10 +171,10 @@ export default function Dashboard() {
             <div className="dashboard-balance-glow absolute right-20 top-16 w-36 h-36 rounded-full blur-3xl"/>
             <div className="relative z-10">
               <div className="flex flex-wrap items-center justify-between gap-3"><p className="dashboard-balance-eyebrow text-[10px] font-bold uppercase tracking-[.17em]">Your net position</p><span className="dashboard-balance-count rounded-full px-3 py-1.5 text-[10px] font-semibold">Across {groups.length} {groups.length === 1 ? 'group' : 'groups'}</span></div>
-              {loading ? <div className="h-12 w-48 bg-white/10 rounded-xl animate-pulse mt-4"/> : <p className="dashboard-balance-value text-4xl sm:text-5xl font-extrabold tracking-[-.06em] tabular-nums mt-5">{netBalance < 0 ? '-' : netBalance > 0 ? '+' : ''}{currency(netBalance)}</p>}
-              <p className="dashboard-balance-description text-xs mt-3">{netBalance > 0.005 ? 'You have more money coming in than going out.' : netBalance < -0.005 ? 'You have more money going out than coming in.' : 'You are all settled across your groups.'}</p>
+              {loading ? <div className="h-12 w-48 bg-white/10 rounded-xl animate-pulse mt-4"/> : !balanceSummaryAvailable ? <p className="dashboard-balance-value text-2xl sm:text-3xl font-extrabold mt-5">Unavailable</p> : <p className="dashboard-balance-value text-4xl sm:text-5xl font-extrabold tracking-[-.06em] tabular-nums mt-5">{netBalance < 0 ? '-' : netBalance > 0 ? '+' : ''}{currency(netBalance)}</p>}
+              <p className="dashboard-balance-description text-xs mt-3">{!balanceSummaryAvailable ? 'Your full balance is unavailable because one or more groups could not be checked.' : netBalance > 0.005 ? 'You have more money coming in than going out.' : netBalance < -0.005 ? 'You have more money going out than coming in.' : 'You are all settled across your groups.'}</p>
               <div className="flex flex-wrap gap-2 mt-7">
-                <button onClick={() => setShowSettlePicker(true)} disabled={!groups.length || (totalOwed === 0 && totalOwe === 0)} className="dashboard-action-primary min-h-10 px-4 rounded-xl text-xs font-bold disabled:opacity-50">Settle up <span aria-hidden>↗</span></button>
+                <button onClick={() => setShowSettlePicker(true)} disabled={!groups.length || !balanceSummaryAvailable || (totalOwed === 0 && totalOwe === 0)} className="dashboard-action-primary min-h-10 px-4 rounded-xl text-xs font-bold disabled:opacity-50">Settle up <span aria-hidden>↗</span></button>
                 <button onClick={() => setShowExpensePicker(true)} disabled={!groups.length} className="dashboard-action-secondary min-h-10 px-4 rounded-xl text-xs font-bold disabled:opacity-50">Add an expense</button>
               </div>
             </div>
@@ -163,11 +182,11 @@ export default function Dashboard() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-4">
             <div className="dashboard-stat-card dashboard-stat-card--receive app-card p-5 flex items-center justify-between gap-3">
-              <div><p className="app-stat-label mb-2">You receive</p>{loading ? <div className="w-24 h-7 rounded bg-[var(--surface-container)] animate-pulse"/> : <p className="app-stat-value app-balance-positive">{currency(totalOwed)}</p>}<p className="text-[11px] app-muted mt-2">Money others need to pay you</p></div>
+              <div><p className="app-stat-label mb-2">You receive</p>{loading ? <div className="w-24 h-7 rounded bg-[var(--surface-container)] animate-pulse"/> : <p className="app-stat-value app-balance-positive">{balanceSummaryAvailable ? currency(totalOwed) : 'Unavailable'}</p>}<p className="text-[11px] app-muted mt-2">Money others need to pay you</p></div>
               <span className="dashboard-stat-icon dashboard-stat-icon--receive w-11 h-11 rounded-2xl flex items-center justify-center"><span className="material-symbols-outlined">south_west</span></span>
             </div>
             <div className="dashboard-stat-card dashboard-stat-card--pay app-card p-5 flex items-center justify-between gap-3">
-              <div><p className="app-stat-label mb-2">You pay</p>{loading ? <div className="w-24 h-7 rounded bg-[var(--surface-container)] animate-pulse"/> : <p className="app-stat-value app-balance-negative">{currency(totalOwe)}</p>}<p className="text-[11px] app-muted mt-2">{pendingCount ? `${pendingCount} payment requests awaiting confirmation` : 'Your outstanding payments'}</p></div>
+              <div><p className="app-stat-label mb-2">You pay</p>{loading ? <div className="w-24 h-7 rounded bg-[var(--surface-container)] animate-pulse"/> : <p className="app-stat-value app-balance-negative">{balanceSummaryAvailable ? currency(totalOwe) : 'Unavailable'}</p>}<p className="text-[11px] app-muted mt-2">{!balanceSummaryAvailable ? 'Complete balance data is unavailable' : pendingCount ? `${pendingCount} payment requests awaiting confirmation` : 'Your outstanding payments'}</p></div>
               <span className="dashboard-stat-icon dashboard-stat-icon--pay w-11 h-11 rounded-2xl flex items-center justify-center"><span className="material-symbols-outlined">north_east</span></span>
             </div>
           </div>
@@ -181,10 +200,10 @@ export default function Dashboard() {
             ) : (
               <div className="grid sm:grid-cols-2 gap-3">
                 {recentGroups.map(group => {
-                  const balance = groupBalances[group._id]?.net || 0
+                  const balance = groupBalances[group._id]
                   return <Link key={group._id} to={`/group/${group._id}`} className="dashboard-group-card app-card app-card-hover p-4 flex items-center gap-3 group">
                     <span className="app-icon-tile shrink-0"><span className="material-symbols-outlined">{groupIcon(group.name)}</span></span>
-                    <span className="flex-1 min-w-0"><span className="block text-sm font-bold truncate group-hover:text-[var(--secondary)]">{group.name}</span><span className="block text-[10px] app-muted mt-1">{group.members?.length || 0} members</span><span className={`block text-[11px] font-bold mt-2 ${balance > 0.005 ? 'app-balance-positive' : balance < -0.005 ? 'app-balance-negative' : 'app-muted'}`}>{balance > 0.005 ? `You receive ${currency(balance)}` : balance < -0.005 ? `You pay ${currency(balance)}` : 'All settled'}</span></span>
+                    <span className="flex-1 min-w-0"><span className="block text-sm font-bold truncate group-hover:text-[var(--secondary)]">{group.name}</span><span className="block text-[10px] app-muted mt-1">{group.members?.length || 0} members</span><span className={`block text-[11px] font-bold mt-2 ${balance?.available === false ? 'app-muted' : balance?.net > 0.005 ? 'app-balance-positive' : balance?.net < -0.005 ? 'app-balance-negative' : 'app-muted'}`}>{balance?.available === false || !balance ? 'Balance unavailable' : balance.net > 0.005 ? `You receive ${currency(balance.net)}` : balance.net < -0.005 ? `You pay ${currency(balance.net)}` : 'All settled'}</span></span>
                     <span className="material-symbols-outlined app-muted text-[18px]">arrow_outward</span>
                   </Link>
                 })}
