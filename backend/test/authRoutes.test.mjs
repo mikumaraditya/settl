@@ -91,4 +91,22 @@ describe("Authentication session restoration", () => {
     assert.equal(response.status, 401);
     assert.equal(response.body.message, "Session is no longer valid");
   });
+
+  it("limits Google sign-in attempts per client IP", async () => {
+    const responses = [];
+
+    for (let attempt = 0; attempt < 11; attempt += 1) {
+      const response = await request(app)
+        .post("/api/auth/google")
+        .send({});
+      responses.push(response);
+    }
+
+    assert.equal(responses.slice(0, 10).filter(response => response.status === 400).length, 10);
+    assert.equal(responses[10].status, 429);
+    assert.equal(
+      responses[10].body.message,
+      "Too many Google sign-in attempts. Please try again in 15 minutes.",
+    );
+  });
 });
