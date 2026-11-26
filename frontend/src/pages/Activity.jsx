@@ -304,9 +304,9 @@ export default function Activity() {
             )}
             {loading ? (
               <div className="space-y-4">{[1,2,3].map(value => <div key={value} className="app-card h-24 animate-pulse"/>)}</div>
-            ) : groupedItems.length === 0 ? (
+            ) : groupedItems.length === 0 && !error ? (
               <div className="app-empty-state px-6 py-16 text-center"><span className="app-icon-tile w-14 h-14 mx-auto rounded-2xl"><span className="material-symbols-outlined text-[26px]">history</span></span><h3 className="font-bold mt-4">No activity found</h3><p className="app-muted text-xs mt-2">Try a different group, type or date range.</p></div>
-            ) : (
+            ) : groupedItems.length > 0 ? (
               <div className="space-y-7">
                 {groupedItems.map(([label, dayItems]) => (
                   <section key={label}>
