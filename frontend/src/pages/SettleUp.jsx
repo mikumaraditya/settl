@@ -57,7 +57,7 @@ export default function SettleUp() {
   }
 
   const fetchData = async () => {
-    if (hasLoadedData) setRefreshing(true)
+    setRefreshing(true)
     try {
       const { data } = await axios.get(`/settlements/simplify/${id}`, {
         params: { timeZone: getLocalTimeZone() },
