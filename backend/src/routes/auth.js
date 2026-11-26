@@ -40,6 +40,15 @@ const resendVerificationLimiter = rateLimit({
   message: { message: "Too many verification emails requested. Please try again later." },
 });
 
+const googleSignInLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  store: createRateLimitStore("auth-google-signin"),
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { message: "Too many Google sign-in attempts. Please try again in 15 minutes." },
+});
+
 const isProduction = process.env.NODE_ENV === "production" || 
   (process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes("localhost"));
 
@@ -186,7 +195,7 @@ router.post("/login", loginLimiter, async (req, res) => {
 });
 
 // GOOGLE SIGN-IN
-router.post("/google", async (req, res) => {
+router.post("/google", googleSignInLimiter, async (req, res) => {
   const { token } = req.body;
 
   if (!token) {
