@@ -37,6 +37,11 @@ jobs:
         run: npm ci
         working-directory: ${{ matrix.directory }}
 
+      - name: Apply non-breaking audit fixes
+        working-directory: ${{ matrix.directory }}
+        run: npm audit fix
+        continue-on-error: true
+
       - name: Audit dependencies and print advisory details
         working-directory: ${{ matrix.directory }}
         shell: bash
@@ -71,3 +76,14 @@ jobs:
             echo "npm audit reported vulnerabilities in ${{ matrix.directory }}."
             exit "$audit_exit"
           fi
+
+      - name: Upload updated manifests and lockfile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-fixed-${{ matrix.directory }}
+          path: |
+            ${{ matrix.directory }}/package.json
+            ${{ matrix.directory }}/package-lock.json
+          if-no-files-found: error
+          retention-days: 3
