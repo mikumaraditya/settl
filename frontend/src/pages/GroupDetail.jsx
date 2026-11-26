@@ -78,6 +78,7 @@ export default function GroupDetail() {
   const [chatLoadError, setChatLoadError] = useState('')
   const [messageText, setMessageText] = useState('')
   const [sendingMessage, setSendingMessage] = useState(false)
+  const messageSendInFlightRef = useRef(false)
   const [unreadChat, setUnreadChat] = useState(false)
   const chatContainerRef = useRef(null)
   const chatInputRef = useRef(null)
@@ -455,8 +456,10 @@ export default function GroupDetail() {
   const sendMessage = async (event) => {
     if (event) event.preventDefault()
     const text = messageText.trim();
-    if (!text) return;
+    if (!text || messageSendInFlightRef.current) return;
 
+    messageSendInFlightRef.current = true
+    setSendingMessage(true)
     const tempId = generateOptimisticId();
     const optimisticMsg = {
       _id: tempId,
@@ -477,7 +480,6 @@ export default function GroupDetail() {
     }
 
     try {
-      setSendingMessage(true);
       const { data } = await axios.post('/messages', { groupId: id, content: text });
       setMessages(prev => {
         const idx = prev.findIndex(m => m._id === tempId);
@@ -500,13 +502,18 @@ export default function GroupDetail() {
         return prev;
       });
     } finally {
+      messageSendInFlightRef.current = false
       setSendingMessage(false);
     }
   };
 
   const retrySendMessage = async (failedMsg) => {
-    const text = failedMsg.rawText || failedMsg.content;
+    if (messageSendInFlightRef.current) return
+    const text = failedMsg.rawText || failedMsg.content
+    if (!text) return
 
+    messageSendInFlightRef.current = true
+    setSendingMessage(true)
     setMessages(prev => prev.filter(m => m._id !== failedMsg._id));
 
     const tempId = generateOptimisticId();
@@ -524,7 +531,6 @@ export default function GroupDetail() {
     setMessages(prev => [...prev, optimisticMsg]);
 
     try {
-      setSendingMessage(true);
       const { data } = await axios.post('/messages', { groupId: id, content: text });
       setMessages(prev => {
         const idx = prev.findIndex(m => m._id === tempId);
@@ -547,6 +553,7 @@ export default function GroupDetail() {
         return prev;
       });
     } finally {
+      messageSendInFlightRef.current = false
       setSendingMessage(false);
     }
   };
@@ -1822,8 +1829,9 @@ export default function GroupDetail() {
                               {message.isFailed && (
                                 <button 
                                   type="button" 
-                                  onClick={() => retrySendMessage(message)} 
-                                  className="w-6 h-6 rounded-full bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/35 flex items-center justify-center text-rose-400 cursor-pointer transition-all hover:scale-105 active:scale-95"
+                                  onClick={() => retrySendMessage(message)}
+                                  disabled={sendingMessage}
+                                  className="w-6 h-6 rounded-full bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/35 flex items-center justify-center text-rose-400 cursor-pointer transition-all hover:scale-105 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
                                   title="Failed to send. Click to retry."
                                 >
                                   <span className="material-symbols-outlined text-[14px]">refresh</span>
@@ -1845,11 +1853,15 @@ export default function GroupDetail() {
                     placeholder="Write a message..." 
                     className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm outline-none focus:border-cyan-500/40 focus:bg-white/[0.08] transition-all" 
                   />
-                  <button 
-                    disabled={!messageText.trim() && !sendingMessage} 
-                    className="px-4 py-2.5 rounded-xl bg-secondary text-white disabled:opacity-40 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center cursor-pointer"
+                  <button
+                    type="submit"
+                    disabled={!messageText.trim() || sendingMessage}
+                    className="px-4 py-2.5 rounded-xl bg-secondary text-white disabled:opacity-40 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center cursor-pointer disabled:cursor-not-allowed"
+                    aria-label={sendingMessage ? "Sending message" : "Send message"}
                   >
-                    <span className="material-symbols-outlined text-[18px]">send</span>
+                    <span className="material-symbols-outlined text-[18px]">
+                      {sendingMessage ? 'sync' : 'send'}
+                    </span>
                   </button>
                 </form>
               </div>
