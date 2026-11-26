@@ -12,7 +12,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   audit:
@@ -37,14 +37,8 @@ jobs:
         run: npm ci
         working-directory: ${{ matrix.directory }}
 
-      - name: Apply non-breaking audit fixes
-        working-directory: ${{ matrix.directory }}
-        run: npm audit fix
-        continue-on-error: true
-
       - name: Audit dependencies and print advisory details
         working-directory: ${{ matrix.directory }}
-        continue-on-error: true
         shell: bash
         run: |
           set +e
@@ -77,124 +71,3 @@ jobs:
             echo "npm audit reported vulnerabilities in ${{ matrix.directory }}."
             exit "$audit_exit"
           fi
-
-      - name: Upload updated manifests and lockfile
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: npm-audit-fixed-${{ matrix.directory }}
-          path: |
-            ${{ matrix.directory }}/package.json
-            ${{ matrix.directory }}/package-lock.json
-          if-no-files-found: error
-          retention-days: 3
-
-  apply-fixes:
-    name: Apply dependency fixes and validate the application
-    needs: audit
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    services:
-      mongodb:
-        image: mongo:7.0
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      MONGO_URI: mongodb://127.0.0.1:27017/settl_dev
-      MONGO_URI_TEST: mongodb://127.0.0.1:27017/settl_test
-      JWT_SECRET: ci-only-test-secret
-      GEMINI_API_KEY: ci-placeholder-key
-      NODE_ENV: test
-      RATE_LIMIT_STORE: memory
-    steps:
-      - name: Checkout pull request branch
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          persist-credentials: true
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: |
-            backend/package-lock.json
-            frontend/package-lock.json
-
-      - name: Remove vulnerable development watcher and upgrade Nodemailer
-        run: |
-          npm --prefix backend pkg set dependencies.nodemailer="^10.6.1"
-          npm --prefix backend pkg delete devDependencies.nodemon
-          npm --prefix backend pkg set scripts.dev="node --watch server.js"
-
-      - name: Regenerate and safely update backend lockfile
-        working-directory: backend
-        run: |
-          npm install --package-lock-only --ignore-scripts
-          npm audit fix
-
-      - name: Safely update frontend lockfile
-        working-directory: frontend
-        run: npm audit fix
-
-      - name: Install updated backend dependencies
-        working-directory: backend
-        run: npm ci
-
-      - name: Install updated frontend dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Run backend lint and full test suite
-        working-directory: backend
-        run: npm run check
-
-      - name: Run shared Redis integration test
-        working-directory: backend
-        env:
-          RATE_LIMIT_STORE: redis
-          REDIS_URL: redis://127.0.0.1:6379
-        run: node --test test/rateLimitStore.test.mjs
-
-      - name: Run frontend lint and production build
-        working-directory: frontend
-        run: npm run check
-
-      - name: Verify backend has no remaining advisories
-        working-directory: backend
-        run: npm audit
-
-      - name: Verify frontend has no remaining advisories
-        working-directory: frontend
-        run: npm audit
-
-      - name: Commit validated manifest and lockfile updates
-        env:
-          BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add backend/package.json backend/package-lock.json frontend/package-lock.json
-          if git diff --cached --quiet; then
-            echo "No dependency file changes to commit."
-            exit 0
-          fi
-          git commit -m "chore: resolve npm dependency advisories"
-          git push origin "HEAD:$BRANCH_NAME"
