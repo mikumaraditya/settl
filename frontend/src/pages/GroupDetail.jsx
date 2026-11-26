@@ -313,6 +313,7 @@ export default function GroupDetail() {
   const [confirmedSettlements, setConfirmedSettlements] = useState([])
   const [now, setNow]                               = useState(() => Date.now())
   const [loadingSettlements, setLoadingSettlements] = useState(true)
+  const [settlementHasLoaded, setSettlementHasLoaded] = useState(false)
   const [settlementLoadError, setSettlementLoadError] = useState('')
   const [memberScores, setMemberScores]             = useState({})
 
@@ -420,6 +421,7 @@ export default function GroupDetail() {
       const { data } = await axios.get(`/settlements/simplify/${id}`)
       setTransactions(Array.isArray(data.transactions) ? data.transactions : [])
       setConfirmedSettlements(Array.isArray(data.confirmedSettlements) ? data.confirmedSettlements : [])
+      setSettlementHasLoaded(true)
       setMemberScores({})
     } catch (err) {
       setSettlementLoadError(err.response?.data?.message || 'Group balances and settlement history could not be loaded. Please retry.')
@@ -946,7 +948,7 @@ export default function GroupDetail() {
   const netGroupPosition = amountOwedToYou - amountYouOwe
 
   // ── Loading screen ────────────────────────────────────────────────────────────
-  if (loading) return (
+  if (loading && !group) return (
     <div className="app-page min-h-screen flex flex-col md:pl-64 pb-20 md:pb-0 pt-14 md:pt-0">
       <Navbar />
       <main className="app-main flex flex-col gap-6 md:gap-8">
@@ -1749,7 +1751,7 @@ export default function GroupDetail() {
                       <button type="button" onClick={fetchMessages} disabled={chatLoading} className="shrink-0 font-bold underline disabled:opacity-50">Retry</button>
                     </div>
                   )}
-                  {chatLoading ? (
+                  {chatLoading && messages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center pt-24 gap-3">
                       <span className="material-symbols-outlined text-cyan-400 animate-spin text-[32px]">sync</span>
                       <p className="text-on-surface-variant text-sm font-semibold">Loading conversation...</p>
@@ -1851,9 +1853,15 @@ export default function GroupDetail() {
 
             {activeTab === 'history' && (
               <div className="flex flex-col gap-6 animate-in fade-in duration-200">
-                {loadingSettlements ? (
+                {settlementLoadError && confirmedSettlements.length > 0 && (
+                  <div role="alert" className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-xs text-amber-400 flex items-center justify-between gap-3">
+                    <span>{settlementLoadError} Previously loaded history is still shown.</span>
+                    <button type="button" onClick={fetchSettlements} disabled={loadingSettlements} className="shrink-0 font-bold underline disabled:opacity-50">Retry</button>
+                  </div>
+                )}
+                {loadingSettlements && !settlementHasLoaded ? (
                   <div className="app-card p-6 text-center text-xs text-on-surface-variant">Loading settlement history…</div>
-                ) : settlementLoadError ? (
+                ) : settlementLoadError && !settlementHasLoaded ? (
                   <div role="alert" className="app-card p-6 text-center">
                     <h4 className="text-sm font-bold text-white mb-1">Settlement history unavailable</h4>
                     <p className="text-xs text-on-surface-variant">{settlementLoadError}</p>
