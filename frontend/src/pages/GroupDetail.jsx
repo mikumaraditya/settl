@@ -252,27 +252,39 @@ export default function GroupDetail() {
     }
 
     const minimumPercentage = 1
-    const maximumPercentage = 101 - memberIds.length
+    const maximumPercentage = Math.max(minimumPercentage, 101 - memberIds.length)
     const selectedPercentage = Math.min(
       maximumPercentage,
-      Math.max(minimumPercentage, Number(newValue) || minimumPercentage),
+      Math.max(minimumPercentage, Math.round(Number(newValue) || minimumPercentage)),
     )
     const otherIds = memberIds.filter(memberId => memberId !== changedUserId)
-    const remainingPercentage = 100 - selectedPercentage
-    const distributablePercentage = remainingPercentage - otherIds.length
+    const distributablePercentage = 100 - selectedPercentage - otherIds.length
 
     setSplitPercentages(prev => {
-      const weights = otherIds.map(memberId => Math.max(0, Number(prev[memberId]) - minimumPercentage))
+      const weights = otherIds.map(memberId => {
+        const previousShare = Number(prev[memberId])
+        return Number.isFinite(previousShare) ? Math.max(0, previousShare - minimumPercentage) : 0
+      })
       const totalWeight = weights.reduce((sum, weight) => sum + weight, 0)
-      const next = { ...prev, [changedUserId]: selectedPercentage }
-
-      otherIds.forEach((memberId, index) => {
-        const shareOfDistributable = totalWeight > 0
+      const rawShares = otherIds.map((memberId, index) => (
+        totalWeight > 0
           ? (weights[index] / totalWeight) * distributablePercentage
           : distributablePercentage / otherIds.length
-        next[memberId] = minimumPercentage + shareOfDistributable
-      })
+      ))
+      const wholeShares = rawShares.map(Math.floor)
+      let remainingPoints = distributablePercentage - wholeShares.reduce((sum, share) => sum + share, 0)
+      const remainderOrder = rawShares
+        .map((share, index) => ({ index, remainder: share - wholeShares[index] }))
+        .sort((a, b) => b.remainder - a.remainder || a.index - b.index)
 
+      for (let index = 0; index < remainingPoints; index += 1) {
+        wholeShares[remainderOrder[index].index] += 1
+      }
+
+      const next = { ...prev, [changedUserId]: selectedPercentage }
+      otherIds.forEach((memberId, index) => {
+        next[memberId] = minimumPercentage + wholeShares[index]
+      })
       return next
     })
   };
