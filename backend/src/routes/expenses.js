@@ -1,5 +1,7 @@
 import express from 'express';
 import mongoose from 'mongoose';
+import rateLimit from 'express-rate-limit';
+import { createRateLimitStore } from '../config/rateLimitStore.js';
 import Expense from '../models/Expense.js';
 import Group from '../models/Group.js';
 import Settlement from '../models/Settlement.js';
@@ -14,9 +16,19 @@ const router = express.Router();
 
 router.use(protect, requireVerified);
 
+const expenseCreateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  keyGenerator: (req) => req.user.id,
+  store: createRateLimitStore("expenses-create"),
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { message: "Too many expenses created. Please try again in 15 minutes." },
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ADD EXPENSE
-router.post("/", async (req, res) => {
+router.post("/", expenseCreateLimiter, async (req, res) => {
   const {
     description: rawDescription,
     amount: rawAmount,
