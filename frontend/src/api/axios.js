@@ -7,8 +7,17 @@ const defaultBackendUrl = typeof window !== "undefined"
 export const API_BASE_URL = import.meta.env.VITE_API_URL || defaultBackendUrl;
 export const SOCKET_URL = import.meta.env.VITE_API_URL || defaultBackendUrl;
 
+// In production, send API requests through the app's own origin. This
+// keeps the httpOnly session cookie first-party in browsers that restrict
+// cross-site cookies. Development can still use the configured backend URL.
+const apiBaseURL = import.meta.env.PROD
+  ? "/api"
+  : import.meta.env.VITE_API_URL
+    ? `${API_BASE_URL}/api`
+    : "/api";
+
 const instance = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ? `${API_BASE_URL}/api` : "/api",
+  baseURL: apiBaseURL,
   withCredentials: true,
 });
 

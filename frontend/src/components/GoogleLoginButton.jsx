@@ -105,6 +105,7 @@ export default function GoogleLoginButton({ onLoginSuccess, onError, compact = f
         client_id: clientId,
         callback: handleCredentialResponse,
         auto_select: false,
+        use_fedcm_for_button: true,
       })
 
       window.google.accounts.id.renderButton(
