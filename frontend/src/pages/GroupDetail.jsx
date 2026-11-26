@@ -245,25 +245,48 @@ export default function GroupDetail() {
   }, [group, searchParams, setSearchParams, openAddExpenseModal])
 
   const handleSliderChange = (changedUserId, newValue) => {
+    const memberIds = group?.members?.map(member => member.user?._id).filter(Boolean) || []
+    if (memberIds.length <= 1) {
+      setSplitPercentages({ [changedUserId]: 100 })
+      return
+    }
+
+    const minimumPercentage = 1
+    const maximumPercentage = Math.max(minimumPercentage, 101 - memberIds.length)
+    const selectedPercentage = Math.min(
+      maximumPercentage,
+      Math.max(minimumPercentage, Math.round(Number(newValue) || minimumPercentage)),
+    )
+    const otherIds = memberIds.filter(memberId => memberId !== changedUserId)
+    const distributablePercentage = 100 - selectedPercentage - otherIds.length
+
     setSplitPercentages(prev => {
-      const otherIds = Object.keys(prev).filter(id => id !== changedUserId);
-      if (otherIds.length === 0) return { [changedUserId]: 100 };
-      
-      const newPrev = { ...prev, [changedUserId]: parseFloat(newValue) };
-      const remainingPercentage = 100 - parseFloat(newValue);
-      
-      const oldTotalOthers = otherIds.reduce((sum, id) => sum + prev[id], 0);
-      
-      if (oldTotalOthers === 0) {
-        const equalShare = remainingPercentage / otherIds.length;
-        otherIds.forEach(id => newPrev[id] = equalShare);
-      } else {
-        otherIds.forEach(id => {
-          newPrev[id] = (prev[id] / oldTotalOthers) * remainingPercentage;
-        });
+      const weights = otherIds.map(memberId => {
+        const previousShare = Number(prev[memberId])
+        return Number.isFinite(previousShare) ? Math.max(0, previousShare - minimumPercentage) : 0
+      })
+      const totalWeight = weights.reduce((sum, weight) => sum + weight, 0)
+      const rawShares = otherIds.map((memberId, index) => (
+        totalWeight > 0
+          ? (weights[index] / totalWeight) * distributablePercentage
+          : distributablePercentage / otherIds.length
+      ))
+      const wholeShares = rawShares.map(Math.floor)
+      let remainingPoints = distributablePercentage - wholeShares.reduce((sum, share) => sum + share, 0)
+      const remainderOrder = rawShares
+        .map((share, index) => ({ index, remainder: share - wholeShares[index] }))
+        .sort((a, b) => b.remainder - a.remainder || a.index - b.index)
+
+      for (let index = 0; index < remainingPoints; index += 1) {
+        wholeShares[remainderOrder[index].index] += 1
       }
-      return newPrev;
-    });
+
+      const next = { ...prev, [changedUserId]: selectedPercentage }
+      otherIds.forEach((memberId, index) => {
+        next[memberId] = minimumPercentage + wholeShares[index]
+      })
+      return next
+    })
   };
   const [addingExpense, setAddingExpense]     = useState(false)
   const addExpenseRequestInFlightRef = useRef(false)
@@ -534,20 +557,77 @@ export default function GroupDetail() {
       return
     }
 
+    const memberIds = group?.members?.map(member => member.user?._id) || []
+    if (!memberIds.length || memberIds.some(memberId => !memberId)) {
+      setExpenseError('Group members could not be verified. Refresh the group and try again.')
+      return
+    }
+
+    if (expenseForm.splitType === 'percentage') {
+      const percentages = memberIds.map(memberId => Number(splitPercentages[memberId]))
+      const percentageTotal = percentages.reduce((sum, value) => sum + value, 0)
+      if (
+        percentages.some(value => !Number.isFinite(value) || value <= 0 || value > 100) ||
+        Math.abs(percentageTotal - 100) > 0.000001
+      ) {
+        setExpenseError('Give every member a positive percentage. All percentages must add up to 100%.')
+        return
+      }
+
+      const allocations = percentages.map(percentage => {
+        const exactPaise = (percentage / 100) * totalPaise
+        const basePaise = Math.floor(exactPaise)
+        return { paise: basePaise, remainder: exactPaise - basePaise }
+      })
+      const unallocatedPaise = totalPaise - allocations.reduce((sum, allocation) => sum + allocation.paise, 0)
+      const remainderOrder = allocations
+        .map((allocation, index) => ({ index, remainder: allocation.remainder }))
+        .sort((a, b) => b.remainder - a.remainder || a.index - b.index)
+      for (let index = 0; index < unallocatedPaise; index += 1) {
+        allocations[remainderOrder[index].index].paise += 1
+      }
+      if (allocations.some(allocation => allocation.paise <= 0)) {
+        setExpenseError('Each member must receive at least ₹0.01. Increase the expense amount or adjust the percentages.')
+        return
+      }
+    }
+
+    if (expenseForm.splitType === 'exact') {
+      const exactSplits = memberIds.map(memberId => {
+        const value = Number(exactAmounts[memberId])
+        const paise = Math.round(value * 100)
+        return {
+          valid: Number.isFinite(value) &&
+            Number.isSafeInteger(paise) &&
+            paise > 0 &&
+            Math.abs(value * 100 - paise) <= 0.000001,
+          paise,
+        }
+      })
+      if (exactSplits.some(split => !split.valid)) {
+        setExpenseError('Enter a positive exact amount with up to two decimal places for every member.')
+        return
+      }
+      if (exactSplits.reduce((sum, split) => sum + split.paise, 0) !== totalPaise) {
+        setExpenseError('Exact split amounts must add up to the expense total.')
+        return
+      }
+    }
+
     addExpenseRequestInFlightRef.current = true
     setAddingExpense(true)
     setExpenseError('')
     try {
       const payload = { ...expenseForm, description, amount: totalPaise / 100, groupId: id }
       if (expenseForm.splitType === 'percentage') {
-        payload.splits = Object.entries(splitPercentages).map(([userId, pct]) => ({
+        payload.splits = memberIds.map(userId => ({
           user: userId,
-          percentage: Number(pct),
+          percentage: Number(splitPercentages[userId]),
         }))
       } else if (expenseForm.splitType === 'exact') {
-        payload.splits = Object.entries(exactAmounts).map(([userId, amt]) => ({
+        payload.splits = memberIds.map(userId => ({
           user: userId,
-          amount: Number(amt),
+          amount: Number(exactAmounts[userId]),
         }))
       }
 
@@ -2223,6 +2303,14 @@ export default function GroupDetail() {
                         </span>
                       );
                     }
+                    if (total > 0 && total - sumOthers < 0.01) {
+                      return (
+                        <span className="text-[9px] text-rose-400 font-bold flex items-center gap-1 animate-in fade-in duration-200 uppercase tracking-wide">
+                          <span className="material-symbols-outlined text-[12px] flex-shrink-0">warning</span>
+                          Every member needs at least ₹0.01
+                        </span>
+                      );
+                    }
                     return null;
                   })()}
                 </div>
@@ -2258,7 +2346,7 @@ export default function GroupDetail() {
                         <div className="flex items-center gap-3 mt-1">
                           <input 
                             type="range" 
-                            min="0" max="100" step="1"
+                            min="1" max={Math.max(1, 101 - group.members.length)} step="1"
                             value={pct}
                             onChange={(e) => handleSliderChange(m.user?._id, e.target.value)}
                             className="flex-1 accent-blue-500 h-1 bg-white/10 rounded-lg appearance-none cursor-pointer"
@@ -2272,7 +2360,7 @@ export default function GroupDetail() {
                           <span className="text-[12px] font-bold text-white/50">₹</span>
                           <input 
                             type="number" 
-                            min="0" step="0.01"
+                            min="0.01" step="0.01"
                             value={exactAmounts[m.user?._id] || ''}
                             onChange={(e) => handleExactAmountChange(m.user?._id, e.target.value)}
                             className={`flex-1 bg-transparent border-b focus:border-blue-500 focus:ring-0 font-bold text-xs p-1 outline-none transition-all ${
