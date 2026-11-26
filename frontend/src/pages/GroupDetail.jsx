@@ -245,25 +245,36 @@ export default function GroupDetail() {
   }, [group, searchParams, setSearchParams, openAddExpenseModal])
 
   const handleSliderChange = (changedUserId, newValue) => {
+    const memberIds = group?.members?.map(member => member.user?._id).filter(Boolean) || []
+    if (memberIds.length <= 1) {
+      setSplitPercentages({ [changedUserId]: 100 })
+      return
+    }
+
+    const minimumPercentage = 1
+    const maximumPercentage = 101 - memberIds.length
+    const selectedPercentage = Math.min(
+      maximumPercentage,
+      Math.max(minimumPercentage, Number(newValue) || minimumPercentage),
+    )
+    const otherIds = memberIds.filter(memberId => memberId !== changedUserId)
+    const remainingPercentage = 100 - selectedPercentage
+    const distributablePercentage = remainingPercentage - otherIds.length
+
     setSplitPercentages(prev => {
-      const otherIds = Object.keys(prev).filter(id => id !== changedUserId);
-      if (otherIds.length === 0) return { [changedUserId]: 100 };
-      
-      const newPrev = { ...prev, [changedUserId]: parseFloat(newValue) };
-      const remainingPercentage = 100 - parseFloat(newValue);
-      
-      const oldTotalOthers = otherIds.reduce((sum, id) => sum + prev[id], 0);
-      
-      if (oldTotalOthers === 0) {
-        const equalShare = remainingPercentage / otherIds.length;
-        otherIds.forEach(id => newPrev[id] = equalShare);
-      } else {
-        otherIds.forEach(id => {
-          newPrev[id] = (prev[id] / oldTotalOthers) * remainingPercentage;
-        });
-      }
-      return newPrev;
-    });
+      const weights = otherIds.map(memberId => Math.max(0, Number(prev[memberId]) - minimumPercentage))
+      const totalWeight = weights.reduce((sum, weight) => sum + weight, 0)
+      const next = { ...prev, [changedUserId]: selectedPercentage }
+
+      otherIds.forEach((memberId, index) => {
+        const shareOfDistributable = totalWeight > 0
+          ? (weights[index] / totalWeight) * distributablePercentage
+          : distributablePercentage / otherIds.length
+        next[memberId] = minimumPercentage + shareOfDistributable
+      })
+
+      return next
+    })
   };
   const [addingExpense, setAddingExpense]     = useState(false)
   const addExpenseRequestInFlightRef = useRef(false)
