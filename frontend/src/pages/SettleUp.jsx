@@ -22,6 +22,7 @@ export default function SettleUp() {
   const [scheduleSaving, setScheduleSaving] = useState(false)
   const [loading, setLoading]                  = useState(true)
   const [loadError, setLoadError] = useState('')
+  const [actionError, setActionError] = useState('')
   const [hasLoadedData, setHasLoadedData] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [actionLoading, setActionLoading]      = useState({})
@@ -84,6 +85,7 @@ export default function SettleUp() {
 
   const handleSettle = async (toUser, amount, scheduleId = null) => {
     const key = `settle-${toUser._id}`
+    setActionError('')
     setLoading_(key, true)
     try {
       await axios.post('/settlements/settle', {
@@ -92,13 +94,14 @@ export default function SettleUp() {
       })
       await fetchData()
     } catch (err) {
-      alert(err.response?.data?.message || 'Error requesting settlement')
+      setActionError(err.response?.data?.message || 'Error requesting settlement')
     } finally { setLoading_(key, false) }
   }
 
   const handleCreateSchedule = async (e) => {
     e?.preventDefault()
     if (!scheduleDraft) return
+    setActionError('')
     setScheduleSaving(true)
     try {
       await axios.post('/settlements/schedule', {
@@ -112,7 +115,7 @@ export default function SettleUp() {
       setScheduleDate('')
       await fetchData()
     } catch (err) {
-      alert(err.response?.data?.message || 'Error proposing payment schedule')
+      setActionError(err.response?.data?.message || 'Error proposing payment schedule')
     } finally {
       setScheduleSaving(false)
     }
@@ -120,23 +123,25 @@ export default function SettleUp() {
 
   const handleScheduleResponse = async (schedule, action) => {
     const key = `schedule-${action}-${schedule._id}`
+    setActionError('')
     setLoading_(key, true)
     try {
       await axios.post(`/settlements/schedule/${schedule._id}/respond`, { action })
       await fetchData()
     } catch (err) {
-      alert(err.response?.data?.message || 'Unable to update payment schedule')
+      setActionError(err.response?.data?.message || 'Unable to update payment schedule')
     } finally { setLoading_(key, false) }
   }
 
   const handleScheduleCancel = async (schedule) => {
     const key = `schedule-cancel-${schedule._id}`
+    setActionError('')
     setLoading_(key, true)
     try {
       await axios.post(`/settlements/schedule/${schedule._id}/cancel`)
       await fetchData()
     } catch (err) {
-      alert(err.response?.data?.message || 'Unable to cancel payment schedule')
+      setActionError(err.response?.data?.message || 'Unable to cancel payment schedule')
     } finally { setLoading_(key, false) }
   }
 
@@ -149,34 +154,37 @@ export default function SettleUp() {
 
   const handleConfirm = async (fromUser) => {
     const key = `confirm-${fromUser._id}`
+    setActionError('')
     setLoading_(key, true)
     try {
       await axios.post('/settlements/confirm', { groupId: id, fromUserId: fromUser._id })
       await fetchData()
     } catch (err) {
-      alert(err.response?.data?.message || 'Error confirming settlement')
+      setActionError(err.response?.data?.message || 'Error confirming settlement')
     } finally { setLoading_(key, false) }
   }
 
   const handleCancel = async (toUser) => {
     const key = `cancel-${toUser._id}`
+    setActionError('')
     setLoading_(key, true)
     try {
       await axios.delete('/settlements/settle', { data: { groupId: id, toUserId: toUser._id } })
-      fetchData()
+      await fetchData()
     } catch (err) {
-      alert(err.response?.data?.message || 'Error cancelling request')
+      setActionError(err.response?.data?.message || 'Error cancelling request')
     } finally { setLoading_(key, false) }
   }
 
   const handleReject = async (fromUser) => {
     const key = `reject-${fromUser._id}`
+    setActionError('')
     setLoading_(key, true)
     try {
       await axios.post('/settlements/reject', { groupId: id, fromUserId: fromUser._id })
       await fetchData()
     } catch (err) {
-      alert(err.response?.data?.message || 'Error rejecting settlement')
+      setActionError(err.response?.data?.message || 'Error rejecting settlement')
     } finally { setLoading_(key, false) }
   }
 
@@ -281,6 +289,14 @@ export default function SettleUp() {
             </p>
             <button type="button" onClick={fetchData} disabled={refreshing} className="shrink-0 text-xs font-extrabold text-amber-300 underline underline-offset-4 disabled:opacity-50">
               {refreshing ? 'Retrying…' : 'Retry'}
+            </button>
+          </div>
+        )}
+        {actionError && (
+          <div role="alert" className="app-card border border-rose-500/20 bg-rose-500/5 px-4 py-3 flex items-start justify-between gap-3">
+            <p className="text-xs text-rose-200/90 font-semibold">{actionError}</p>
+            <button type="button" onClick={() => setActionError('')} className="shrink-0 text-xs font-extrabold text-rose-300 underline underline-offset-4">
+              Dismiss
             </button>
           </div>
         )}
@@ -686,7 +702,7 @@ export default function SettleUp() {
                                   ? Number(settleAmounts[t.to?._id])
                                   : (acceptedSchedule?.amount ?? t.amount)
                                 if (!Number.isFinite(selectedAmount) || selectedAmount <= 0) {
-                                  alert('Please enter a positive amount to schedule')
+                                  setActionError('Please enter a positive amount to schedule')
                                   return
                                 }
                                 setScheduleDraft({ toUser: t.to, amount: selectedAmount })
@@ -705,11 +721,11 @@ export default function SettleUp() {
                                     ? parseFloat(settleAmounts[t.to?._id])
                                     : (acceptedSchedule?.amount ?? t.amount);
                                   if (customAmt <= 0) {
-                                    alert('Please enter a positive amount to settle');
+                                    setActionError('Please enter a positive amount to settle');
                                     return;
                                   }
                                   if (acceptedSchedule && customAmt !== acceptedSchedule.amount) {
-                                    alert(`The accepted schedule is for ₹${acceptedSchedule.amount.toLocaleString('en-IN')}. Match the agreed amount or cancel the schedule first.`);
+                                    setActionError(`The accepted schedule is for ₹${acceptedSchedule.amount.toLocaleString('en-IN')}. Match the agreed amount or cancel the schedule first.`);
                                     return;
                                   }
                                   setActiveTransaction({ ...t, amount: customAmt, scheduleId: acceptedSchedule?._id || null });
@@ -728,7 +744,7 @@ export default function SettleUp() {
                                   ? parseFloat(settleAmounts[t.to?._id])
                                   : (acceptedSchedule?.amount ?? t.amount);
                                 if (customAmt <= 0) {
-                                  alert('Please enter a positive amount to settle');
+                                  setActionError('Please enter a positive amount to settle');
                                   return;
                                 }
                                 handleSettle(t.to, customAmt, acceptedSchedule?._id || null);
