@@ -24,9 +24,13 @@ describe("Expense creation and deletion lifecycle", () => {
   let payer;
   let member;
   let outsider;
+  let rateLimitedPayer;
+  let independentPayer;
   let payerToken;
   let memberToken;
   let outsiderToken;
+  let rateLimitedPayerToken;
+  let independentPayerToken;
   const groupIds = [];
 
   const makeGroup = async (overrides = {}) => {
@@ -81,10 +85,24 @@ describe("Expense creation and deletion lifecycle", () => {
       password: "test-password-hash",
       isEmailVerified: true,
     });
+    rateLimitedPayer = await User.create({
+      name: "Rate Limited Expense Payer",
+      email: `expense-rate-limited-${suffix}@example.com`,
+      password: "test-password-hash",
+      isEmailVerified: true,
+    });
+    independentPayer = await User.create({
+      name: "Independent Expense Payer",
+      email: `expense-independent-${suffix}@example.com`,
+      password: "test-password-hash",
+      isEmailVerified: true,
+    });
 
     payerToken = jwt.sign({ id: payer._id.toString() }, jwtSecret, { expiresIn: "1h" });
     memberToken = jwt.sign({ id: member._id.toString() }, jwtSecret, { expiresIn: "1h" });
     outsiderToken = jwt.sign({ id: outsider._id.toString() }, jwtSecret, { expiresIn: "1h" });
+    rateLimitedPayerToken = jwt.sign({ id: rateLimitedPayer._id.toString() }, jwtSecret, { expiresIn: "1h" });
+    independentPayerToken = jwt.sign({ id: independentPayer._id.toString() }, jwtSecret, { expiresIn: "1h" });
   });
 
   after(async () => {
@@ -98,7 +116,7 @@ describe("Expense creation and deletion lifecycle", () => {
         Group.deleteMany({ _id: { $in: groupIds } }),
       ]);
     }
-    const userIds = [payer?._id, member?._id, outsider?._id].filter(Boolean);
+    const userIds = [payer?._id, member?._id, outsider?._id, rateLimitedPayer?._id, independentPayer?._id].filter(Boolean);
     if (userIds.length) await User.deleteMany({ _id: { $in: userIds } });
     await mongoose.disconnect();
   });
@@ -489,5 +507,54 @@ describe("Expense creation and deletion lifecycle", () => {
 
     assert.equal(response.status, 403);
     assert.ok(await Expense.exists({ _id: expense._id }));
+  });
+
+  it("limits expense creation per user without blocking another group member", async () => {
+    const group = await Group.create({
+      name: `Rate limited expense group ${Date.now()}`,
+      createdBy: rateLimitedPayer._id,
+      members: [
+        { user: rateLimitedPayer._id, role: "admin" },
+        { user: independentPayer._id, role: "member" },
+      ],
+    });
+    groupIds.push(group._id);
+    const responses = [];
+
+    for (let attempt = 0; attempt < 21; attempt += 1) {
+      const response = await request(app)
+        .post("/api/expenses")
+        .set("Authorization", `Bearer ${rateLimitedPayerToken}`)
+        .send({
+          groupId: group._id.toString(),
+          description: `Rate limited expense ${attempt}`,
+          amount: 100,
+          paidBy: rateLimitedPayer._id.toString(),
+          members: [rateLimitedPayer._id.toString(), independentPayer._id.toString()],
+          splitType: "equal",
+        });
+      responses.push(response);
+    }
+
+    assert.equal(responses.slice(0, 20).filter(response => response.status === 201).length, 20);
+    assert.equal(responses[20].status, 429);
+    assert.equal(
+      responses[20].body.message,
+      "Too many expenses created. Please try again in 15 minutes.",
+    );
+    assert.equal(await Expense.countDocuments({ group: group._id }), 20);
+
+    const otherMemberResponse = await request(app)
+      .post("/api/expenses")
+      .set("Authorization", `Bearer ${independentPayerToken}`)
+      .send({
+        groupId: group._id.toString(),
+        description: "Independent member expense",
+        amount: 100,
+        paidBy: independentPayer._id.toString(),
+        members: [rateLimitedPayer._id.toString(), independentPayer._id.toString()],
+        splitType: "equal",
+      });
+    assert.equal(otherMemberResponse.status, 201);
   });
 });
