@@ -326,7 +326,7 @@ export default function Activity() {
                   </section>
                 ))}
               </div>
-            )}
+            ) : null}
             {!loading && Object.values(historyPageByGroup).some(page => page.hasMore) && (
               <button
                 type="button"
