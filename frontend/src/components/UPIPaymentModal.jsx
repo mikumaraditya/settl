@@ -5,6 +5,7 @@ export default function UPIPaymentModal({ transaction, onClose, onPaymentInitiat
   const { to, amount } = transaction
 
   const [copied, setCopied]       = useState(false)
+  const [copyError, setCopyError] = useState('')
   const [confirmed, setConfirmed] = useState(false)
   const [upiReference, setUpiReference] = useState('')
   const [referenceError, setReferenceError] = useState('')
@@ -62,11 +63,22 @@ export default function UPIPaymentModal({ transaction, onClose, onPaymentInitiat
   }
 
   // ── Copy UPI ID to clipboard ─────────────────────────────────────────────
-  const handleCopy = () => {
-    navigator.clipboard.writeText(to.upiId).then(() => {
+  const handleCopy = async () => {
+    setCopyError('')
+    setCopied(false)
+
+    if (!navigator.clipboard?.writeText) {
+      setCopyError('Clipboard access is unavailable. Select the UPI ID and copy it manually.')
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(to.upiId)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-    })
+    } catch {
+      setCopyError('Could not copy automatically. Select the UPI ID and copy it manually.')
+    }
   }
 
   return (
@@ -151,7 +163,7 @@ export default function UPIPaymentModal({ transaction, onClose, onPaymentInitiat
               <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 block mb-0.5 leading-none">
                 UPI ID (Tap to Copy)
               </span>
-              <span className="text-white text-xs font-mono font-bold block mt-0.5 truncate max-w-[200px]">
+              <span className="text-white text-xs font-mono font-bold block mt-0.5 truncate max-w-[200px] select-all">
                 {to.upiId}
               </span>
             </div>
@@ -162,6 +174,11 @@ export default function UPIPaymentModal({ transaction, onClose, onPaymentInitiat
               <span className="text-[10px] font-bold uppercase tracking-wider">{copied ? 'Copied' : 'Copy'}</span>
             </div>
           </button>
+          {copyError && (
+            <p role="alert" className="text-[10px] leading-relaxed text-amber-300 px-1">
+              {copyError}
+            </p>
+          )}
         </div>
 
         {/* DESKTOP VIEW (Screen sizes >= md) - Pure CSS responsive rendering */}
@@ -215,6 +232,11 @@ export default function UPIPaymentModal({ transaction, onClose, onPaymentInitiat
               {copied ? 'Copied!' : 'Copy'}
             </button>
           </div>
+          {copyError && (
+            <p role="alert" className="text-[10px] leading-relaxed text-amber-300 px-1">
+              {copyError}
+            </p>
+          )}
 
           {/* Open UPI App link button */}
           <button
