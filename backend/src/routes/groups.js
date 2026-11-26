@@ -1,5 +1,7 @@
 import express from 'express';
 import mongoose from 'mongoose';
+import rateLimit from 'express-rate-limit';
+import { createRateLimitStore } from '../config/rateLimitStore.js';
 import Group from '../models/Group.js';
 import User from '../models/User.js';
 import Expense from '../models/Expense.js';
@@ -14,6 +16,16 @@ import simplifyDebts from '../utils/debtSimplify.js';
 const router = express.Router();
 
 router.use(protect, requireVerified);
+
+const groupCreateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  keyGenerator: (req) => req.user.id,
+  store: createRateLimitStore("groups-create"),
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { message: "Too many groups created. Please try again in an hour." },
+});
 
 const acquireMembershipMutation = async (groupId) => Group.findOneAndUpdate(
   {
@@ -79,7 +91,7 @@ const membershipMutationConflict = async (groupId) => {
 };
 
 // CREATE GROUP
-router.post("/", async (req, res) => {
+router.post("/", groupCreateLimiter, async (req, res) => {
   const rawName = req.body?.name;
   const rawDescription = req.body?.description;
 

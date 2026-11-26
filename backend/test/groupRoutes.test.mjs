@@ -27,7 +27,9 @@ describe("Group lifecycle routes", () => {
   let creator;
   let member;
   let invitee;
+  let rateLimitedCreator;
   let creatorToken;
+  let rateLimitedCreatorToken;
   let memberToken;
   const groupIds = [];
 
@@ -71,8 +73,15 @@ describe("Group lifecycle routes", () => {
       password: "test-password-hash",
       isEmailVerified: true,
     });
+    rateLimitedCreator = await User.create({
+      name: "Rate Limited Group Creator",
+      email: `group-rate-limited-${suffix}@example.com`,
+      password: "test-password-hash",
+      isEmailVerified: true,
+    });
 
     creatorToken = jwt.sign({ id: creator._id.toString() }, jwtSecret, { expiresIn: "1h" });
+    rateLimitedCreatorToken = jwt.sign({ id: rateLimitedCreator._id.toString() }, jwtSecret, { expiresIn: "1h" });
     memberToken = jwt.sign({ id: member._id.toString() }, jwtSecret, { expiresIn: "1h" });
   });
 
@@ -88,7 +97,7 @@ describe("Group lifecycle routes", () => {
         Group.deleteMany({ _id: { $in: groupIds } }),
       ]);
     }
-    const userIds = [creator?._id, member?._id, invitee?._id].filter(Boolean);
+    const userIds = [creator?._id, member?._id, invitee?._id, rateLimitedCreator?._id].filter(Boolean);
     if (userIds.length) await User.deleteMany({ _id: { $in: userIds } });
     await mongoose.disconnect();
   });
@@ -620,5 +629,32 @@ describe("Group lifecycle routes", () => {
 
     assert.equal(response.status, 409);
     assert.ok(await Group.exists({ _id: group._id }));
+  });
+
+  it("limits group creation per user without blocking another creator", async () => {
+    const responses = [];
+
+    for (let attempt = 0; attempt < 11; attempt += 1) {
+      const response = await request(app)
+        .post("/api/groups")
+        .set("Authorization", `Bearer ${rateLimitedCreatorToken}`)
+        .send({ name: `Rate limited group ${attempt}` });
+      responses.push(response);
+      if (response.status === 201) groupIds.push(response.body._id);
+    }
+
+    assert.equal(responses.slice(0, 10).filter(response => response.status === 201).length, 10);
+    assert.equal(responses[10].status, 429);
+    assert.equal(
+      responses[10].body.message,
+      "Too many groups created. Please try again in an hour.",
+    );
+
+    const otherCreatorResponse = await request(app)
+      .post("/api/groups")
+      .set("Authorization", `Bearer ${creatorToken}`)
+      .send({ name: "Independent creator allowance" });
+    assert.equal(otherCreatorResponse.status, 201);
+    groupIds.push(otherCreatorResponse.body._id);
   });
 });
