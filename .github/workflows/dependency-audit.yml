@@ -1,0 +1,72 @@
+name: Dependency audit
+
+on:
+  pull_request:
+    paths:
+      - "backend/package.json"
+      - "backend/package-lock.json"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
+      - ".github/workflows/dependency-audit.yml"
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: npm audit (${{ matrix.directory }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        directory: [backend, frontend]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ matrix.directory }}/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci
+        working-directory: ${{ matrix.directory }}
+
+      - name: Audit dependencies and print advisory details
+        shell: bash
+        run: |
+          set +e
+          npm audit --json > /tmp/npm-audit.json
+          audit_exit=$?
+          set -e
+
+          node -e '
+            const fs = require("node:fs");
+            const report = JSON.parse(fs.readFileSync("/tmp/npm-audit.json", "utf8"));
+            const entries = Object.entries(report.vulnerabilities || {}).map(([name, item]) => ({
+              name,
+              severity: item.severity,
+              isDirect: item.isDirect,
+              range: item.range,
+              fixAvailable: item.fixAvailable,
+              advisories: (item.via || []).map((entry) =>
+                typeof entry === "string"
+                  ? { dependency: entry }
+                  : { title: entry.title, url: entry.url, range: entry.range }
+              )
+            }));
+            console.log(JSON.stringify({
+              counts: report.metadata?.vulnerabilities || {},
+              vulnerabilities: entries
+            }, null, 2));
+          '
+
+          if [ "$audit_exit" -ne 0 ]; then
+            echo "npm audit reported vulnerabilities in ${{ matrix.directory }}."
+            exit "$audit_exit"
+          fi
