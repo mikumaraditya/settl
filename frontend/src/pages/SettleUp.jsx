@@ -21,6 +21,9 @@ export default function SettleUp() {
   const [scheduleDate, setScheduleDate] = useState('')
   const [scheduleSaving, setScheduleSaving] = useState(false)
   const [loading, setLoading]                  = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [hasLoadedData, setHasLoadedData] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [actionLoading, setActionLoading]      = useState({})
   const [showPaymentModal, setShowPaymentModal]   = useState(false)
   const [showConfirmPopup, setShowConfirmPopup]   = useState(false)
@@ -54,6 +57,7 @@ export default function SettleUp() {
   }
 
   const fetchData = async () => {
+    setRefreshing(true)
     try {
       const { data } = await axios.get(`/settlements/simplify/${id}`, {
         params: { timeZone: getLocalTimeZone() },
@@ -64,10 +68,14 @@ export default function SettleUp() {
       setTransactions(txs)
       setPending(pending)
       setSchedules(data.scheduleRequests || [])
+      setLoadError('')
+      setHasLoadedData(true)
     } catch (err) {
-      console.error(err)
+      console.error('Could not load settlement data:', err)
+      setLoadError(err.response?.data?.message || 'We could not load settlement details. Please check your connection and try again.')
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }
 
@@ -258,14 +266,27 @@ export default function SettleUp() {
             Settle Up
           </h2>
           <p className="text-xs text-on-surface-variant font-semibold">
-            {transactions.length === 0 && pendingRequests.length === 0
-              ? 'All debts are cleared 🎉'
-              : `${transactions.length} payment${transactions.length !== 1 ? 's' : ''} pending · ${pendingRequests.length} awaiting confirmation`}
+            {!hasLoadedData
+              ? 'Settlement status unavailable'
+              : transactions.length === 0 && pendingRequests.length === 0
+                ? 'All debts are cleared 🎉'
+                : `${transactions.length} payment${transactions.length !== 1 ? 's' : ''} pending · ${pendingRequests.length} awaiting confirmation`}
           </p>
         </div>
 
+        {hasLoadedData && loadError && (
+          <div role="alert" className="app-card border border-amber-500/20 bg-amber-500/5 px-4 py-3 flex items-center justify-between gap-3">
+            <p className="text-xs text-amber-200/90 font-semibold">
+              Could not refresh settlement data. Showing the last successfully loaded information.
+            </p>
+            <button type="button" onClick={fetchData} disabled={refreshing} className="shrink-0 text-xs font-extrabold text-amber-300 underline underline-offset-4 disabled:opacity-50">
+              {refreshing ? 'Retrying…' : 'Retry'}
+            </button>
+          </div>
+        )}
+
         {/* Metric bar */}
-        {totalPayments > 0 && (
+        {hasLoadedData && totalPayments > 0 && (
           <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
             <div className={`glass-card rounded-2xl p-4 text-center border relative overflow-hidden transition-all ${
               pendingRequests.length > 0 ? 'border-amber-500/20 glow-amber' : 'border-white/5'
@@ -285,7 +306,16 @@ export default function SettleUp() {
           </div>
         )}
 
-        {totalPayments === 0 ? (
+        {!hasLoadedData && loadError ? (
+          <div className="glass-card rounded-3xl border border-rose-500/20 p-8 text-center flex flex-col items-center gap-3">
+            <span className="material-symbols-outlined text-rose-400 text-3xl">cloud_off</span>
+            <h3 className="text-white font-extrabold text-base">Settlement data is unavailable</h3>
+            <p className="text-on-surface-variant text-xs leading-relaxed max-w-md">{loadError}</p>
+            <button type="button" onClick={fetchData} disabled={refreshing} className="mt-2 px-5 py-2.5 rounded-xl bg-blue-500 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50">
+              {refreshing ? 'Retrying…' : 'Try again'}
+            </button>
+          </div>
+        ) : totalPayments === 0 ? (
           <div className="text-center py-16 glass-card rounded-3xl border border-white/10 flex flex-col items-center animate-in fade-in duration-300">
             <div className="h-16 w-16 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center text-3xl mb-4 shadow-lg shadow-emerald-500/10">
               <span className="material-symbols-outlined text-[32px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
