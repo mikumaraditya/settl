@@ -76,7 +76,7 @@ export default function Dashboard() {
         })),
         Promise.all(groupData.map(async group => {
           try {
-            const { data } = await axios.get(`/expenses/group/${group._id}?months=1&page=1`)
+            const { data } = await axios.get(`/expenses/group/${group._id}?limit=6&skip=0`)
             return {
               groupId: group._id,
               expenses: (data.expenses || []).map(expense => ({ ...expense, groupId: group._id, groupName: group.name })),
