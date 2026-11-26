@@ -30,6 +30,7 @@ export default function Dashboard() {
   const [groups, setGroups] = useState([])
   const [groupBalances, setGroupBalances] = useState({})
   const [activities, setActivities] = useState([])
+  const [activityError, setActivityError] = useState('')
   const [totalOwed, setTotalOwed] = useState(0)
   const [totalOwe, setTotalOwe] = useState(0)
   const [pendingCount, setPendingCount] = useState(0)
@@ -51,6 +52,7 @@ export default function Dashboard() {
     setError('')
     setBalanceError('')
     setBalanceSummaryAvailable(false)
+    setActivityError('')
     try {
       const { data: groupData } = await axios.get('/groups')
       setGroups(groupData)
@@ -75,8 +77,14 @@ export default function Dashboard() {
         Promise.all(groupData.map(async group => {
           try {
             const { data } = await axios.get(`/expenses/group/${group._id}?months=1&page=1`)
-            return (data.expenses || []).map(expense => ({ ...expense, groupId: group._id, groupName: group.name }))
-          } catch { return [] }
+            return {
+              groupId: group._id,
+              expenses: (data.expenses || []).map(expense => ({ ...expense, groupId: group._id, groupName: group.name })),
+              available: true,
+            }
+          } catch {
+            return { groupId: group._id, expenses: [], available: false }
+          }
         })),
       ])
 
@@ -108,7 +116,13 @@ export default function Dashboard() {
       setBalanceError(unavailableBalanceCount > 0
         ? `Balance details could not be loaded for ${unavailableBalanceCount} ${unavailableBalanceCount === 1 ? 'group' : 'groups'}. Retry to see your complete balance.`
         : '')
-      setActivities(expenseResults.flat().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 6))
+      setActivities(expenseResults.flatMap(result => result.expenses)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        .slice(0, 6))
+      const unavailableExpenseCount = expenseResults.filter(result => !result.available).length
+      setActivityError(unavailableExpenseCount > 0
+        ? `Recent expenses could not be loaded for ${unavailableExpenseCount} ${unavailableExpenseCount === 1 ? 'group' : 'groups'}. The list may be incomplete.`
+        : '')
     } catch (err) {
       setError(err.response?.data?.message || 'Your overview could not be loaded. Please try again.')
     } finally {
@@ -212,8 +226,14 @@ export default function Dashboard() {
             )}
 
             <div className="flex items-end justify-between gap-3 mt-8 mb-4"><div><p className="app-page-kicker mb-2">Latest updates</p><h2 className="text-lg font-bold tracking-tight">Recent expenses</h2></div>{groups.length > 0 && <Link to="/groups" className="text-xs font-bold text-[var(--secondary)] hover:underline">Browse groups</Link>}</div>
+            {activityError && (
+              <div role="alert" className="app-card border border-amber-500/20 bg-amber-500/5 p-4 mb-3 text-xs text-amber-700 flex items-center justify-between gap-3">
+                <span>{activityError}</span>
+                <button type="button" onClick={fetchOverview} disabled={loading} className="shrink-0 font-bold underline disabled:opacity-50">Retry</button>
+              </div>
+            )}
             <div className="dashboard-activity-card app-card overflow-hidden">
-              {loading ? <div className="p-5 space-y-4">{[1,2,3].map(value => <div key={value} className="h-12 bg-[var(--surface-container-low)] rounded-xl animate-pulse"/>)}</div> : activities.length === 0 ? <div className="p-8 text-center"><span className="app-icon-tile w-11 h-11 mx-auto"><span className="material-symbols-outlined">receipt_long</span></span><p className="font-bold text-sm mt-3">No expenses yet</p><p className="app-muted text-xs mt-1">Your latest group expenses will show up here.</p></div> : activities.map(expense => <button key={expense._id} onClick={() => navigate(`/group/${expense.groupId}`)} className="w-full flex items-center gap-3.5 px-4 sm:px-5 py-4 text-left border-b last:border-0 app-divider hover:bg-[var(--surface-container-low)]">
+              {loading ? <div className="p-5 space-y-4">{[1,2,3].map(value => <div key={value} className="h-12 bg-[var(--surface-container-low)] rounded-xl animate-pulse"/>)}</div> : activities.length === 0 && !activityError ? <div className="p-8 text-center"><span className="app-icon-tile w-11 h-11 mx-auto"><span className="material-symbols-outlined">receipt_long</span></span><p className="font-bold text-sm mt-3">No expenses yet</p><p className="app-muted text-xs mt-1">Your latest group expenses will show up here.</p></div> : activities.length === 0 ? <div className="p-8 text-center"><span className="app-icon-tile w-11 h-11 mx-auto"><span className="material-symbols-outlined">cloud_off</span></span><p className="font-bold text-sm mt-3">Recent expenses unavailable</p><p className="app-muted text-xs mt-1">We could not load expenses from your groups.</p><button type="button" onClick={fetchOverview} disabled={loading} className="app-button-primary mt-4 disabled:opacity-50">Retry</button></div> : activities.map(expense => <button key={expense._id} onClick={() => navigate(`/group/${expense.groupId}`)} className="w-full flex items-center gap-3.5 px-4 sm:px-5 py-4 text-left border-b last:border-0 app-divider hover:bg-[var(--surface-container-low)]">
                 <span className="app-icon-tile w-10 h-10 rounded-xl shrink-0"><span className="material-symbols-outlined text-[19px]">{activityIcon(expense.category)}</span></span>
                 <span className="flex-1 min-w-0"><span className="block text-xs font-bold truncate">{expense.description}</span><span className="block text-[10px] app-muted mt-1 truncate">{expense.groupName} · {new Date(expense.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span></span>
                 <span className="text-sm font-bold tabular-nums whitespace-nowrap">{currency(expense.amount)}</span>
