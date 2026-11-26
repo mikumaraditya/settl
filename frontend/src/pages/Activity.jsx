@@ -71,6 +71,10 @@ export default function Activity() {
   const [typeFilter, setTypeFilter] = useState('all')
   const [dateFilter, setDateFilter] = useState('30')
   const [error, setError] = useState('')
+  const [loadMoreError, setLoadMoreError] = useState('')
+  const [historyPageByGroup, setHistoryPageByGroup] = useState({})
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [historyReload, setHistoryReload] = useState(0)
   const [now, setNow] = useState(null)
 
   useEffect(() => {
@@ -84,6 +88,9 @@ export default function Activity() {
       if (tab !== 'history') return
       setLoading(true)
       setError('')
+      setLoadMoreError('')
+      setItems([])
+      setHistoryPageByGroup({})
       try {
         const { data: groupData } = await axios.get('/groups')
         if (cancelled) return
@@ -91,12 +98,29 @@ export default function Activity() {
         const results = await Promise.all(groupData.map(async group => {
           try {
             const { data } = await axios.get(`/settlements/group/${group._id}/activity?limit=100&skip=0`)
-            return (data.logs || []).map(log => ({ ...log, groupName: group.name, groupId: group._id }))
+            const logs = (data.logs || []).map(log => ({ ...log, groupName: group.name, groupId: group._id }))
+            return {
+              groupId: group._id,
+              logs,
+              skip: logs.length,
+              hasMore: Boolean(data.hasMore),
+              failed: false,
+            }
           } catch {
-            return []
+            return { groupId: group._id, logs: [], skip: 0, hasMore: false, failed: true }
           }
         }))
-        if (!cancelled) setItems(results.flat().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)))
+        if (!cancelled) {
+          setItems(results.flatMap(result => result.logs).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)))
+          setHistoryPageByGroup(Object.fromEntries(results.map(result => [
+            result.groupId,
+            { skip: result.skip, hasMore: result.hasMore },
+          ])))
+          const failedCount = results.filter(result => result.failed).length
+          if (failedCount) {
+            setError(`Activity from ${failedCount} ${failedCount === 1 ? 'group could' : 'groups could'} not be loaded. The history shown may be incomplete.`)
+          }
+        }
       } catch (err) {
         if (!cancelled) setError(err.response?.data?.message || 'Activity history could not be loaded.')
       } finally {
@@ -105,7 +129,60 @@ export default function Activity() {
     }
     load()
     return () => { cancelled = true }
-  }, [tab])
+  }, [tab, historyReload])
+
+  const loadMoreActivity = async () => {
+    if (loadingMore) return
+    const groupsToLoad = groups.filter(group => historyPageByGroup[group._id]?.hasMore)
+    if (!groupsToLoad.length) return
+
+    setLoadingMore(true)
+    setLoadMoreError('')
+    try {
+      const results = await Promise.all(groupsToLoad.map(async group => {
+        const page = historyPageByGroup[group._id]
+        try {
+          const { data } = await axios.get(
+            `/settlements/group/${group._id}/activity?limit=100&skip=${page.skip}`
+          )
+          const logs = (data.logs || []).map(log => ({ ...log, groupName: group.name, groupId: group._id }))
+          return {
+            groupId: group._id,
+            logs,
+            skip: page.skip + logs.length,
+            hasMore: Boolean(data.hasMore),
+            failed: false,
+          }
+        } catch {
+          return { groupId: group._id, failed: true }
+        }
+      }))
+
+      const successfulResults = results.filter(result => !result.failed)
+      if (successfulResults.length) {
+        const newLogs = successfulResults.flatMap(result => result.logs)
+        setItems(previous => {
+          const existingIds = new Set(previous.map(item => item._id))
+          return [...previous, ...newLogs.filter(item => !existingIds.has(item._id))]
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        })
+        setHistoryPageByGroup(previous => ({
+          ...previous,
+          ...Object.fromEntries(successfulResults.map(result => [
+            result.groupId,
+            { skip: result.skip, hasMore: result.hasMore },
+          ])),
+        }))
+      }
+
+      const failedCount = results.filter(result => result.failed).length
+      if (failedCount) {
+        setLoadMoreError(`Older activity could not be loaded for ${failedCount} ${failedCount === 1 ? 'group' : 'groups'}. Your already loaded history is still available; retry to continue.`)
+      }
+    } finally {
+      setLoadingMore(false)
+    }
+  }
 
   const visibleItems = useMemo(() => {
     const cutoff = dateFilter === 'all' || now === null ? 0 : now - Number(dateFilter) * 86400000
@@ -213,12 +290,23 @@ export default function Activity() {
               <div className="flex justify-between items-center mt-4 pt-3 border-t app-divider"><span className="text-xs app-muted">{visibleItems.length} events</span><button onClick={() => { setGroupFilter('all'); setTypeFilter('all'); setDateFilter('30') }} className="text-xs font-bold text-[var(--secondary)]">Reset filters</button></div>
             </section>
 
-            {error && <div className="app-card p-4 text-sm text-rose-500">{error}</div>}
+            {error && (
+              <div role="alert" className="app-card p-4 text-sm text-rose-500 flex items-center justify-between gap-3">
+                <span>{error}</span>
+                <button type="button" onClick={() => setHistoryReload(value => value + 1)} disabled={loading} className="shrink-0 font-bold underline disabled:opacity-50">Retry</button>
+              </div>
+            )}
+            {loadMoreError && (
+              <div role="alert" className="app-card p-4 text-sm text-amber-600 flex items-center justify-between gap-3">
+                <span>{loadMoreError}</span>
+                <button type="button" onClick={loadMoreActivity} disabled={loadingMore} className="shrink-0 font-bold underline disabled:opacity-50">Retry</button>
+              </div>
+            )}
             {loading ? (
               <div className="space-y-4">{[1,2,3].map(value => <div key={value} className="app-card h-24 animate-pulse"/>)}</div>
-            ) : groupedItems.length === 0 ? (
+            ) : groupedItems.length === 0 && !error ? (
               <div className="app-empty-state px-6 py-16 text-center"><span className="app-icon-tile w-14 h-14 mx-auto rounded-2xl"><span className="material-symbols-outlined text-[26px]">history</span></span><h3 className="font-bold mt-4">No activity found</h3><p className="app-muted text-xs mt-2">Try a different group, type or date range.</p></div>
-            ) : (
+            ) : groupedItems.length > 0 ? (
               <div className="space-y-7">
                 {groupedItems.map(([label, dayItems]) => (
                   <section key={label}>
@@ -238,6 +326,16 @@ export default function Activity() {
                   </section>
                 ))}
               </div>
+            ) : null}
+            {!loading && Object.values(historyPageByGroup).some(page => page.hasMore) && (
+              <button
+                type="button"
+                onClick={loadMoreActivity}
+                disabled={loadingMore}
+                className="app-button-secondary w-full mt-5 justify-center disabled:opacity-50"
+              >
+                {loadingMore ? 'Loading older activity…' : 'Load more activity'}
+              </button>
             )}
           </>
         )}
