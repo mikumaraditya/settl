@@ -668,8 +668,10 @@ export default function GroupDetail() {
       setExpenseForm({ description: '', amount: '', category: 'food', splitType: 'equal' })
       setShowAddExpense(false)
       setExpenseError('')
-      fetchSettlements()
-      if (activityFetched) fetchActivity()
+      await Promise.all([
+        fetchSettlements(),
+        ...(activityFetched ? [fetchActivity()] : []),
+      ])
     } catch (err) {
       setExpenseError(err.response?.data?.message || 'We could not save this expense. Check your connection and try again.')
     } finally {
@@ -694,7 +696,7 @@ export default function GroupDetail() {
       setGroup(data)
       setMemberEmail('')
       setShowAddMember(false)
-      if (activityFetched) fetchActivity()
+      if (activityFetched) await fetchActivity()
     } catch (err) {
       setAddMemberError(err.response?.data?.message || 'We could not add this member. Check the email and try again.')
     } finally {
@@ -726,8 +728,10 @@ export default function GroupDetail() {
       setExpenses(prev => prev.filter(item => item._id !== deletedId))
       setExpenseToDelete(null)
       setDeleteExpenseError('')
-      fetchSettlements()
-      if (activityFetched) fetchActivity()
+      await Promise.all([
+        fetchSettlements(),
+        ...(activityFetched ? [fetchActivity()] : []),
+      ])
     } catch (err) {
       setDeleteExpenseError(err.response?.data?.message || 'We could not delete this expense. Refresh the group and try again.')
     } finally {
@@ -767,7 +771,7 @@ export default function GroupDetail() {
       const { data } = await axios.delete(`/groups/${id}/members/${memberId}`)
       setGroup(data)
       setMemberToRemove(null)
-      if (activityFetched) fetchActivity()
+      if (activityFetched) await fetchActivity()
     } catch (err) {
       setRemoveError(err.response?.data?.message || 'We could not remove this member. Refresh the group and try again.')
     } finally {
