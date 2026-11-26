@@ -38,6 +38,7 @@ jobs:
         working-directory: ${{ matrix.directory }}
 
       - name: Audit dependencies and print advisory details
+        working-directory: ${{ matrix.directory }}
         shell: bash
         run: |
           set +e
