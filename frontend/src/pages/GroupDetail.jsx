@@ -597,14 +597,14 @@ export default function GroupDetail() {
     try {
       const payload = { ...expenseForm, description, amount: totalPaise / 100, groupId: id }
       if (expenseForm.splitType === 'percentage') {
-        payload.splits = Object.entries(splitPercentages).map(([userId, pct]) => ({
+        payload.splits = memberIds.map(userId => ({
           user: userId,
-          percentage: Number(pct),
+          percentage: Number(splitPercentages[userId]),
         }))
       } else if (expenseForm.splitType === 'exact') {
-        payload.splits = Object.entries(exactAmounts).map(([userId, amt]) => ({
+        payload.splits = memberIds.map(userId => ({
           user: userId,
-          amount: Number(amt),
+          amount: Number(exactAmounts[userId]),
         }))
       }
 
