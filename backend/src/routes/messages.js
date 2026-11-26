@@ -1,5 +1,7 @@
 import express from "express";
 import mongoose from "mongoose";
+import rateLimit from "express-rate-limit";
+import { createRateLimitStore } from "../config/rateLimitStore.js";
 import Group from "../models/Group.js";
 import Message from "../models/Message.js";
 import protect from "../middleware/auth.js";
@@ -9,6 +11,18 @@ import { getIO } from "../socket.js";
 const router = express.Router();
 
 router.use(protect, requireVerified);
+
+// Group chat writes are user-scoped so one member cannot flood a group or
+// exhaust another member's allowance. Redis shares the budget across instances.
+const messageCreateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 30,
+  keyGenerator: (req) => req.user.id,
+  store: createRateLimitStore("messages-create"),
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { message: "You're sending messages too quickly. Please wait a minute and try again." },
+});
 
 const getMemberGroup = async (groupId, userId) => {
   if (!mongoose.Types.ObjectId.isValid(groupId)) {
@@ -38,7 +52,7 @@ router.get("/group/:groupId", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", messageCreateLimiter, async (req, res) => {
   try {
     const { groupId, content } = req.body;
     const text = typeof content === "string" ? content.trim() : "";

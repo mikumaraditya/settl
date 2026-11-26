@@ -17,10 +17,12 @@ describe("Group message routes", () => {
   let member;
   let outsider;
   let unverified;
+  let rateLimitedUser;
   let ownerToken;
   let memberToken;
   let outsiderToken;
   let unverifiedToken;
+  let rateLimitedToken;
   const groupIds = [];
   const userIds = [];
 
@@ -70,12 +72,20 @@ describe("Group message routes", () => {
       },
     ]);
     userIds.push(owner._id, member._id, outsider._id, unverified._id);
+    rateLimitedUser = await User.create({
+      name: "Rate Limited Message User",
+      email: "message-rate-limited-" + suffix + "@example.com",
+      password: "test-password-hash",
+      isEmailVerified: true,
+    });
+    userIds.push(rateLimitedUser._id);
 
     const secret = process.env.JWT_SECRET;
     ownerToken = jwt.sign({ id: owner._id.toString() }, secret, { expiresIn: "1h" });
     memberToken = jwt.sign({ id: member._id.toString() }, secret, { expiresIn: "1h" });
     outsiderToken = jwt.sign({ id: outsider._id.toString() }, secret, { expiresIn: "1h" });
     unverifiedToken = jwt.sign({ id: unverified._id.toString() }, secret, { expiresIn: "1h" });
+    rateLimitedToken = jwt.sign({ id: rateLimitedUser._id.toString() }, secret, { expiresIn: "1h" });
   });
 
   after(async () => {
@@ -149,6 +159,7 @@ describe("Group message routes", () => {
     assert.equal(await Message.countDocuments({ group: group._id }), 1);
   });
 
+
   it("rejects empty and overlong messages without writing to the database", async () => {
     const group = await makeGroup();
 
@@ -165,6 +176,44 @@ describe("Group message routes", () => {
     assert.equal(tooLong.status, 400);
     assert.equal(await Message.countDocuments({ group: group._id }), 0);
   });
+
+  it("limits message creation per authenticated user", async () => {
+    const group = await Group.create({
+      name: "Rate limit message route test",
+      createdBy: owner._id,
+      members: [
+        { user: owner._id, role: "admin" },
+        { user: member._id, role: "member" },
+        { user: rateLimitedUser._id, role: "member" },
+      ],
+    });
+    groupIds.push(group._id);
+    const responses = [];
+
+    for (let index = 0; index < 31; index += 1) {
+      const response = await request(app)
+        .post("/api/messages")
+        .set("Authorization", `Bearer ${rateLimitedToken}`)
+        .send({ groupId: group._id.toString(), content: `Rate limited message ${index}` });
+      responses.push(response);
+    }
+
+    assert.equal(responses.filter(response => response.status === 201).length, 30);
+    const limited = responses.find(response => response.status === 429);
+    assert.ok(limited);
+    assert.equal(
+      limited.body.message,
+      "You're sending messages too quickly. Please wait a minute and try again.",
+    );
+    assert.equal(await Message.countDocuments({ group: group._id }), 30);
+
+    const otherMemberResponse = await request(app)
+      .post("/api/messages")
+      .set("Authorization", `Bearer ${memberToken}`)
+      .send({ groupId: group._id.toString(), content: "Another member can still send" });
+    assert.equal(otherMemberResponse.status, 201);
+  });
+
 });
 
 async function requestMessageList(groupId, token, limit) {
