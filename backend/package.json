@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js",
+    "dev": "node --watch server.js",
     "lint": "eslint .",
     "test": "node --test test/rateLimitStore.test.mjs test/expenseRoutes.test.mjs test/groupRoutes.test.mjs test/authRoutes.test.mjs test/mentorRoutes.test.mjs test/llmServiceTimeout.test.mjs test/mentorConversation.test.mjs test/mentorExpenseDetails.test.mjs test/financialReconciliation.test.mjs test/mentorGroupBalances.test.mjs test/settlementSchedules.test.mjs && node test/mentorToolsSlice1.test.mjs && node test/settlementsRoutes.test.mjs && node test/settlementsValidation.test.mjs && node test/docsInSync.test.mjs && node test/trustScore2.test.mjs && node --test test/messagesRoutes.test.mjs test/notificationsRoutes.test.mjs && node --test test/proxyConfiguration.test.mjs && node --test test/mvpCoreJourney.test.mjs",
     "test:live": "node test/mentorPersonalization.test.mjs",
@@ -14,6 +14,7 @@
     "migrate:mentor-conversations": "node scripts/migrateMentorConversations.js"
   },
   "dependencies": {
+    "@redis/client": "1.6.1",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
@@ -23,16 +24,14 @@
     "google-auth-library": "^10.6.2",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.3.1",
-    "nodemailer": "^9.0.3",
-    "socket.io": "^4.7.5",
-    "@redis/client": "1.6.1",
-    "rate-limit-redis": "5.0.0"
+    "nodemailer": "^10.6.1",
+    "rate-limit-redis": "5.0.0",
+    "socket.io": "^4.7.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.12.0",
     "globals": "^17.13.0",
-    "nodemon": "^3.1.0",
     "supertest": "^7.3.1"
   }
 }
