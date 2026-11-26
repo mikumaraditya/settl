@@ -2,6 +2,7 @@ import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
+import request from "supertest";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -167,11 +168,8 @@ describe("Group message routes", () => {
 });
 
 async function requestMessageList(groupId, token, limit) {
-  const request = (await import("supertest")).default;
   const call = request(app).get(`/api/messages/group/${groupId}`);
   if (token) call.set("Authorization", `Bearer ${token}`);
   if (limit !== undefined) call.query({ limit });
   return call;
 }
-
-const request = (await import("supertest")).default;
