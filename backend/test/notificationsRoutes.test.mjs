@@ -17,7 +17,6 @@ describe("Persistent notification routes", () => {
   let otherUser;
   let unverified;
   let ownerToken;
-  let otherToken;
   let unverifiedToken;
   let group;
   let sequence = 0;
@@ -72,7 +71,6 @@ describe("Persistent notification routes", () => {
 
     const secret = process.env.JWT_SECRET;
     ownerToken = jwt.sign({ id: owner._id.toString() }, secret, { expiresIn: "1h" });
-    otherToken = jwt.sign({ id: otherUser._id.toString() }, secret, { expiresIn: "1h" });
     unverifiedToken = jwt.sign({ id: unverified._id.toString() }, secret, { expiresIn: "1h" });
 
     group = await Group.create({
