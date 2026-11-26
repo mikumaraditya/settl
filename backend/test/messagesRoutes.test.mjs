@@ -149,6 +149,29 @@ describe("Group message routes", () => {
     assert.equal(await Message.countDocuments({ group: group._id }), 1);
   });
 
+
+  it("limits message creation per authenticated user", async () => {
+    const group = await makeGroup();
+
+    const responses = await Promise.all(
+      Array.from({ length: 31 }, (_, index) =>
+        request(app)
+          .post("/api/messages")
+          .set("Authorization", `Bearer ${ownerToken}`)
+          .send({ groupId: group._id.toString(), content: `Rate limited message ${index}` }),
+      ),
+    );
+
+    assert.equal(responses.filter(response => response.status === 201).length, 30);
+    const limited = responses.find(response => response.status === 429);
+    assert.ok(limited);
+    assert.equal(
+      limited.body.message,
+      "You're sending messages too quickly. Please wait a minute and try again.",
+    );
+    assert.equal(await Message.countDocuments({ group: group._id }), 30);
+  });
+
   it("rejects empty and overlong messages without writing to the database", async () => {
     const group = await makeGroup();
 
