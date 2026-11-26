@@ -318,6 +318,32 @@ router.get("/group/:groupId", protect, async (req, res) => {
       return res.status(403).json({ message: "You are not a member of this group" });
     }
 
+    // Record-based pagination is used by compact cross-group views (such as
+    // the dashboard). Keep the existing month-based pagination unchanged for
+    // the full group expense history.
+    if (req.query.limit !== undefined) {
+      const limit = Number(req.query.limit);
+      const skip = req.query.skip === undefined ? 0 : Number(req.query.skip);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+        return res.status(400).json({ message: "Expense page limit must be between 1 and 100" });
+      }
+      if (!Number.isSafeInteger(skip) || skip < 0) {
+        return res.status(400).json({ message: "Expense page offset must be a non-negative integer" });
+      }
+
+      const [expenses, total] = await Promise.all([
+        Expense.find({ group: group._id })
+          .populate("paidBy", "name email")
+          .populate("splits.user", "name email upiId")
+          .sort({ createdAt: -1, _id: -1 })
+          .skip(skip)
+          .limit(limit),
+        Expense.countDocuments({ group: group._id }),
+      ]);
+
+      return res.json({ expenses, total, hasMore: skip + expenses.length < total });
+    }
+
     const monthsPerPage = Math.min(12, Math.max(1, parseInt(req.query.months) || 3));
     const page         = Math.max(1, parseInt(req.query.page)   || 1);
     const startIdx     = (page - 1) * monthsPerPage;
