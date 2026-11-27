@@ -101,6 +101,13 @@ const addDaysToDateOnly = (dateOnly, days) => {
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
 };
+const addMonthsToDateOnly = (dateOnly, months) => {
+  const [year, month, day] = dateOnly.split("-").map(Number);
+  const target = new Date(Date.UTC(year, month - 1 + months, 1));
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(day, lastDay));
+  return target.toISOString().slice(0, 10);
+};
 import { clearInsightCaches } from './insights.js';
 
 const router = express.Router();
@@ -947,24 +954,35 @@ router.post("/schedule", async (req, res) => {
     reservedGroupId = group._id;
     reservedMutationToken = group.$locals.financialMutationToken;
 
-    // If the payer leaves the date empty, default to seven calendar days
-    // from today in their local timezone.
-    const resolvedDueDate = dueDate === undefined || dueDate === null || dueDate === ""
-      ? addDaysToDateOnly(getDateInTimeZone(body.timeZone), 7)
-      : dueDate;
-    if (typeof resolvedDueDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(resolvedDueDate)) {
-      return res.status(400).json({ message: "Due date must use YYYY-MM-DD format" });
-    }
-    const parsedDueDate = new Date(`${resolvedDueDate}T12:00:00.000Z`);
-    if (Number.isNaN(parsedDueDate.getTime()) || parsedDueDate.toISOString().slice(0, 10) !== resolvedDueDate) {
-      return res.status(400).json({ message: "Please provide a valid calendar date" });
-    }
-    const requestedDate = dueDate === undefined || dueDate === null || dueDate === ""
-      ? null
-      : resolvedDueDate;
+    const isDefaultDueDate = dueDate === undefined || dueDate === null || dueDate === "";
     const requestedTimeZone = typeof body.timeZone === "string" && body.timeZone.trim()
       ? body.timeZone.trim()
       : "UTC";
+    if (requestedTimeZone.length > 64) {
+      return res.status(400).json({ message: "Please provide a valid timezone" });
+    }
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: requestedTimeZone });
+    } catch {
+      return res.status(400).json({ message: "Please provide a valid timezone" });
+    }
+    const today = getDateInTimeZone(requestedTimeZone);
+    const resolvedDueDate = isDefaultDueDate ? addDaysToDateOnly(today, 15) : dueDate;
+    if (typeof resolvedDueDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(resolvedDueDate)) {
+      return res.status(400).json({ message: "Due date must use YYYY-MM-DD format" });
+    }
+    const parsedDueDate = new Date(\`\${resolvedDueDate}T12:00:00.000Z\`);
+    if (Number.isNaN(parsedDueDate.getTime()) || parsedDueDate.toISOString().slice(0, 10) !== resolvedDueDate) {
+      return res.status(400).json({ message: "Please provide a valid calendar date" });
+    }
+    if (resolvedDueDate < today) {
+      return res.status(400).json({ message: "Due date cannot be in the past" });
+    }
+    const maxDueDate = addMonthsToDateOnly(today, 3);
+    if (!isDefaultDueDate && resolvedDueDate > maxDueDate) {
+      return res.status(400).json({ message: "Choose a repayment date within the next three calendar months" });
+    }
+    const requestedDate = isDefaultDueDate ? null : resolvedDueDate;
     const idempotencyHash = idempotencyKey
       ? createHash("sha256").update(JSON.stringify({
         groupId: groupId.toString(),
@@ -972,7 +990,7 @@ router.post("/schedule", async (req, res) => {
         to: toUserId.toString(),
         amountPaise: Math.round(amount * 100),
         dueDate: requestedDate,
-        timeZone: requestedDate === null ? requestedTimeZone : null,
+        timeZone: requestedTimeZone,
       })).digest("hex")
       : null;
 
@@ -1056,7 +1074,11 @@ router.post("/schedule", async (req, res) => {
     try {
       schedule = await SettlementSchedule.create({
         group: groupId, from: req.user.id, to: toUserId, amount,
-        dueDate: parsedDueDate, status: "proposed", active: true,
+        dueDate: parsedDueDate,
+        timeZone: requestedTimeZone,
+        isDefaultDueDate,
+        status: "proposed",
+        active: true,
         sourceExpenseIds: getExpenseSourceIds(expenses),
         ...(idempotencyKey ? { idempotencyKey, idempotencyHash } : {}),
       });
@@ -1149,6 +1171,7 @@ router.post("/schedule/:scheduleId/respond", async (req, res) => {
       return res.status(404).json({ message: "No proposed payment schedule found for you to respond to" });
     }
 
+    clearInsightCaches([schedule.from?._id?.toString?.() || schedule.from?.toString?.(), schedule.to?._id?.toString?.() || schedule.to?.toString?.()]);
     safeEmitSchedule(schedule, action === "accept" ? "schedule_accepted" : "schedule_rejected");
     await ActivityLog.create({
       group: schedule.group, actor: req.user.id,
@@ -1186,6 +1209,14 @@ router.post("/schedule/:scheduleId/cancel", async (req, res) => {
     if (!cancellableSchedule) {
       return res.status(404).json({ message: "No cancellable payment schedule found" });
     }
+    if (
+      cancellableSchedule.status === "accepted" &&
+      cancellableSchedule.dueDate.toISOString().slice(0, 10) < getDateInTimeZone(cancellableSchedule.timeZone)
+    ) {
+      return res.status(409).json({
+        message: "An overdue repayment schedule cannot be cancelled. Record the payment so the Trust Score penalty can be cleared.",
+      });
+    }
 
     const group = await reserveGroupWrite(cancellableSchedule.group, req.user.id);
     if (!group) {
@@ -1208,6 +1239,7 @@ router.post("/schedule/:scheduleId/cancel", async (req, res) => {
     ).populate("from to", "name email upiId");
     if (!schedule) return res.status(404).json({ message: "No cancellable payment schedule found" });
 
+    clearInsightCaches([schedule.from?._id?.toString?.() || schedule.from?.toString?.(), schedule.to?._id?.toString?.() || schedule.to?.toString?.()]);
     safeEmitSchedule(schedule, "schedule_cancelled");
     await ActivityLog.create({
       group: schedule.group, actor: req.user.id, type: "schedule_cancelled",
