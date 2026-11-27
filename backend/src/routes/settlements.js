@@ -10,6 +10,7 @@ import protect from '../middleware/auth.js';
 import requireVerified from '../middleware/requireVerified.js';
 import simplifyDebts from '../utils/debtSimplify.js';
 import { getIO } from '../socket.js';
+import { reserveGroupMutation, releaseGroupMutation } from '../utils/groupMutation.js';
 const safeEmit = (room, event, payload) => { try { getIO()?.to(room)?.emit(event, payload); } catch { /* ignore */ } };
 
 const reserveGroupWrite = async (groupId, userId) => {
@@ -498,6 +499,10 @@ router.post("/confirm", protect, async (req, res) => {
     }
     reservedGroupId = group._id;
     reservedMutationToken = group.$locals.financialMutationToken;
+
+    // Expire overdue requests before a receiver can confirm them. This keeps
+    // the endpoint safe even when the periodic cleanup has not run yet.
+    await autoExpirePendingSettlements(groupId);
 
     // Validate both participants before committing the payment transition.
     const payerIsMember = group.members.some(member => member.user.toString() === fromUserId);
