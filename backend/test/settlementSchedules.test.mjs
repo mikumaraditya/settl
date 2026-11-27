@@ -1135,7 +1135,8 @@ test("an overdue settlement is expired before the receiver can confirm it", asyn
       .set("Authorization", `Bearer ${tokenB}`)
       .send({ groupId: expiryGroupId, settlementId: payment._id.toString() });
 
-    assert.equal(confirm.status, 404, JSON.stringify(confirm.body));
+    assert.equal(confirm.status, 409, JSON.stringify(confirm.body));
+    assert.match(confirm.body.message, /no longer pending/i);
     const storedPayment = await Settlement.findById(payment._id).lean();
     const storedSchedule = await SettlementSchedule.findById(schedule._id).lean();
     assert.equal(storedPayment.status, "expired");
