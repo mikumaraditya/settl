@@ -1,5 +1,6 @@
 import express from 'express';
 import mongoose from 'mongoose';
+import { createHash } from 'node:crypto';
 import Expense from '../models/Expense.js';
 import Group from '../models/Group.js';
 import Settlement from '../models/Settlement.js';
@@ -273,6 +274,13 @@ router.post("/settle", protect, async (req, res) => {
   try {
     const body = req.body || {};
     const { groupId, toUserId, scheduleId } = body;
+    const rawIdempotencyKey = req.get("Idempotency-Key");
+    const idempotencyKey = typeof rawIdempotencyKey === "string"
+      ? rawIdempotencyKey.trim()
+      : null;
+    if (idempotencyKey && !/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) {
+      return res.status(400).json({ message: "Invalid settlement idempotency key" });
+    }
 
     let upiReference = null;
     if (body.upiReference !== undefined && body.upiReference !== null) {
@@ -294,11 +302,25 @@ router.post("/settle", protect, async (req, res) => {
     if (!mongoose.isValidObjectId(groupId) || !mongoose.isValidObjectId(toUserId)) {
       return res.status(400).json({ message: 'Invalid group or recipient id' });
     }
+    if (scheduleId !== undefined && scheduleId !== null && !mongoose.isValidObjectId(scheduleId)) {
+      return res.status(400).json({ message: "Invalid payment schedule id" });
+    }
 
     const amount = Math.round(Number(body.amount) * 100) / 100;
     if (!Number.isFinite(body.amount) || amount <= 0 || body.amount !== amount) {
       return res.status(400).json({ message: 'Amount must be positive and have at most two decimal places' });
     }
+
+    const amountInPaise = Math.round(amount * 100);
+    const idempotencyHash = idempotencyKey
+      ? createHash("sha256").update(JSON.stringify({
+        groupId: groupId.toString(),
+        from: req.user.id,
+        to: toUserId.toString(),
+        amountPaise: amountInPaise,
+        scheduleId: scheduleId ? scheduleId.toString() : null,
+      })).digest("hex")
+      : null;
 
     const group = await reserveGroupWrite(groupId, req.user.id);
     if (!group) {
@@ -308,7 +330,6 @@ router.post("/settle", protect, async (req, res) => {
     reservedGroupId = group._id;
     reservedMutationToken = group.$locals.financialMutationToken;
 
-    await autoExpirePendingSettlements(groupId);
     if (toUserId === req.user.id) {
       return res.status(400).json({ message: 'You cannot settle a payment with yourself' });
     }
@@ -316,6 +337,40 @@ router.post("/settle", protect, async (req, res) => {
     if (!recipientIsMember) {
       return res.status(400).json({ message: 'Settlement recipient must be a member of this group' });
     }
+
+    const respondWithExistingSettlement = async (existingSettlement) => {
+      if (existingSettlement.idempotencyHash !== idempotencyHash) {
+        return res.status(409).json({
+          code: "IDEMPOTENCY_KEY_REUSED",
+          message: "This settlement request key was already used for different payment details.",
+        });
+      }
+      // Allow a retry to attach its optional UTR if the original attempt did not.
+      if (upiReference && !existingSettlement.upiReference) {
+        await Settlement.updateOne(
+          { _id: existingSettlement._id, from: req.user.id, upiReference: null },
+          { $set: { upiReference } },
+        );
+      }
+      const replayed = await Settlement.findById(existingSettlement._id)
+        .populate("from", "name email upiId")
+        .populate("to", "name email upiId");
+      return res.status(200).json(replayed || existingSettlement);
+    };
+
+    // Replay before expiry, debt and active-schedule checks: a successful first
+    // request may already have changed those states.
+    if (idempotencyKey) {
+      const existingSettlement = await Settlement.findOne({
+        from: req.user.id,
+        idempotencyKey,
+      });
+      if (existingSettlement) {
+        return await respondWithExistingSettlement(existingSettlement);
+      }
+    }
+
+    await autoExpirePendingSettlements(groupId);
 
     // Require a simplified-debt edge from req.user.id to toUserId
     const [expenses, allSettlements] = await Promise.all([
@@ -345,7 +400,6 @@ router.post("/settle", protect, async (req, res) => {
     const otherPendingSum = pendingBetweenUs.reduce((sum, s) => sum + Math.round(s.amount * 100), 0);
     const edgeAmountPaise = Math.round(debtEdge.amount * 100);
     const maxAllowedPaise = edgeAmountPaise - otherPendingSum;
-    const amountInPaise = Math.round(amount * 100);
 
     if (amountInPaise > maxAllowedPaise || maxAllowedPaise <= 0) {
       return res.status(400).json({ message: 'Settlement amount exceeds the outstanding debt to this member' });
@@ -416,6 +470,7 @@ router.post("/settle", protect, async (req, res) => {
         status: "pending",
         dueDate: defaultDueDate,
         upiReference,
+        ...(idempotencyKey ? { idempotencyKey, idempotencyHash } : {}),
       });
       if (linkedSchedule) {
         linkedSchedule.paymentSettlement = settlement._id;
@@ -432,6 +487,15 @@ router.post("/settle", protect, async (req, res) => {
           { _id: linkedSchedule._id, status: "payment_pending", paymentSettlement: null },
           { $set: { status: "accepted" } },
         );
+      }
+      if (idempotencyKey && createError.code === 11000) {
+        const existingSettlement = await Settlement.findOne({
+          from: req.user.id,
+          idempotencyKey,
+        });
+        if (existingSettlement) {
+          return await respondWithExistingSettlement(existingSettlement);
+        }
       }
       throw createError;
     }
