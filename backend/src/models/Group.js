@@ -29,6 +29,16 @@ const groupSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    // Optional request identity prevents duplicate groups after uncertain retries.
+    idempotencyKey: {
+      type: String,
+      trim: true,
+      maxlength: 128,
+    },
+    idempotencyHash: {
+      type: String,
+      match: /^[a-f0-9]{64}$/,
+    },
     currency: {
       type: String,
       default: "INR",
@@ -90,6 +100,15 @@ const groupSchema = new mongoose.Schema(
     },
   },
   { timestamps: true },
+);
+
+// One logical group-create request per creator, without constraining legacy groups.
+groupSchema.index(
+  { createdBy: 1, idempotencyKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { idempotencyKey: { $type: "string" } },
+  },
 );
 
 // Supports the frequent membership filter used by group lists and Finn tools.
