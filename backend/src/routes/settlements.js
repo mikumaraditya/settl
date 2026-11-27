@@ -1030,7 +1030,7 @@ router.post("/schedule", async (req, res) => {
 
     // An explicit date can be in the past by the time a successful proposal
     // is retried. Check this only for new proposals, after replay lookup.
-    if (resolvedDueDate < getDateInTimeZone(body.timeZone)) {
+    if (resolvedDueDate < today) {
       return res.status(400).json({ message: "Due date cannot be in the past" });
     }
 
