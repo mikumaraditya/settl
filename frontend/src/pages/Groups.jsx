@@ -29,6 +29,7 @@ export default function Groups() {
   const [description, setDescription] = useState('')
   const [creating, setCreating] = useState(false)
   const createRequestInFlightRef = useRef(false)
+  const createRequestKeysRef = useRef(new Map())
   const [error, setError] = useState('')
 
   const loadGroups = useCallback(async () => {
@@ -97,13 +98,29 @@ export default function Groups() {
     createRequestInFlightRef.current = true
     setCreating(true)
     setError('')
+    const intent = JSON.stringify({ name: cleanName, description: cleanDescription })
+    let idempotencyKey = createRequestKeysRef.current.get(intent)
+    if (!idempotencyKey) {
+      idempotencyKey = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `group-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      createRequestKeysRef.current.set(intent, idempotencyKey)
+    }
     try {
-      const { data } = await axios.post('/groups', { name: cleanName, description: cleanDescription })
+      const { data } = await axios.post('/groups', { name: cleanName, description: cleanDescription }, {
+        headers: { 'Idempotency-Key': idempotencyKey },
+      })
+      createRequestKeysRef.current.delete(intent)
       setShowCreate(false)
       setName('')
       setDescription('')
       navigate(`/group/${data._id}`)
     } catch (err) {
+      // Keep the same key for network/server failures: the group may already
+      // exist even though the client never received its successful response.
+      if (err.response?.status && err.response.status < 500) {
+        createRequestKeysRef.current.delete(intent)
+      }
       setError(err.response?.data?.message || 'We could not create this group. Check your connection and try again.')
     } finally {
       createRequestInFlightRef.current = false
