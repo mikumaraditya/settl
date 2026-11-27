@@ -561,7 +561,7 @@ router.delete("/:id", async (req, res) => {
 
     if (hasSettlement || hasActiveSchedule) {
       return res.status(409).json({
-        message: "A payment was requested or scheduled after this expense was added. To protect the payment history, this expense cannot be deleted. Add a correcting expense instead.",
+        message: "A pending or confirmed payment, or an active payment schedule, references this expense. To protect the payment history, this expense cannot be deleted. Add a correcting expense instead.",
       });
     }
 
