@@ -246,6 +246,10 @@ describe("Expense creation and deletion lifecycle", () => {
 
   it("replays a matching expense idempotency key and rejects changed payloads", async () => {
     const group = await makeGroup();
+    await Group.updateOne(
+      { _id: group._id },
+      { $push: { members: { user: independentPayer._id, role: "member" } } },
+    );
     const idempotencyKey = "expense-create-retry-001";
     const payload = {
       groupId: group._id.toString(),
@@ -257,14 +261,14 @@ describe("Expense creation and deletion lifecycle", () => {
 
     const first = await request(app)
       .post("/api/expenses")
-      .set("Authorization", `Bearer ${payerToken}`)
+      .set("Authorization", `Bearer ${independentPayerToken}`)
       .set("Idempotency-Key", idempotencyKey)
       .send(payload);
     assert.equal(first.status, 201);
 
     const replay = await request(app)
       .post("/api/expenses")
-      .set("Authorization", `Bearer ${payerToken}`)
+      .set("Authorization", `Bearer ${independentPayerToken}`)
       .set("Idempotency-Key", idempotencyKey)
       .send(payload);
     assert.equal(replay.status, 200);
@@ -273,7 +277,7 @@ describe("Expense creation and deletion lifecycle", () => {
 
     const changedPayload = await request(app)
       .post("/api/expenses")
-      .set("Authorization", `Bearer ${payerToken}`)
+      .set("Authorization", `Bearer ${independentPayerToken}`)
       .set("Idempotency-Key", idempotencyKey)
       .send({ ...payload, amount: 260 });
     assert.equal(changedPayload.status, 409);
@@ -283,7 +287,7 @@ describe("Expense creation and deletion lifecycle", () => {
     // A new key represents a new intentional expense, even with identical details.
     const intentionalDuplicate = await request(app)
       .post("/api/expenses")
-      .set("Authorization", `Bearer ${payerToken}`)
+      .set("Authorization", `Bearer ${independentPayerToken}`)
       .set("Idempotency-Key", "expense-create-new-002")
       .send(payload);
     assert.equal(intentionalDuplicate.status, 201);
