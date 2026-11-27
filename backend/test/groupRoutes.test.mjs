@@ -142,6 +142,94 @@ describe("Group lifecycle routes", () => {
     groupIds.push(response.body._id);
   });
 
+  it("replays group creation requests and rejects reuse with changed details", async () => {
+    const key = `group-create-retry-${Date.now()}`;
+    const payload = {
+      name: "Retry-safe weekend trip",
+      description: "Shared travel expenses",
+    };
+
+    const first = await request(app)
+      .post("/api/groups")
+      .set("Authorization", `Bearer ${creatorToken}`)
+      .set("Idempotency-Key", key)
+      .send(payload);
+    assert.equal(first.status, 201, JSON.stringify(first.body));
+    groupIds.push(first.body._id);
+
+    const replay = await request(app)
+      .post("/api/groups")
+      .set("Authorization", `Bearer ${creatorToken}`)
+      .set("Idempotency-Key", key)
+      .send(payload);
+    assert.equal(replay.status, 200, JSON.stringify(replay.body));
+    assert.equal(replay.body._id, first.body._id);
+    assert.equal(
+      await Group.countDocuments({ createdBy: creator._id, idempotencyKey: key }),
+      1,
+    );
+
+    const changedPayload = await request(app)
+      .post("/api/groups")
+      .set("Authorization", `Bearer ${creatorToken}`)
+      .set("Idempotency-Key", key)
+      .send({ ...payload, description: "Changed trip details" });
+    assert.equal(changedPayload.status, 409);
+    assert.equal(changedPayload.body.code, "IDEMPOTENCY_KEY_REUSED");
+    assert.equal(
+      await Group.countDocuments({ createdBy: creator._id, idempotencyKey: key }),
+      1,
+    );
+
+    // A different key represents an intentional second group.
+    const intentionalDuplicate = await request(app)
+      .post("/api/groups")
+      .set("Authorization", `Bearer ${creatorToken}`)
+      .set("Idempotency-Key", `group-create-new-${Date.now()}`)
+      .send(payload);
+    assert.equal(intentionalDuplicate.status, 201, JSON.stringify(intentionalDuplicate.body));
+    assert.notEqual(intentionalDuplicate.body._id, first.body._id);
+    groupIds.push(intentionalDuplicate.body._id);
+  });
+
+  it("resolves concurrent group creation retries to one group", async () => {
+    const key = `group-create-concurrent-${Date.now()}`;
+    const payload = {
+      name: "Concurrent retry group",
+      description: "Only one group should be created",
+    };
+
+    const [first, second] = await Promise.all([
+      request(app)
+        .post("/api/groups")
+        .set("Authorization", `Bearer ${creatorToken}`)
+        .set("Idempotency-Key", key)
+        .send(payload),
+      request(app)
+        .post("/api/groups")
+        .set("Authorization", `Bearer ${creatorToken}`)
+        .set("Idempotency-Key", key)
+        .send(payload),
+    ]);
+
+    assert.deepEqual([first.status, second.status].sort(), [200, 201]);
+    assert.equal(first.body._id, second.body._id);
+    groupIds.push(first.body._id);
+    assert.equal(await Group.countDocuments({ createdBy: creator._id, idempotencyKey: key }), 1);
+  });
+
+  it("rejects malformed group idempotency keys without creating a group", async () => {
+    const key = "invalid group key";
+    const response = await request(app)
+      .post("/api/groups")
+      .set("Authorization", `Bearer ${creatorToken}`)
+      .set("Idempotency-Key", key)
+      .send({ name: "Invalid request key" });
+
+    assert.equal(response.status, 400);
+    assert.equal(await Group.countDocuments({ createdBy: creator._id, name: "Invalid request key" }), 0);
+  });
+
   it("invalidates cached insights after group creation, member changes, and group deletion", async () => {
     const initial = await request(app)
       .get(`/api/insights/trust-score/${cacheUser._id}`)
