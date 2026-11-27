@@ -37,11 +37,21 @@ export async function reserveGroupMutation(groupId, userId) {
             { financialMutationExpiresAt: { $type: "date", $lte: now } },
           ],
         },
+        {
+          $or: [
+            { activeMutations: 0 },
+            { activeMutations: { $exists: false } },
+            {
+              activeMutations: { $gt: 0 },
+              mutationExpiresAt: { $type: "date", $lte: now },
+            },
+          ],
+        },
       ],
     },
     {
-      $inc: { activeMutations: 1 },
       $set: {
+        activeMutations: 1,
         mutationExpiresAt: expiresAt,
         financialMutationId: token,
         financialMutationExpiresAt: expiresAt,
@@ -68,12 +78,9 @@ export async function releaseGroupMutation(groupId, token) {
       $set: {
         financialMutationId: null,
         financialMutationExpiresAt: null,
+        activeMutations: 0,
+        mutationExpiresAt: null,
       },
     },
-  );
-
-  await Group.updateOne(
-    { _id: groupId, activeMutations: { $gt: 0 } },
-    { $inc: { activeMutations: -1 } },
   );
 }
