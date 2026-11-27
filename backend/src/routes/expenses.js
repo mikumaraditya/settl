@@ -524,13 +524,13 @@ router.delete("/:id", async (req, res) => {
     // the debt they were created against. Only those rows are protected.
     // Legacy records predate this field, so retain the former conservative
     // timestamp check only for documents where sourceExpenseIds is missing.
-    const legacySourceGuard = {
+    const legacySourceGuard = () => ({
       sourceExpenseIds: { $exists: false },
       $or: [
         { createdAt: { $gte: expense.createdAt } },
         { createdAt: { $exists: false } },
       ],
-    };
+    });
     const [hasSettlement, hasActiveSchedule] = await Promise.all([
       Settlement.exists({
         group: expense.group,
@@ -544,7 +544,7 @@ router.delete("/:id", async (req, res) => {
           {
             $or: [
               { sourceExpenseIds: expense._id },
-              legacySourceGuard,
+              legacySourceGuard(),
             ],
           },
         ],
@@ -554,14 +554,14 @@ router.delete("/:id", async (req, res) => {
         active: true,
         $or: [
           { sourceExpenseIds: expense._id },
-          legacySourceGuard,
+          legacySourceGuard(),
         ],
       }),
     ]);
 
     if (hasSettlement || hasActiveSchedule) {
       return res.status(409).json({
-        message: "A pending or confirmed payment, or an active payment schedule, references this expense. To protect the payment history, this expense cannot be deleted. Add a correcting expense instead.",
+        message: "This expense is part of a pending or confirmed payment, or an active payment schedule's financial history. To protect the payment history, it cannot be deleted. Add a correcting expense instead.",
       });
     }
 
