@@ -7,7 +7,7 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 dotenv.config();
 
-import groupsRouter from "../src/routes/groups.js";
+import groupsRouter, { acquireMembershipMutation, releaseMembershipMutation } from "../src/routes/groups.js";
 import settlementsRouter from "../src/routes/settlements.js";
 import insightsRouter from "../src/routes/insights.js";
 import User from "../src/models/User.js";
@@ -270,6 +270,61 @@ describe("Group lifecycle routes", () => {
     const updated = await Group.findById(group._id);
     assert.equal(updated.members.filter(item => item.user.toString() === invitee._id.toString()).length, 1);
     assert.equal(updated.membershipMutation, false);
+  });
+
+  it("membership lease owner tokens prevent an expired request from releasing a replacement lease", async () => {
+    const group = await makeGroup();
+    const first = await acquireMembershipMutation(group._id);
+    assert.ok(first, "the first request should acquire the membership lease");
+
+    const blocked = await acquireMembershipMutation(group._id);
+    assert.equal(blocked, null, "a live membership lease must block another request");
+
+    await Group.updateOne(
+      { _id: group._id, membershipMutationId: first.token },
+      {
+        $set: {
+          membershipMutationExpiresAt: new Date(Date.now() - 1_000),
+        },
+      },
+    );
+
+    const replacement = await acquireMembershipMutation(group._id);
+    assert.ok(replacement, "a later request should recover an expired membership lease");
+    assert.notEqual(replacement.token, first.token);
+
+    await releaseMembershipMutation(group._id, first.token);
+    let stored = await Group.findById(group._id).lean();
+    assert.equal(stored.membershipMutation, true);
+    assert.equal(stored.membershipMutationId, replacement.token);
+
+    await releaseMembershipMutation(group._id, replacement.token);
+    stored = await Group.findById(group._id).lean();
+    assert.equal(stored.membershipMutation, false);
+    assert.equal(stored.membershipMutationId, null);
+    assert.equal(stored.membershipMutationExpiresAt, null);
+  });
+
+  it("does not acquire a membership lease while a financial mutation lease is active", async () => {
+    const group = await makeGroup();
+    const expiresAt = new Date(Date.now() + 60_000);
+    await Group.updateOne(
+      { _id: group._id },
+      {
+        $set: {
+          financialMutationId: "active-financial-write",
+          financialMutationExpiresAt: expiresAt,
+          activeMutations: 1,
+          mutationExpiresAt: expiresAt,
+        },
+      },
+    );
+
+    const reservation = await acquireMembershipMutation(group._id);
+    assert.equal(reservation, null);
+    const stored = await Group.findById(group._id).lean();
+    assert.equal(stored.membershipMutation, false);
+    assert.equal(stored.financialMutationId, "active-financial-write");
   });
 
   it("does not add members while a group is deleting or another expense is in flight", async () => {
