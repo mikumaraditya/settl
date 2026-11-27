@@ -8,6 +8,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import settlementsRouter from "../src/routes/settlements.js";
+import expensesRouter from "../src/routes/expenses.js";
 import notificationsRouter from "../src/routes/notifications.js";
 import User from "../src/models/User.js";
 import Group from "../src/models/Group.js";
@@ -18,10 +19,12 @@ import ActivityLog from "../src/models/ActivityLog.js";
 import Notification from "../src/models/Notification.js";
 import { processSettlementScheduleReminders } from "../src/services/settlementReminderWorker.js";
 import { getTestDbConfig } from "./testDbHelper.mjs";
+import { reserveGroupMutation, releaseGroupMutation } from "../src/utils/groupMutation.js";
 
 const app = express();
 app.use(express.json());
 app.use("/api/settlements", settlementsRouter);
+app.use("/api/expenses", expensesRouter);
 app.use("/api/notifications", notificationsRouter);
 
 const JWT_SECRET = process.env.JWT_SECRET || "default_super_secret_jwt_key_123";
@@ -521,4 +524,136 @@ test("blank due date defaults to seven calendar days", async () => {
   assert.equal(create.status, 201, JSON.stringify(create.body));
   assert.equal(create.body.dueDate.slice(0, 10), expectedDueDate);
   assert.equal(create.body.status, "proposed");
+});
+
+
+test("group financial mutation leases serialize writes and prevent stale owners from releasing a newer lease", async () => {
+  const first = await reserveGroupMutation(groupId, userA._id);
+  assert.ok(first, "the first financial mutation should acquire the group lease");
+
+  const blocked = await reserveGroupMutation(groupId, userB._id);
+  assert.equal(blocked, null, "a concurrent financial mutation must not acquire the same group");
+
+  const past = new Date(Date.now() - 1_000);
+  await Group.updateOne(
+    { _id: group._id, financialMutationId: first.token },
+    {
+      $set: {
+        financialMutationExpiresAt: past,
+        mutationExpiresAt: past,
+      },
+    },
+  );
+
+  const replacement = await reserveGroupMutation(groupId, userB._id);
+  assert.ok(replacement, "a later request should recover an expired lease");
+  assert.notEqual(replacement.token, first.token);
+
+  await releaseGroupMutation(groupId, first.token);
+  let storedGroup = await Group.findById(group._id).lean();
+  assert.equal(
+    storedGroup.financialMutationId,
+    replacement.token,
+    "a stale owner must not clear a replacement owner's lock",
+  );
+  assert.equal(storedGroup.activeMutations, 1);
+
+  await releaseGroupMutation(groupId, replacement.token);
+  storedGroup = await Group.findById(group._id).lean();
+  assert.equal(storedGroup.financialMutationId, null);
+  assert.equal(storedGroup.activeMutations, 0);
+});
+
+test("expense creation and settlement scheduling return a conflict while another financial write owns the group", async () => {
+  const reservation = await reserveGroupMutation(groupId, userA._id);
+  assert.ok(reservation);
+
+  try {
+    const expensesBefore = await Expense.countDocuments({ group: group._id });
+    const schedulesBefore = await SettlementSchedule.countDocuments({ group: group._id });
+
+    const expense = await request(app)
+      .post("/api/expenses")
+      .set("Authorization", `Bearer ${tokenC}`)
+      .send({
+        groupId,
+        description: "Concurrent expense should wait",
+        amount: 20,
+        splitType: "equal",
+      });
+
+    const schedule = await request(app)
+      .post("/api/settlements/schedule")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .send({
+        groupId,
+        toUserId: userB._id.toString(),
+        amount: 20,
+        dueDate: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        timeZone: "UTC",
+      });
+
+    assert.equal(expense.status, 409, JSON.stringify(expense.body));
+    assert.equal(schedule.status, 409, JSON.stringify(schedule.body));
+    assert.equal(await Expense.countDocuments({ group: group._id }), expensesBefore);
+    assert.equal(await SettlementSchedule.countDocuments({ group: group._id }), schedulesBefore);
+  } finally {
+    await releaseGroupMutation(groupId, reservation.token);
+  }
+});
+
+test("an overdue settlement is expired before the receiver can confirm it", async () => {
+  const expiryGroup = await Group.create({
+    name: `Expired confirmation test ${Date.now()}`,
+    members: [{ user: userA._id }, { user: userB._id }],
+    createdBy: userA._id,
+  });
+  const expiryGroupId = expiryGroup._id.toString();
+
+  let payment;
+  let schedule;
+  try {
+    payment = await Settlement.create({
+      group: expiryGroup._id,
+      from: userA._id,
+      to: userB._id,
+      amount: 25,
+      status: "pending",
+    });
+    schedule = await SettlementSchedule.create({
+      group: expiryGroup._id,
+      from: userA._id,
+      to: userB._id,
+      amount: 25,
+      dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      status: "payment_pending",
+      active: true,
+      paymentSettlement: payment._id,
+    });
+
+    await Settlement.collection.updateOne(
+      { _id: payment._id },
+      { $set: { createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000) } },
+    );
+
+    const confirm = await request(app)
+      .post("/api/settlements/confirm")
+      .set("Authorization", `Bearer ${tokenB}`)
+      .send({ groupId: expiryGroupId, fromUserId: userA._id.toString() });
+
+    assert.equal(confirm.status, 404, JSON.stringify(confirm.body));
+    const storedPayment = await Settlement.findById(payment._id).lean();
+    const storedSchedule = await SettlementSchedule.findById(schedule._id).lean();
+    assert.equal(storedPayment.status, "expired");
+    assert.equal(storedSchedule.status, "accepted");
+    assert.equal(storedSchedule.active, true);
+    assert.equal(storedSchedule.paymentSettlement, null);
+  } finally {
+    await Promise.all([
+      Settlement.deleteMany({ group: expiryGroup._id }),
+      SettlementSchedule.deleteMany({ group: expiryGroup._id }),
+      Expense.deleteMany({ group: expiryGroup._id }),
+      Group.deleteOne({ _id: expiryGroup._id }),
+    ]);
+  }
 });
