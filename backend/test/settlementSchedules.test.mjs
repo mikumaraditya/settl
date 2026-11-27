@@ -214,6 +214,113 @@ test("settlement confirmations and other lifecycle actions safely replay by exac
   }
 });
 
+test("retrying completed settlement actions repairs linked schedule transitions after interruption", async () => {
+  const retryGroup = await Group.create({
+    name: `Linked schedule recovery group ${Date.now()}`,
+    members: [{ user: userA._id }, { user: userB._id }],
+    createdBy: userA._id,
+  });
+  try {
+    await Expense.create({
+      description: "Linked schedule recovery debt",
+      amount: 1000,
+      paidBy: userB._id,
+      group: retryGroup._id,
+      splits: [
+        { user: userA._id, amount: 500 },
+        { user: userB._id, amount: 500 },
+      ],
+    });
+
+    const groupPayload = { groupId: retryGroup._id.toString() };
+    const dueDate = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const createAcceptedSchedule = async () => {
+      const proposed = await request(app)
+        .post("/api/settlements/schedule")
+        .set("Authorization", `Bearer ${tokenA}`)
+        .send({
+          ...groupPayload,
+          toUserId: userB._id.toString(),
+          amount: 40,
+          dueDate,
+        });
+      assert.equal(proposed.status, 201, JSON.stringify(proposed.body));
+      const accepted = await request(app)
+        .post(`/api/settlements/schedule/${proposed.body._id}/respond`)
+        .set("Authorization", `Bearer ${tokenB}`)
+        .send({ action: "accept" });
+      assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
+      return proposed.body;
+    };
+    const createScheduledPayment = async (schedule) => {
+      const payment = await request(app)
+        .post("/api/settlements/settle")
+        .set("Authorization", `Bearer ${tokenA}`)
+        .send({
+          ...groupPayload,
+          toUserId: userB._id.toString(),
+          amount: 40,
+          scheduleId: schedule._id,
+        });
+      assert.equal(payment.status, 201, JSON.stringify(payment.body));
+      return payment.body;
+    };
+
+    // Simulate the settlement status being saved before the linked schedule
+    // update, then verify a confirmation retry repairs the schedule.
+    const confirmedSchedule = await createAcceptedSchedule();
+    const confirmedPayment = await createScheduledPayment(confirmedSchedule);
+    await Settlement.updateOne({ _id: confirmedPayment._id }, { $set: { status: "confirmed" } });
+    const confirmReplay = await request(app)
+      .post("/api/settlements/confirm")
+      .set("Authorization", `Bearer ${tokenB}`)
+      .send({ ...groupPayload, settlementId: confirmedPayment._id });
+    assert.equal(confirmReplay.status, 200, JSON.stringify(confirmReplay.body));
+    const completed = await SettlementSchedule.findById(confirmedSchedule._id).lean();
+    assert.equal(completed.status, "completed");
+    assert.equal(completed.active, false);
+
+    // Simulate a payer cancellation committed before the accepted schedule
+    // was restored. Replaying the same cancellation repairs that agreement.
+    const cancelledSchedule = await createAcceptedSchedule();
+    const cancelledPayment = await createScheduledPayment(cancelledSchedule);
+    await Settlement.updateOne({ _id: cancelledPayment._id }, { $set: { status: "cancelled" } });
+    const cancelReplay = await request(app)
+      .delete("/api/settlements/settle")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .send({ ...groupPayload, settlementId: cancelledPayment._id });
+    assert.equal(cancelReplay.status, 200, JSON.stringify(cancelReplay.body));
+    const restoredAfterCancel = await SettlementSchedule.findById(cancelledSchedule._id).lean();
+    assert.equal(restoredAfterCancel.status, "accepted");
+    assert.equal(restoredAfterCancel.paymentSettlement, null);
+    await SettlementSchedule.updateOne(
+      { _id: cancelledSchedule._id },
+      { $set: { status: "cancelled", active: false } },
+    );
+
+    // The receiver's rejection retry must perform the same recovery.
+    const rejectedSchedule = await createAcceptedSchedule();
+    const rejectedPayment = await createScheduledPayment(rejectedSchedule);
+    await Settlement.updateOne({ _id: rejectedPayment._id }, { $set: { status: "rejected" } });
+    const rejectReplay = await request(app)
+      .post("/api/settlements/reject")
+      .set("Authorization", `Bearer ${tokenB}`)
+      .send({ ...groupPayload, settlementId: rejectedPayment._id });
+    assert.equal(rejectReplay.status, 200, JSON.stringify(rejectReplay.body));
+    const restoredAfterReject = await SettlementSchedule.findById(rejectedSchedule._id).lean();
+    assert.equal(restoredAfterReject.status, "accepted");
+    assert.equal(restoredAfterReject.paymentSettlement, null);
+  } finally {
+    await Promise.all([
+      Settlement.deleteMany({ group: retryGroup._id }),
+      SettlementSchedule.deleteMany({ group: retryGroup._id }),
+      Expense.deleteMany({ group: retryGroup._id }),
+      ActivityLog.deleteMany({ group: retryGroup._id }),
+      Group.deleteOne({ _id: retryGroup._id }),
+    ]);
+  }
+});
+
 test("payer-provided UPI references are validated and visible only to settlement participants", async () => {
   const invalidShort = await request(app)
     .post("/api/settlements/settle")
