@@ -598,7 +598,7 @@ All application endpoints are mounted under `/api` and require authenticated HTT
 | Method | Endpoint | Access | Description |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/settlements/simplify/:id` | Protected | Compute net balances and simplified debt transactions for a group. |
-| `POST` | `/api/settlements/settle` | Protected | Payer records a payment as pending; may include an optional `upiReference` (6–64 characters). The receiver must independently verify receipt and confirm before debt clears. An accepted schedule can be linked by `scheduleId`. |
+| `POST` | `/api/settlements/settle` | Protected | Payer records a payment as pending; an optional `Idempotency-Key` makes retries safe. May include an optional `upiReference` (6–64 characters). The receiver must independently verify receipt and confirm before debt clears. An accepted schedule can be linked by `scheduleId`. |
 | `POST` | `/api/settlements/schedule` | Protected | Payer proposes an amount and optional future date; if omitted, Settl defaults the due date to 7 calendar days from today in the payer's timezone. The proposal does not change balances. |
 | `GET` | `/api/settlements/schedules/:groupId` | Protected | Retrieve active payment schedules for the current user, including due tomorrow, due today, and overdue states. |
 | `POST` | `/api/settlements/schedule/:scheduleId/respond` | Protected | Recipient accepts or rejects a proposed repayment date. |
