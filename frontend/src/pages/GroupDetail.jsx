@@ -682,7 +682,8 @@ export default function GroupDetail() {
       const { data: createdExpense } = await axios.post('/expenses', payload, {
         headers: { 'Idempotency-Key': idempotencyKey },
       })
-        setNow(Date.now())
+      resetExpenseIdempotencyKey()
+      setNow(Date.now())
       setExpenses(prev => prev.some(item => item._id === createdExpense._id)
         ? prev.map(item => item._id === createdExpense._id ? createdExpense : item)
         : [createdExpense, ...prev])
@@ -696,7 +697,8 @@ export default function GroupDetail() {
     } catch (err) {
       const status = err.response?.status
       if ([400, 401, 403, 404, 422].includes(status) || err.response?.data?.code === 'IDEMPOTENCY_KEY_REUSED') {
-          }
+        resetExpenseIdempotencyKey()
+      }
       setExpenseError(err.response?.data?.message || 'We could not save this expense. Check your connection and try again.')
     } finally {
       addExpenseRequestInFlightRef.current = false
