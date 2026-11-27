@@ -12,48 +12,27 @@ import simplifyDebts from '../utils/debtSimplify.js';
 import { getIO } from '../socket.js';
 const safeEmit = (room, event, payload) => { try { getIO()?.to(room)?.emit(event, payload); } catch { /* ignore */ } };
 
-const reserveGroupWrite = async (groupId, userId) => Group.findOneAndUpdate(
-  {
-    _id: groupId,
-    "members.user": userId,
-    isDeleting: { $ne: true },
-    $or: [
-      { membershipMutation: { $ne: true } },
-      {
-        membershipMutation: true,
-        membershipMutationExpiresAt: { $type: "date", $lte: new Date() },
-      },
-    ],
-  },
-  {
-    $inc: { activeMutations: 1 },
-    $set: {
-      mutationExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
-      membershipMutation: false,
-      membershipMutationExpiresAt: null,
-    },
-  },
-  { new: true },
-);
+const reserveGroupWrite = async (groupId, userId) => {
+  const reservation = await reserveGroupMutation(groupId, userId);
+  if (!reservation) return null;
+  reservation.group.$locals.financialMutationToken = reservation.token;
+  return reservation.group;
+};
 
-const releaseGroupWrite = async (groupId) => {
-  if (!groupId) return;
-  await Group.updateOne(
-    { _id: groupId, activeMutations: { $gt: 0 } },
-    { $inc: { activeMutations: -1 } },
-  );
+const releaseGroupWrite = async (groupId, token) => {
+  await releaseGroupMutation(groupId, token);
 };
 
 const groupWriteFailure = async (groupId, userId) => {
   const group = await Group.findById(groupId).select(
-    "isDeleting membershipMutation membershipMutationExpiresAt activeMutations mutationExpiresAt members.user",
+    "isDeleting membershipMutation membershipMutationExpiresAt financialMutationId financialMutationExpiresAt activeMutations mutationExpiresAt members.user",
   );
   if (!group) return { status: 404, message: "Group not found" };
   if (group.isDeleting) {
     return { status: 409, message: "This group is being deleted and cannot accept payment changes" };
   }
-  if (group.membershipMutation) {
-    return { status: 409, message: "Group membership is being updated. Please try again in a moment." };
+  if (group.membershipMutation || group.financialMutationId) {
+    return { status: 409, message: "This group is being updated. Please try again in a moment." };
   }
   if (!group.members.some(member => member.user.toString() === userId)) {
     return { status: 403, message: "Not a member of this group" };
@@ -289,6 +268,7 @@ router.get("/simplify/:groupId", protect, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.post("/settle", protect, async (req, res) => {
   let reservedGroupId = null;
+  let reservedMutationToken = null;
   try {
     const body = req.body || {};
     const { groupId, toUserId, scheduleId } = body;
@@ -325,6 +305,7 @@ router.post("/settle", protect, async (req, res) => {
       return res.status(failure.status).json({ message: failure.message });
     }
     reservedGroupId = group._id;
+    reservedMutationToken = group.$locals.financialMutationToken;
 
     await autoExpirePendingSettlements(groupId);
     if (toUserId === req.user.id) {
@@ -476,7 +457,7 @@ router.post("/settle", protect, async (req, res) => {
     // Bust the payer's cached trust score — a new pending settlement
     // changes their repayment-reliability picture immediately.
     clearInsightCaches([req.user.id]);
-    await releaseGroupWrite(reservedGroupId);
+    await releaseGroupWrite(reservedGroupId, reservedMutationToken);
     reservedGroupId = null;
   } catch (error) {
     console.error("Error creating settlement request:", error);
@@ -490,7 +471,7 @@ router.post("/settle", protect, async (req, res) => {
   } finally {
     if (reservedGroupId) {
       try {
-        await releaseGroupWrite(reservedGroupId);
+        await releaseGroupWrite(reservedGroupId, reservedMutationToken);
       } catch (releaseError) {
         console.error("Could not release settlement group write reservation:", releaseError);
       }
@@ -503,6 +484,7 @@ router.post("/settle", protect, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.post("/confirm", protect, async (req, res) => {
   let reservedGroupId = null;
+  let reservedMutationToken = null;
   try {
     const { groupId, fromUserId } = req.body || {};
     if (!mongoose.isValidObjectId(groupId) || !mongoose.isValidObjectId(fromUserId)) {
@@ -515,6 +497,7 @@ router.post("/confirm", protect, async (req, res) => {
       return res.status(failure.status).json({ message: failure.message });
     }
     reservedGroupId = group._id;
+    reservedMutationToken = group.$locals.financialMutationToken;
 
     // Validate both participants before committing the payment transition.
     const payerIsMember = group.members.some(member => member.user.toString() === fromUserId);
@@ -575,7 +558,7 @@ router.post("/confirm", protect, async (req, res) => {
   } finally {
     if (reservedGroupId) {
       try {
-        await releaseGroupWrite(reservedGroupId);
+        await releaseGroupWrite(reservedGroupId, reservedMutationToken);
       } catch (releaseError) {
         console.error("Could not release confirmation group write reservation:", releaseError);
       }
@@ -588,6 +571,7 @@ router.post("/confirm", protect, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 const handlePayerCancel = async (req, res) => {
   let reservedGroupId = null;
+  let reservedMutationToken = null;
   try {
     const { groupId, toUserId } = req.body || {};
     if (!mongoose.isValidObjectId(groupId) || !mongoose.isValidObjectId(toUserId)) {
@@ -600,6 +584,7 @@ const handlePayerCancel = async (req, res) => {
       return res.status(failure.status).json({ message: failure.message });
     }
     reservedGroupId = group._id;
+    reservedMutationToken = group.$locals.financialMutationToken;
 
     await autoExpirePendingSettlements(groupId);
     const settlement = await Settlement.findOneAndUpdate(
@@ -642,7 +627,7 @@ const handlePayerCancel = async (req, res) => {
   } finally {
     if (reservedGroupId) {
       try {
-        await releaseGroupWrite(reservedGroupId);
+        await releaseGroupWrite(reservedGroupId, reservedMutationToken);
       } catch (releaseError) {
         console.error("Could not release cancellation group write reservation:", releaseError);
       }
@@ -658,6 +643,7 @@ router.post("/cancel", protect, handlePayerCancel);
 // ─────────────────────────────────────────────────────────────────────────────
 router.post("/reject", protect, async (req, res) => {
   let reservedGroupId = null;
+  let reservedMutationToken = null;
   try {
     const { groupId, fromUserId, reason } = req.body || {};
     if (!mongoose.isValidObjectId(groupId) || !mongoose.isValidObjectId(fromUserId)) {
@@ -670,6 +656,7 @@ router.post("/reject", protect, async (req, res) => {
       return res.status(failure.status).json({ message: failure.message });
     }
     reservedGroupId = group._id;
+    reservedMutationToken = group.$locals.financialMutationToken;
 
     const payerIsMember = group.members.some(member => member.user.toString() === fromUserId);
     if (!payerIsMember) {
@@ -727,7 +714,7 @@ router.post("/reject", protect, async (req, res) => {
   } finally {
     if (reservedGroupId) {
       try {
-        await releaseGroupWrite(reservedGroupId);
+        await releaseGroupWrite(reservedGroupId, reservedMutationToken);
       } catch (releaseError) {
         console.error("Could not release rejection group write reservation:", releaseError);
       }
@@ -775,6 +762,7 @@ router.get("/schedules/:groupId", async (req, res) => {
 
 router.post("/schedule", async (req, res) => {
   let reservedGroupId = null;
+  let reservedMutationToken = null;
   try {
     const body = req.body || {};
     const { groupId, toUserId, dueDate } = body;
@@ -795,6 +783,7 @@ router.post("/schedule", async (req, res) => {
       return res.status(failure.status).json({ message: failure.message });
     }
     reservedGroupId = group._id;
+    reservedMutationToken = group.$locals.financialMutationToken;
 
     // If the payer leaves the date empty, default to seven calendar days
     // from today in their local timezone.
@@ -870,7 +859,7 @@ router.post("/schedule", async (req, res) => {
       group: groupId, actor: req.user.id, type: "schedule_proposed",
       meta: { amount, fromId: req.user.id, toId: toUserId, dueDate: resolvedDueDate },
     }).catch(error => console.error("Could not record schedule-proposed activity:", error));
-    await releaseGroupWrite(reservedGroupId);
+    await releaseGroupWrite(reservedGroupId, reservedMutationToken);
     reservedGroupId = null;
     res.status(201).json(populated);
   } catch (error) {
@@ -885,7 +874,7 @@ router.post("/schedule", async (req, res) => {
   } finally {
     if (reservedGroupId) {
       try {
-        await releaseGroupWrite(reservedGroupId);
+        await releaseGroupWrite(reservedGroupId, reservedMutationToken);
       } catch (releaseError) {
         console.error("Could not release schedule group write reservation:", releaseError);
       }
@@ -895,6 +884,7 @@ router.post("/schedule", async (req, res) => {
 
 router.post("/schedule/:scheduleId/respond", async (req, res) => {
   let reservedGroupId = null;
+  let reservedMutationToken = null;
   try {
     const { action, reason } = req.body || {};
     if (!["accept", "reject"].includes(action)) {
@@ -917,6 +907,7 @@ router.post("/schedule/:scheduleId/respond", async (req, res) => {
       return res.status(failure.status).json({ message: failure.message });
     }
     reservedGroupId = group._id;
+    reservedMutationToken = group.$locals.financialMutationToken;
 
     const bothParticipantsAreMembers = group.members.some(member => member.user.toString() === proposedSchedule.from.toString())
       && group.members.some(member => member.user.toString() === proposedSchedule.to.toString());
@@ -949,7 +940,7 @@ router.post("/schedule/:scheduleId/respond", async (req, res) => {
   } finally {
     if (reservedGroupId) {
       try {
-        await releaseGroupWrite(reservedGroupId);
+        await releaseGroupWrite(reservedGroupId, reservedMutationToken);
       } catch (releaseError) {
         console.error("Could not release schedule-response group write reservation:", releaseError);
       }
@@ -959,6 +950,7 @@ router.post("/schedule/:scheduleId/respond", async (req, res) => {
 
 router.post("/schedule/:scheduleId/cancel", async (req, res) => {
   let reservedGroupId = null;
+  let reservedMutationToken = null;
   try {
     if (!mongoose.isValidObjectId(req.params.scheduleId)) {
       return res.status(400).json({ message: "Invalid payment schedule id" });
@@ -979,6 +971,7 @@ router.post("/schedule/:scheduleId/cancel", async (req, res) => {
       return res.status(failure.status).json({ message: failure.message });
     }
     reservedGroupId = group._id;
+    reservedMutationToken = group.$locals.financialMutationToken;
 
     const bothParticipantsAreMembers = group.members.some(member => member.user.toString() === cancellableSchedule.from.toString())
       && group.members.some(member => member.user.toString() === cancellableSchedule.to.toString());
@@ -1005,7 +998,7 @@ router.post("/schedule/:scheduleId/cancel", async (req, res) => {
   } finally {
     if (reservedGroupId) {
       try {
-        await releaseGroupWrite(reservedGroupId);
+        await releaseGroupWrite(reservedGroupId, reservedMutationToken);
       } catch (releaseError) {
         console.error("Could not release schedule-cancellation group write reservation:", releaseError);
       }
