@@ -678,6 +678,14 @@ const handlePayerCancel = async (req, res) => {
     reservedMutationToken = group.$locals.financialMutationToken;
 
     await autoExpirePendingSettlements(groupId);
+    const targetSettlement = await Settlement.findOne({
+      _id: settlementId,
+      group: groupId,
+    }).select("from");
+    if (!targetSettlement || targetSettlement.from.toString() !== req.user.id) {
+      return res.status(404).json({ message: "Settlement request not found for this payer" });
+    }
+
     const settlement = await Settlement.findOneAndUpdate(
       {
         _id: settlementId,
