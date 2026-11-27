@@ -669,6 +669,14 @@ test("payer can propose a date without changing the group's debt", async () => {
   const today = new Date().toISOString().slice(0, 10);
   const due = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
+  const unrelatedExpense = await Expense.create({
+    description: "Unrelated member-only expense",
+    amount: 25,
+    paidBy: userC._id,
+    group: group._id,
+    splits: [{ user: userC._id, amount: 25 }],
+  });
+
   const create = await request(app)
     .post("/api/settlements/schedule")
     .set("Authorization", `Bearer ${tokenA}`)
@@ -678,6 +686,11 @@ test("payer can propose a date without changing the group's debt", async () => {
   assert.equal(create.body.status, "proposed");
   assert.equal(create.body.amount, 300);
   assert.deepEqual(create.body.sourceExpenseIds.map(String), [initialExpense._id.toString()]);
+  assert.equal(
+    create.body.sourceExpenseIds.includes(unrelatedExpense._id.toString()),
+    false,
+    "a schedule must not claim an unrelated member-only expense as its source",
+  );
   scheduleId = create.body._id;
 
   const privateScheduleList = await request(app)
