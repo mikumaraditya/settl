@@ -1,4 +1,5 @@
 import express from 'express';
+import { createHash } from 'node:crypto';
 import mongoose from 'mongoose';
 import rateLimit from 'express-rate-limit';
 import { createRateLimitStore } from '../config/rateLimitStore.js';
@@ -45,6 +46,14 @@ router.post("/", expenseCreateLimiter, async (req, res) => {
   let reservedMutationToken = null;
 
   try {
+    const rawIdempotencyKey = req.get("Idempotency-Key");
+    const idempotencyKey = typeof rawIdempotencyKey === "string"
+      ? rawIdempotencyKey.trim()
+      : null;
+    if (idempotencyKey && !/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) {
+      return res.status(400).json({ message: "Invalid expense idempotency key" });
+    }
+
     const targetGroupId = groupId || groupBodyId;
     if (!mongoose.isValidObjectId(targetGroupId)) {
       return res.status(400).json({ message: "A valid group is required" });
@@ -220,15 +229,85 @@ router.post("/", expenseCreateLimiter, async (req, res) => {
       }
     }
 
-    const expense = await Expense.create({
-      description,
-      amount: totalPaise / 100,
-      paidBy,
-      group: targetGroupId,
-      splits: finalSplits,
-      splitType,
-      category,
-    });
+    const idempotencyHash = idempotencyKey
+      ? createHash("sha256").update(JSON.stringify({
+        groupId: targetGroupId.toString(),
+        createdBy: req.user.id,
+        description,
+        amountPaise: totalPaise,
+        paidBy: paidBy.toString(),
+        splitType,
+        category,
+        splits: finalSplits
+          .map(split => ({
+            user: split.user.toString(),
+            amountPaise: Math.round(split.amount * 100),
+          }))
+          .sort((a, b) => a.user.localeCompare(b.user)),
+      })).digest("hex")
+      : null;
+
+    // A retry with the same key and same normalized payload returns the
+    // original expense. Reusing a key for a different payload is a conflict.
+    if (idempotencyKey) {
+      const existingExpense = await Expense.findOne({
+        createdBy: req.user.id,
+        idempotencyKey,
+      }).select("_id idempotencyHash");
+
+      if (existingExpense) {
+        if (existingExpense.idempotencyHash !== idempotencyHash) {
+          return res.status(409).json({
+            code: "IDEMPOTENCY_KEY_REUSED",
+            message: "This expense request key was already used for different details. Start a new expense request.",
+          });
+        }
+
+        const replayedExpense = await Expense.findById(existingExpense._id)
+          .populate("paidBy", "name email")
+          .populate("splits.user", "name email upiId");
+        return res.status(200).json(replayedExpense || existingExpense);
+      }
+    }
+
+    let expense;
+    try {
+      expense = await Expense.create({
+        description,
+        amount: totalPaise / 100,
+        paidBy,
+        group: targetGroupId,
+        splits: finalSplits,
+        splitType,
+        category,
+        ...(idempotencyKey ? {
+          createdBy: req.user.id,
+          idempotencyKey,
+          idempotencyHash,
+        } : {}),
+      });
+    } catch (createError) {
+      // The unique index closes the race when identical keys arrive through
+      // different group requests at the same time.
+      if (!idempotencyKey || createError.code !== 11000) throw createError;
+
+      const existingExpense = await Expense.findOne({
+        createdBy: req.user.id,
+        idempotencyKey,
+      });
+      if (!existingExpense) throw createError;
+      if (existingExpense.idempotencyHash !== idempotencyHash) {
+        return res.status(409).json({
+          code: "IDEMPOTENCY_KEY_REUSED",
+          message: "This expense request key was already used for different details. Start a new expense request.",
+        });
+      }
+
+      const replayedExpense = await Expense.findById(existingExpense._id)
+        .populate("paidBy", "name email")
+        .populate("splits.user", "name email upiId");
+      return res.status(200).json(replayedExpense || existingExpense);
+    }
 
     let responseExpense = expense;
     try {

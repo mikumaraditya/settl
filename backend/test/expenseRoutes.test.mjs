@@ -26,11 +26,13 @@ describe("Expense creation and deletion lifecycle", () => {
   let outsider;
   let rateLimitedPayer;
   let independentPayer;
+  let idempotencyPayer;
   let payerToken;
   let memberToken;
   let outsiderToken;
   let rateLimitedPayerToken;
   let independentPayerToken;
+  let idempotencyPayerToken;
   const groupIds = [];
 
   const makeGroup = async (overrides = {}) => {
@@ -97,12 +99,19 @@ describe("Expense creation and deletion lifecycle", () => {
       password: "test-password-hash",
       isEmailVerified: true,
     });
+    idempotencyPayer = await User.create({
+      name: "Idempotency Test Payer",
+      email: `expense-idempotency-${suffix}@example.com`,
+      password: "test-password-hash",
+      isEmailVerified: true,
+    });
 
     payerToken = jwt.sign({ id: payer._id.toString() }, jwtSecret, { expiresIn: "1h" });
     memberToken = jwt.sign({ id: member._id.toString() }, jwtSecret, { expiresIn: "1h" });
     outsiderToken = jwt.sign({ id: outsider._id.toString() }, jwtSecret, { expiresIn: "1h" });
     rateLimitedPayerToken = jwt.sign({ id: rateLimitedPayer._id.toString() }, jwtSecret, { expiresIn: "1h" });
     independentPayerToken = jwt.sign({ id: independentPayer._id.toString() }, jwtSecret, { expiresIn: "1h" });
+    idempotencyPayerToken = jwt.sign({ id: idempotencyPayer._id.toString() }, jwtSecret, { expiresIn: "1h" });
   });
 
   after(async () => {
@@ -116,7 +125,7 @@ describe("Expense creation and deletion lifecycle", () => {
         Group.deleteMany({ _id: { $in: groupIds } }),
       ]);
     }
-    const userIds = [payer?._id, member?._id, outsider?._id, rateLimitedPayer?._id, independentPayer?._id].filter(Boolean);
+    const userIds = [payer?._id, member?._id, outsider?._id, rateLimitedPayer?._id, independentPayer?._id, idempotencyPayer?._id].filter(Boolean);
     if (userIds.length) await User.deleteMany({ _id: { $in: userIds } });
     await mongoose.disconnect();
   });
@@ -242,6 +251,86 @@ describe("Expense creation and deletion lifecycle", () => {
     assert.equal(await Expense.countDocuments({ group: group._id }), 1);
     const storedGroup = await Group.findById(group._id);
     assert.equal(storedGroup.activeMutations, 0);
+  });
+
+  it("replays a matching expense idempotency key and rejects changed payloads", async () => {
+    const group = await makeGroup();
+    await Group.updateOne(
+      { _id: group._id },
+      { $push: { members: { user: idempotencyPayer._id, role: "member" } } },
+    );
+    const idempotencyKey = "expense-create-retry-001";
+    const payload = {
+      groupId: group._id.toString(),
+      description: "Retry-safe shared lunch",
+      amount: 240,
+      category: "food",
+      splitType: "equal",
+    };
+
+    const first = await request(app)
+      .post("/api/expenses")
+      .set("Authorization", `Bearer ${idempotencyPayerToken}`)
+      .set("Idempotency-Key", idempotencyKey)
+      .send(payload);
+    assert.equal(first.status, 201);
+
+    const replay = await request(app)
+      .post("/api/expenses")
+      .set("Authorization", `Bearer ${idempotencyPayerToken}`)
+      .set("Idempotency-Key", idempotencyKey)
+      .send(payload);
+    assert.equal(replay.status, 200);
+    assert.equal(replay.body._id, first.body._id);
+    assert.equal(await Expense.countDocuments({ group: group._id }), 1);
+
+    const changedPayload = await request(app)
+      .post("/api/expenses")
+      .set("Authorization", `Bearer ${idempotencyPayerToken}`)
+      .set("Idempotency-Key", idempotencyKey)
+      .send({ ...payload, amount: 260 });
+    assert.equal(changedPayload.status, 409);
+    assert.equal(changedPayload.body.code, "IDEMPOTENCY_KEY_REUSED");
+    assert.equal(await Expense.countDocuments({ group: group._id }), 1);
+
+    // A new key represents a new intentional expense, even with identical details.
+    const intentionalDuplicate = await request(app)
+      .post("/api/expenses")
+      .set("Authorization", `Bearer ${idempotencyPayerToken}`)
+      .set("Idempotency-Key", "expense-create-new-002")
+      .send(payload);
+    assert.equal(intentionalDuplicate.status, 201);
+    assert.notEqual(intentionalDuplicate.body._id, first.body._id);
+    assert.equal(await Expense.countDocuments({ group: group._id }), 2);
+
+    // Keys are scoped to the authenticated creator, not shared globally.
+    const memberCreated = await request(app)
+      .post("/api/expenses")
+      .set("Authorization", `Bearer ${memberToken}`)
+      .set("Idempotency-Key", idempotencyKey)
+      .send({
+        ...payload,
+        description: "Member's separate expense",
+      });
+    assert.equal(memberCreated.status, 201);
+    assert.equal(await Expense.countDocuments({ group: group._id }), 3);
+    assert.equal((await Group.findById(group._id)).activeMutations, 0);
+  });
+
+  it("rejects malformed expense idempotency keys", async () => {
+    const group = await makeGroup();
+    const response = await request(app)
+      .post("/api/expenses")
+      .set("Authorization", `Bearer ${payerToken}`)
+      .set("Idempotency-Key", "bad key")
+      .send({
+        groupId: group._id.toString(),
+        description: "Invalid key",
+        amount: 25,
+      });
+
+    assert.equal(response.status, 400);
+    assert.equal(await Expense.countDocuments({ group: group._id }), 0);
   });
 
   it("rejects exact splits with missing, duplicate or mismatched members", async () => {

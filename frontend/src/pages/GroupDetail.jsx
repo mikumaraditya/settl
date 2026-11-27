@@ -295,6 +295,17 @@ export default function GroupDetail() {
   };
   const [addingExpense, setAddingExpense]     = useState(false)
   const addExpenseRequestInFlightRef = useRef(false)
+  const expenseIdempotencyKeyRef = useRef(null)
+  const resetExpenseIdempotencyKey = () => { expenseIdempotencyKeyRef.current = null }
+  const getExpenseIdempotencyKey = () => {
+    if (!expenseIdempotencyKeyRef.current) {
+      const generatedKey = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `expense-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      expenseIdempotencyKeyRef.current = generatedKey
+    }
+    return expenseIdempotencyKeyRef.current
+  }
   const deleteExpenseRequestInFlightRef = useRef(false)
   const deleteGroupRequestInFlightRef = useRef(false)
   const addMemberRequestInFlightRef = useRef(false)
@@ -667,7 +678,11 @@ export default function GroupDetail() {
         }))
       }
 
-      const { data: createdExpense } = await axios.post('/expenses', payload)
+      const idempotencyKey = getExpenseIdempotencyKey()
+      const { data: createdExpense } = await axios.post('/expenses', payload, {
+        headers: { 'Idempotency-Key': idempotencyKey },
+      })
+      resetExpenseIdempotencyKey()
       setNow(Date.now())
       setExpenses(prev => prev.some(item => item._id === createdExpense._id)
         ? prev.map(item => item._id === createdExpense._id ? createdExpense : item)
@@ -680,6 +695,10 @@ export default function GroupDetail() {
         ...(activityFetched ? [fetchActivity()] : []),
       ])
     } catch (err) {
+      const status = err.response?.status
+      if ([400, 401, 403, 404, 422].includes(status) || err.response?.data?.code === 'IDEMPOTENCY_KEY_REUSED') {
+        resetExpenseIdempotencyKey()
+      }
       setExpenseError(err.response?.data?.message || 'We could not save this expense. Check your connection and try again.')
     } finally {
       addExpenseRequestInFlightRef.current = false
