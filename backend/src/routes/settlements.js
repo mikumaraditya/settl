@@ -10,6 +10,7 @@ import ActivityLog from '../models/ActivityLog.js';
 import protect from '../middleware/auth.js';
 import requireVerified from '../middleware/requireVerified.js';
 import simplifyDebts from '../utils/debtSimplify.js';
+import getExpenseSourceIds from "../utils/expenseSourceLinks.js";
 import { getIO } from '../socket.js';
 import { reserveGroupMutation, releaseGroupMutation } from '../utils/groupMutation.js';
 const safeEmit = (room, event, payload) => { try { getIO()?.to(room)?.emit(event, payload); } catch { /* ignore */ } };
@@ -502,7 +503,7 @@ router.post("/settle", protect, async (req, res) => {
         // schedules did not capture it, so conservatively snapshot current rows.
         sourceExpenseIds: scheduleId && Array.isArray(activeSchedule?.sourceExpenseIds)
           ? activeSchedule.sourceExpenseIds
-          : expenses.map(expense => expense._id),
+          : getExpenseSourceIds(expenses, req.user.id, toUserId),
         ...(idempotencyKey ? { idempotencyKey, idempotencyHash } : {}),
       });
       if (linkedSchedule) {
@@ -1053,7 +1054,7 @@ router.post("/schedule", async (req, res) => {
       schedule = await SettlementSchedule.create({
         group: groupId, from: req.user.id, to: toUserId, amount,
         dueDate: parsedDueDate, status: "proposed", active: true,
-        sourceExpenseIds: expenses.map(expense => expense._id),
+        sourceExpenseIds: getExpenseSourceIds(expenses, req.user.id, toUserId),
         ...(idempotencyKey ? { idempotencyKey, idempotencyHash } : {}),
       });
     } catch (createError) {
