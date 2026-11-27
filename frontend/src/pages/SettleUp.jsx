@@ -207,36 +207,36 @@ export default function SettleUp() {
     })
   }
 
-  const handleConfirm = async (fromUser) => {
-    const key = `confirm-${fromUser._id}`
+  const handleConfirm = async (settlement) => {
+    const key = `confirm-${settlement._id}`
     setActionError('')
     setLoading_(key, true)
     try {
-      await axios.post('/settlements/confirm', { groupId: id, fromUserId: fromUser._id })
+      await axios.post('/settlements/confirm', { groupId: id, settlementId: settlement._id })
       await fetchData()
     } catch (err) {
       setActionError(err.response?.data?.message || 'Error confirming settlement')
     } finally { setLoading_(key, false) }
   }
 
-  const handleCancel = async (toUser) => {
-    const key = `cancel-${toUser._id}`
+  const handleCancel = async (settlement) => {
+    const key = `cancel-${settlement._id}`
     setActionError('')
     setLoading_(key, true)
     try {
-      await axios.delete('/settlements/settle', { data: { groupId: id, toUserId: toUser._id } })
+      await axios.delete('/settlements/settle', { data: { groupId: id, settlementId: settlement._id } })
       await fetchData()
     } catch (err) {
       setActionError(err.response?.data?.message || 'Error cancelling request')
     } finally { setLoading_(key, false) }
   }
 
-  const handleReject = async (fromUser) => {
-    const key = `reject-${fromUser._id}`
+  const handleReject = async (settlement) => {
+    const key = `reject-${settlement._id}`
     setActionError('')
     setLoading_(key, true)
     try {
-      await axios.post('/settlements/reject', { groupId: id, fromUserId: fromUser._id })
+      await axios.post('/settlements/reject', { groupId: id, settlementId: settlement._id })
       await fetchData()
     } catch (err) {
       setActionError(err.response?.data?.message || 'Error rejecting settlement')
@@ -413,8 +413,8 @@ export default function SettleUp() {
                   {pendingRequests.map((p, index) => {
                     const iAmPayer    = p.from?._id === user._id
                     const iAmReceiver = p.to?._id   === user._id
-                    const cancelKey  = `cancel-${p.to?._id}`
-                    const confirmKey = `confirm-${p.from?._id}`
+                    const cancelKey  = `cancel-${p._id}`
+                    const confirmKey = `confirm-${p._id}`
                     return (
                       <div key={p._id || index} className="app-card border border-amber-500/20 p-5 sm:p-6 flex flex-col gap-4 relative overflow-hidden">
                         <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-amber-500/5 blur-xl pointer-events-none" />
@@ -479,7 +479,7 @@ export default function SettleUp() {
                               Waiting for <span className="font-bold text-white ml-1">{p.to?.name}</span> to confirm
                             </span>
                             <button 
-                              onClick={() => handleCancel(p.to)} 
+                              onClick={() => handleCancel(p)} 
                               disabled={actionLoading[cancelKey]}
                               className="ml-4 flex-shrink-0 text-rose-400 text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-1 hover:text-rose-300 transition-all cursor-pointer disabled:opacity-40"
                             >
@@ -494,8 +494,8 @@ export default function SettleUp() {
                         {iAmReceiver && (
                           <div className="flex flex-col sm:flex-row gap-3">
                             <button 
-                              onClick={() => handleConfirm(p.from)} 
-                              disabled={actionLoading[confirmKey] || actionLoading[`reject-${p.from?._id}`]}
+                              onClick={() => handleConfirm(p)} 
+                              disabled={actionLoading[confirmKey] || actionLoading[`reject-${p._id}`]}
                               className="flex-1 py-3 rounded-2xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm active:scale-95 transition-all cursor-pointer disabled:opacity-50 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20"
                             >
                               {actionLoading[confirmKey]
@@ -504,7 +504,7 @@ export default function SettleUp() {
                             </button>
                             <button 
                               onClick={() => setRejectingSettlement(p)} 
-                              disabled={actionLoading[confirmKey] || actionLoading[`reject-${p.from?._id}`]}
+                              disabled={actionLoading[confirmKey] || actionLoading[`reject-${p._id}`]}
                               className="flex-1 py-3 rounded-2xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer disabled:opacity-50 bg-rose-500/5 text-rose-400 border border-rose-500/10 hover:bg-rose-500/15"
                             >
                               {actionLoading[`reject-${p.from?._id}`]
@@ -1011,7 +1011,7 @@ export default function SettleUp() {
             <div className="flex flex-col gap-3">
               <button
                 onClick={() => {
-                  handleReject(rejectingSettlement.from)
+                  handleReject(rejectingSettlement)
                   setRejectingSettlement(null)
                 }}
                 className="w-full py-3.5 rounded-2xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer shadow-md bg-rose-500 text-white border border-rose-500/20 hover:brightness-110"
