@@ -172,7 +172,7 @@ describe("MVP core group-to-settlement journey", () => {
       .set("Authorization", `Bearer ${memberToken}`)
       .send({
         groupId,
-        fromUserId: owner._id.toString(),
+        settlementId: paymentRequest.body._id,
       });
 
     assert.equal(confirmedPayment.status, 200);
