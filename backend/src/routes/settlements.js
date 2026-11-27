@@ -53,6 +53,32 @@ const safeEmitSchedule = (schedule, event) => {
   safeEmitUser(fromId, event, schedule);
   safeEmitUser(toId, event, schedule);
 };
+
+const completeLinkedSchedule = async (settlement, actorId) => {
+  const linkedSchedule = await SettlementSchedule.findOneAndUpdate(
+    { paymentSettlement: settlement._id, status: "payment_pending", active: true },
+    { $set: { status: "completed", active: false, completedAt: new Date() } },
+    { new: true },
+  );
+  if (linkedSchedule) {
+    await ActivityLog.create({
+      group: linkedSchedule.group,
+      actor: actorId,
+      type: "schedule_completed",
+      meta: {
+        amount: linkedSchedule.amount,
+        fromId: settlement.from,
+        toId: settlement.to,
+      },
+    }).catch(error => console.error("Could not record schedule-completed activity:", error));
+  }
+  return linkedSchedule;
+};
+
+const restoreLinkedSchedule = async (settlementId) => SettlementSchedule.updateOne(
+  { paymentSettlement: settlementId, status: "payment_pending", active: true },
+  { $set: { status: "accepted", paymentSettlement: null } },
+);
 const getDateInTimeZone = (timeZone) => {
   try {
     const parts = new Intl.DateTimeFormat("en-US", {
@@ -608,23 +634,16 @@ router.post("/confirm", protect, async (req, res) => {
       })
         .populate("from", "name email upiId")
         .populate("to", "name email upiId");
-      if (current?.status === "confirmed") return res.json(current);
+      if (current?.status === "confirmed") {
+        // Repair the linked schedule if the previous request stopped after
+        // confirming the settlement but before completing the schedule.
+        await completeLinkedSchedule(current, req.user.id);
+        return res.json(current);
+      }
       return res.status(409).json({ message: "This settlement is no longer pending and cannot be confirmed" });
     }
 
-    const linkedSchedule = await SettlementSchedule.findOneAndUpdate(
-      { paymentSettlement: settlement._id, status: "payment_pending", active: true },
-      { $set: { status: "completed", active: false, completedAt: new Date() } },
-      { new: true },
-    );
-    if (linkedSchedule) {
-      await ActivityLog.create({
-        group: linkedSchedule.group,
-        actor: req.user.id,
-        type: "schedule_completed",
-        meta: { amount: linkedSchedule.amount, fromId: fromUserId, toId: req.user.id },
-      }).catch(error => console.error("Could not record schedule-completed activity:", error));
-    }
+    await completeLinkedSchedule(settlement, req.user.id);
 
     const populated = await Settlement.findById(settlement._id)
       .populate("from", "name email upiId")
@@ -704,15 +723,13 @@ const handlePayerCancel = async (req, res) => {
         from: req.user.id,
       });
       if (current?.status === "cancelled") {
+        await restoreLinkedSchedule(current._id);
         return res.json({ message: "Settlement request cancelled successfully", settlement: current });
       }
       return res.status(409).json({ message: "This settlement is no longer pending and cannot be cancelled" });
     }
 
-    await SettlementSchedule.updateOne(
-      { paymentSettlement: settlement._id, status: "payment_pending", active: true },
-      { $set: { status: "accepted", paymentSettlement: null } },
-    );
+    await restoreLinkedSchedule(settlement._id);
 
     await ActivityLog.create({
       group: groupId,
@@ -806,15 +823,13 @@ router.post("/reject", protect, async (req, res) => {
         to: req.user.id,
       }).populate("from", "name");
       if (current?.status === "rejected") {
+        await restoreLinkedSchedule(current._id);
         return res.json({ message: "Settlement request rejected", settlement: current });
       }
       return res.status(409).json({ message: "This settlement is no longer pending and cannot be rejected" });
     }
 
-    await SettlementSchedule.updateOne(
-      { paymentSettlement: settlement._id, status: "payment_pending", active: true },
-      { $set: { status: "accepted", paymentSettlement: null } },
-    );
+    await restoreLinkedSchedule(settlement._id);
 
     safeEmit(groupId, "settlement_undone", {
       fromId: fromUserId,
