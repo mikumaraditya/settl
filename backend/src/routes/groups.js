@@ -11,6 +11,7 @@ import Message from '../models/Message.js';
 import SettlementSchedule from '../models/SettlementSchedule.js';
 import protect from '../middleware/auth.js';
 import requireVerified from '../middleware/requireVerified.js';
+import { clearInsightCaches } from './insights.js';
 import simplifyDebts from '../utils/debtSimplify.js';
 
 const router = express.Router();
@@ -115,6 +116,8 @@ router.post("/", groupCreateLimiter, async (req, res) => {
       createdBy: req.user.id,
       members: [{ user: req.user.id, role: "admin" }],
     });
+
+    clearInsightCaches([req.user.id]);
 
     ActivityLog.create({
       group: group._id,
@@ -249,6 +252,8 @@ router.post("/:id/members", async (req, res) => {
       }
       return res.status(403).json({ message: "Your admin permission changed. Refresh the group and try again." });
     }
+
+    clearInsightCaches([userToAdd._id]);
 
     ActivityLog.create({
       group: group._id,
@@ -403,6 +408,8 @@ router.delete("/:id/members/:userId", async (req, res) => {
         message: "The group membership changed while this request was being processed. Refresh and try again.",
       });
     }
+
+    clearInsightCaches([targetId]);
 
     if (isSelf) {
       ActivityLog.create({
@@ -564,6 +571,7 @@ router.delete("/:id", async (req, res) => {
       });
     }
 
+    clearInsightCaches(group.members.map((member) => member.user));
     return res.json({ message: "Group deleted" });
   } catch (error) {
     console.error("Error deleting group:", error);
