@@ -507,7 +507,7 @@ export default function SettleUp() {
                               disabled={actionLoading[confirmKey] || actionLoading[`reject-${p._id}`]}
                               className="flex-1 py-3 rounded-2xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer disabled:opacity-50 bg-rose-500/5 text-rose-400 border border-rose-500/10 hover:bg-rose-500/15"
                             >
-                              {actionLoading[`reject-${p.from?._id}`]
+                              {actionLoading[`reject-${p._id}`]
                                 ? <><span className="material-symbols-outlined text-[16px] animate-spin">sync</span> Rejecting...</>
                                 : <><span className="material-symbols-outlined text-[16px]">close</span> Not Received</>}
                             </button>
