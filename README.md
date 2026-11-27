@@ -220,6 +220,8 @@ $$\text{Raw Score} = \sum_{d \in \text{Qualifying}} \left( \frac{W_d}{\sum W_q} 
 | **Upfront Contribution** | **35%** (`0.35`) | $\ge 3$ involved expenses | Recency-weighted ratio of group expenses paid upfront by the user vs total involved expenses. |
 | **Spending Consistency** | **15%** (`0.15`) | $\ge 3$ active calendar months | Month-to-month spending stability based on coefficient of variation ($1 - \frac{\sigma}{\mu}$), scaled by a confidence factor ($0.6\text{–}1.0$) for equal vs custom splits. |
 
+Accepted repayment schedules that remain unpaid after their due date add a temporary penalty of **10 points per overdue repayment, capped at 30 points**. The deduction is removed when the receiver confirms payment. A payment already marked as sent and awaiting receiver confirmation is not treated as overdue.
+
 #### 1. Follow-Through & Staleness Mechanics
 Follow-through measures the proportion of initiated settlements that are confirmed by the receiver. Cancelled requests (`status: "cancelled"`) and rejected requests are excluded from the denominator so users are not penalized for correcting in-flight payment errors:
 - **Recency Weights**: Transactions are weighted by age: $\le 30\text{ days} = 1.0$, $31\text{–}90\text{ days} = 0.5$, $>90\text{ days} = 0.2$.
@@ -601,7 +603,7 @@ All application endpoints are mounted under `/api` and require authenticated HTT
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/settlements/simplify/:id` | Protected | Compute net balances and simplified debt transactions for a group. |
 | `POST` | `/api/settlements/settle` | Protected | Payer records a payment as pending; an optional `Idempotency-Key` makes retries safe. May include an optional `upiReference` (6–64 characters). The receiver must independently verify receipt and confirm before debt clears. An accepted schedule can be linked by `scheduleId`. |
-| `POST` | `/api/settlements/schedule` | Protected | Payer proposes an amount and optional future date; if omitted, Settl defaults the due date to 7 calendar days from today in the payer's timezone. An optional `Idempotency-Key` makes retries safe; reusing a key with changed details returns `409`. The proposal does not change balances. |
+| `POST` | `/api/settlements/schedule` | Protected | Payer proposes an amount and optional calendar date within the next three calendar months; if omitted, Settl applies a 15-day deadline in the payer's timezone. Both parties receive reminders the day before and on the due date. Accepted repayments still unpaid after the due date trigger an overdue alert and a temporary 10-point Trust Score deduction (maximum 30). An optional `Idempotency-Key` makes retries safe; reusing a key with changed details returns `409`. The proposal does not change balances. |
 | `GET` | `/api/settlements/schedules/:groupId` | Protected | Retrieve active payment schedules for the current user, including due tomorrow, due today, and overdue states. |
 | `POST` | `/api/settlements/schedule/:scheduleId/respond` | Protected | Recipient accepts or rejects a proposed repayment date. |
 | `POST` | `/api/settlements/schedule/:scheduleId/cancel` | Protected | Either participant cancels a proposed or accepted schedule. |
@@ -826,7 +828,7 @@ For deployments on Vercel or similar platforms, [`frontend/vercel.json`](fronten
 | **Trust Score Interactive UI** | **Implemented** | Score gauge, trend pill, quick actions, factors, commitments, ledger. |
 | **Redis-Backed Rate Limiting** | **Implemented** | Shared counters for auth, verification, Trust Score, financial tips, and Finn chat; configure `REDIS_URL` in production to enable it. |
 | **Multi-Session Mentor Conversations** | **Implemented** | Create, switch, rename, archive, and restore independent sessions with per-thread request locking and history isolation. |
-| **Settlement Due Date Customization** | **Implemented** | Payer proposes a date or gets a 7-day default; receiver accepts or declines, and linked payment confirmation completes the schedule without changing balances early. |
+| **Settlement Due Date Customization** | **Implemented** | Payer chooses a calendar date up to three months ahead; leaving it blank applies a 15-day deadline. Both parties receive due-date reminders; accepted unpaid schedules temporarily affect the payer's Trust Score. |
 | **Persistent In-App Settlement Reminders** | **Implemented** | Private reminders for payer and receiver one day before and on the agreed due date, with deduplication and persisted read/clear state. |
 | **UPI Reference Capture** | **Implemented** | Optional payer-provided UTR/RRN stored on pending settlements and shown only to the payer and receiver; never treated as bank-verified proof. |
 
