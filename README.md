@@ -604,10 +604,10 @@ All application endpoints are mounted under `/api` and require authenticated HTT
 | `POST` | `/api/settlements/schedule/:scheduleId/respond` | Protected | Recipient accepts or rejects a proposed repayment date. |
 | `POST` | `/api/settlements/schedule/:scheduleId/cancel` | Protected | Either participant cancels a proposed or accepted schedule. |
 
-| `POST` | `/api/settlements/confirm` | Protected | Receiver confirms payment receipt (`confirmed`), clearing the debt and completing any linked schedule. |
-| `POST` | `/api/settlements/reject` | Protected | Receiver rejects unreceived payment (`rejected`), recording the reason. |
-| `DELETE`| `/api/settlements/settle` | Protected | Payer cancels their pending settlement request (`cancelled`). |
-| `POST` | `/api/settlements/cancel` | Protected | Alternate endpoint for payer cancellation. |
+| `POST` | `/api/settlements/confirm` | Protected | Receiver confirms one exact payment using `groupId` and `settlementId`. Repeating the same confirmation safely returns that record and cannot affect a later payment. |
+| `POST` | `/api/settlements/reject` | Protected | Receiver rejects one exact payment using `groupId` and `settlementId`; a repeated rejection safely returns the rejected record. |
+| `DELETE`| `/api/settlements/settle` | Protected | Payer cancels one exact payment using `groupId` and `settlementId`; a repeated cancellation safely returns the cancelled record. |
+| `POST` | `/api/settlements/cancel` | Protected | Alternate endpoint for payer cancellation; uses the same exact `groupId` and `settlementId` payload. |
 | `GET` | `/api/settlements/group/:id/activity` | Protected | Fetch paginated activity audit logs for a group. |
 
 ### Notifications (`/api/notifications`)
