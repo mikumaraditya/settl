@@ -279,6 +279,28 @@ describe("Expense creation and deletion lifecycle", () => {
     assert.equal(changedPayload.status, 409);
     assert.equal(changedPayload.body.code, "IDEMPOTENCY_KEY_REUSED");
     assert.equal(await Expense.countDocuments({ group: group._id }), 1);
+
+    // A new key represents a new intentional expense, even with identical details.
+    const intentionalDuplicate = await request(app)
+      .post("/api/expenses")
+      .set("Authorization", `Bearer ${payerToken}`)
+      .set("Idempotency-Key", "expense-create-new-002")
+      .send(payload);
+    assert.equal(intentionalDuplicate.status, 201);
+    assert.notEqual(intentionalDuplicate.body._id, first.body._id);
+    assert.equal(await Expense.countDocuments({ group: group._id }), 2);
+
+    // Keys are scoped to the authenticated creator, not shared globally.
+    const memberCreated = await request(app)
+      .post("/api/expenses")
+      .set("Authorization", `Bearer ${memberToken}`)
+      .set("Idempotency-Key", idempotencyKey)
+      .send({
+        ...payload,
+        description: "Member's separate expense",
+      });
+    assert.equal(memberCreated.status, 201);
+    assert.equal(await Expense.countDocuments({ group: group._id }), 3);
     assert.equal((await Group.findById(group._id)).activeMutations, 0);
   });
 
