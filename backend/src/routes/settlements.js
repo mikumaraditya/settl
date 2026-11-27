@@ -835,6 +835,13 @@ router.post("/schedule", async (req, res) => {
   try {
     const body = req.body || {};
     const { groupId, toUserId, dueDate } = body;
+    const rawIdempotencyKey = req.get("Idempotency-Key");
+    const idempotencyKey = typeof rawIdempotencyKey === "string"
+      ? rawIdempotencyKey.trim()
+      : null;
+    if (idempotencyKey && !/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) {
+      return res.status(400).json({ message: "Invalid payment schedule idempotency key" });
+    }
     const amount = Number(body.amount);
     if (!groupId || !toUserId || body.amount === undefined) {
       return res.status(400).json({ message: "groupId, toUserId and amount are required" });
@@ -866,10 +873,22 @@ router.post("/schedule", async (req, res) => {
     if (Number.isNaN(parsedDueDate.getTime()) || parsedDueDate.toISOString().slice(0, 10) !== resolvedDueDate) {
       return res.status(400).json({ message: "Please provide a valid calendar date" });
     }
-    if (resolvedDueDate < getDateInTimeZone(body.timeZone)) {
-      return res.status(400).json({ message: "Due date cannot be in the past" });
-    }
-
+    const requestedDate = dueDate === undefined || dueDate === null || dueDate === ""
+      ? null
+      : resolvedDueDate;
+    const requestedTimeZone = typeof body.timeZone === "string" && body.timeZone.trim()
+      ? body.timeZone.trim()
+      : "UTC";
+    const idempotencyHash = idempotencyKey
+      ? createHash("sha256").update(JSON.stringify({
+        groupId: groupId.toString(),
+        from: req.user.id,
+        to: toUserId.toString(),
+        amountPaise: Math.round(amount * 100),
+        dueDate: requestedDate,
+        timeZone: requestedDate === null ? requestedTimeZone : null,
+      })).digest("hex")
+      : null;
 
     if (toUserId === req.user.id) {
       return res.status(400).json({ message: "You cannot schedule a payment to yourself" });
@@ -877,6 +896,38 @@ router.post("/schedule", async (req, res) => {
     const recipientIsMember = group.members.some((member) => member.user?.toString() === toUserId);
     if (!recipientIsMember) {
       return res.status(400).json({ message: "Schedule recipient must be a member of this group" });
+    }
+
+    const respondWithExistingSchedule = async (existingSchedule) => {
+      if (existingSchedule.idempotencyHash !== idempotencyHash) {
+        return res.status(409).json({
+          code: "IDEMPOTENCY_KEY_REUSED",
+          message: "This payment schedule request key was already used for different details.",
+        });
+      }
+      const replayed = await SettlementSchedule.findById(existingSchedule._id)
+        .populate("from", "name email upiId")
+        .populate("to", "name email upiId");
+      return res.status(200).json(replayed || existingSchedule);
+    };
+
+    // Replay the original proposal before checking for an active proposal or
+    // current debt: later acceptance/cancellation and new expenses must not
+    // turn an uncertain retry into a second schedule or a false conflict.
+    if (idempotencyKey) {
+      const previousSchedule = await SettlementSchedule.findOne({
+        from: req.user.id,
+        idempotencyKey,
+      });
+      if (previousSchedule) {
+        return await respondWithExistingSchedule(previousSchedule);
+      }
+    }
+
+    // An explicit date can be in the past by the time a successful proposal
+    // is retried. Check this only for new proposals, after replay lookup.
+    if (resolvedDueDate < getDateInTimeZone(body.timeZone)) {
+      return res.status(400).json({ message: "Due date cannot be in the past" });
     }
 
     const [existingPayment, existingSchedule] = await Promise.all([
@@ -915,10 +966,25 @@ router.post("/schedule", async (req, res) => {
       return res.status(400).json({ message: "Schedule amount exceeds the outstanding debt available to this member" });
     }
 
-    const schedule = await SettlementSchedule.create({
-      group: groupId, from: req.user.id, to: toUserId, amount,
-      dueDate: parsedDueDate, status: "proposed", active: true,
-    });
+    let schedule;
+    try {
+      schedule = await SettlementSchedule.create({
+        group: groupId, from: req.user.id, to: toUserId, amount,
+        dueDate: parsedDueDate, status: "proposed", active: true,
+        ...(idempotencyKey ? { idempotencyKey, idempotencyHash } : {}),
+      });
+    } catch (createError) {
+      if (idempotencyKey && createError?.code === 11000) {
+        const previousSchedule = await SettlementSchedule.findOne({
+          from: req.user.id,
+          idempotencyKey,
+        });
+        if (previousSchedule) {
+          return await respondWithExistingSchedule(previousSchedule);
+        }
+      }
+      throw createError;
+    }
     const populated = await SettlementSchedule.findById(schedule._id)
       .populate("from", "name email upiId")
       .populate("to", "name email upiId");

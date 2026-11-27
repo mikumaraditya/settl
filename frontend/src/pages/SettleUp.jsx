@@ -35,6 +35,7 @@ export default function SettleUp() {
 
   const socketRef = useRef(null)
   const settlementRequestKeysRef = useRef(new Map())
+  const scheduleRequestKeysRef = useRef(new Map())
 
   const getSettlementRequestKey = (toUser, amount, scheduleId = null) => {
     const amountPaise = Math.round(Number(amount) * 100)
@@ -53,6 +54,25 @@ export default function SettleUp() {
     const amountPaise = Math.round(Number(amount) * 100)
     const intent = `${id}:${toUser?._id || ''}:${amountPaise}:${scheduleId || 'immediate'}`
     settlementRequestKeysRef.current.delete(intent)
+  }
+
+  const getScheduleRequestKey = (toUser, amount, dueDate, timeZone) => {
+    const amountPaise = Math.round(Number(amount) * 100)
+    const intent = `${id}:${toUser?._id || ''}:${amountPaise}:${dueDate || 'default'}:${dueDate ? '' : timeZone || 'UTC'}`
+    let key = scheduleRequestKeysRef.current.get(intent)
+    if (!key) {
+      key = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `schedule-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      scheduleRequestKeysRef.current.set(intent, key)
+    }
+    return key
+  }
+
+  const clearScheduleRequestKey = (toUser, amount, dueDate, timeZone) => {
+    const amountPaise = Math.round(Number(amount) * 100)
+    const intent = `${id}:${toUser?._id || ''}:${amountPaise}:${dueDate || 'default'}:${dueDate ? '' : timeZone || 'UTC'}`
+    scheduleRequestKeysRef.current.delete(intent)
   }
 
   const getLocalDateOnly = () => {
@@ -128,13 +148,24 @@ export default function SettleUp() {
     setActionError('')
     setScheduleSaving(true)
     try {
+      const timeZone = getLocalTimeZone()
+      const dueDate = scheduleDate || null
+      const idempotencyKey = getScheduleRequestKey(
+        scheduleDraft.toUser,
+        scheduleDraft.amount,
+        dueDate,
+        timeZone,
+      )
       await axios.post('/settlements/schedule', {
         groupId: id,
         toUserId: scheduleDraft.toUser._id,
         amount: scheduleDraft.amount,
-        dueDate: scheduleDate || null,
-        timeZone: getLocalTimeZone(),
+        dueDate,
+        timeZone,
+      }, {
+        headers: { 'Idempotency-Key': idempotencyKey },
       })
+      clearScheduleRequestKey(scheduleDraft.toUser, scheduleDraft.amount, dueDate, timeZone)
       setScheduleDraft(null)
       setScheduleDate('')
       await fetchData()
