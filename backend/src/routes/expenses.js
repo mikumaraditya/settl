@@ -397,6 +397,7 @@ router.get("/group/:groupId", protect, async (req, res) => {
 // the expense as part of the group's financial history.
 router.delete("/:id", async (req, res) => {
   let reservedGroupId = null;
+  let reservedMutationToken = null;
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {
       return res.status(400).json({ message: "Invalid expense id" });
