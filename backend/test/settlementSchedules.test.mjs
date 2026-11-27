@@ -304,6 +304,92 @@ test("retrying an accepted-schedule payment reuses its existing settlement link"
   }
 });
 
+test("schedule proposal idempotency replays the same proposal and rejects changed details", async () => {
+  const retryGroup = await Group.create({
+    name: `Schedule proposal idempotency group ${Date.now()}`,
+    members: [{ user: userA._id }, { user: userB._id }],
+    createdBy: userA._id,
+  });
+  try {
+    await Expense.create({
+      description: "Schedule proposal idempotency debt",
+      amount: 1000,
+      paidBy: userB._id,
+      group: retryGroup._id,
+      splits: [
+        { user: userA._id, amount: 500 },
+        { user: userB._id, amount: 500 },
+      ],
+    });
+
+    const dueDate = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const payload = {
+      groupId: retryGroup._id.toString(),
+      toUserId: userB._id.toString(),
+      amount: 125,
+      dueDate,
+    };
+    const key = `schedule-proposal-retry-${Date.now()}`;
+
+    const invalidKey = await request(app)
+      .post("/api/settlements/schedule")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .set("Idempotency-Key", "short")
+      .send(payload);
+    assert.equal(invalidKey.status, 400);
+
+    const first = await request(app)
+      .post("/api/settlements/schedule")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .set("Idempotency-Key", key)
+      .send(payload);
+    assert.equal(first.status, 201, JSON.stringify(first.body));
+    assert.equal(first.body.status, "proposed");
+
+    const replay = await request(app)
+      .post("/api/settlements/schedule")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .set("Idempotency-Key", key)
+      .send(payload);
+    assert.equal(replay.status, 200, JSON.stringify(replay.body));
+    assert.equal(replay.body._id, first.body._id);
+    assert.equal(await SettlementSchedule.countDocuments({ group: retryGroup._id }), 1);
+
+    const changedDetails = await request(app)
+      .post("/api/settlements/schedule")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .set("Idempotency-Key", key)
+      .send({ ...payload, amount: 150 });
+    assert.equal(changedDetails.status, 409);
+    assert.equal(changedDetails.body.code, "IDEMPOTENCY_KEY_REUSED");
+    assert.equal(await SettlementSchedule.countDocuments({ group: retryGroup._id }), 1);
+
+    const accepted = await request(app)
+      .post(`/api/settlements/schedule/${first.body._id}/respond`)
+      .set("Authorization", `Bearer ${tokenB}`)
+      .send({ action: "accept" });
+    assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
+
+    const replayAfterTransition = await request(app)
+      .post("/api/settlements/schedule")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .set("Idempotency-Key", key)
+      .send(payload);
+    assert.equal(replayAfterTransition.status, 200, JSON.stringify(replayAfterTransition.body));
+    assert.equal(replayAfterTransition.body._id, first.body._id);
+    assert.equal(replayAfterTransition.body.status, "accepted");
+    assert.equal(await SettlementSchedule.countDocuments({ group: retryGroup._id }), 1);
+  } finally {
+    await Promise.all([
+      Settlement.deleteMany({ group: retryGroup._id }),
+      Expense.deleteMany({ group: retryGroup._id }),
+      SettlementSchedule.deleteMany({ group: retryGroup._id }),
+      ActivityLog.deleteMany({ group: retryGroup._id }),
+      Group.deleteOne({ _id: retryGroup._id }),
+    ]);
+  }
+});
+
 test("payer can propose a date without changing the group's debt", async () => {
   const today = new Date().toISOString().slice(0, 10);
   const due = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
