@@ -9,6 +9,7 @@ dotenv.config();
 
 import groupsRouter from "../src/routes/groups.js";
 import settlementsRouter from "../src/routes/settlements.js";
+import insightsRouter from "../src/routes/insights.js";
 import User from "../src/models/User.js";
 import Group from "../src/models/Group.js";
 import Expense from "../src/models/Expense.js";
@@ -22,15 +23,18 @@ const app = express();
 app.use(express.json());
 app.use("/api/groups", groupsRouter);
 app.use("/api/settlements", settlementsRouter);
+app.use("/api/insights", insightsRouter);
 
 describe("Group lifecycle routes", () => {
   let creator;
   let member;
   let invitee;
   let rateLimitedCreator;
+  let cacheUser;
   let creatorToken;
   let rateLimitedCreatorToken;
   let memberToken;
+  let cacheUserToken;
   const groupIds = [];
 
   const makeGroup = async () => {
@@ -79,10 +83,17 @@ describe("Group lifecycle routes", () => {
       password: "test-password-hash",
       isEmailVerified: true,
     });
+    cacheUser = await User.create({
+      name: "Group Cache User",
+      email: `group-cache-${suffix}@example.com`,
+      password: "test-password-hash",
+      isEmailVerified: true,
+    });
 
     creatorToken = jwt.sign({ id: creator._id.toString() }, jwtSecret, { expiresIn: "1h" });
     rateLimitedCreatorToken = jwt.sign({ id: rateLimitedCreator._id.toString() }, jwtSecret, { expiresIn: "1h" });
     memberToken = jwt.sign({ id: member._id.toString() }, jwtSecret, { expiresIn: "1h" });
+    cacheUserToken = jwt.sign({ id: cacheUser._id.toString() }, jwtSecret, { expiresIn: "1h" });
   });
 
   after(async () => {
@@ -97,7 +108,7 @@ describe("Group lifecycle routes", () => {
         Group.deleteMany({ _id: { $in: groupIds } }),
       ]);
     }
-    const userIds = [creator?._id, member?._id, invitee?._id, rateLimitedCreator?._id].filter(Boolean);
+    const userIds = [creator?._id, member?._id, invitee?._id, rateLimitedCreator?._id, cacheUser?._id].filter(Boolean);
     if (userIds.length) await User.deleteMany({ _id: { $in: userIds } });
     await mongoose.disconnect();
   });
@@ -129,6 +140,71 @@ describe("Group lifecycle routes", () => {
     assert.equal(response.body.members[0].user.toString(), creator._id.toString());
     assert.equal(response.body.members[0].role, "admin");
     groupIds.push(response.body._id);
+  });
+
+  it("invalidates cached insights after group creation, member changes, and group deletion", async () => {
+    const initial = await request(app)
+      .get(`/api/insights/trust-score/${cacheUser._id}`)
+      .set("Authorization", `Bearer ${cacheUserToken}`);
+    assert.equal(initial.status, 200);
+    assert.equal(initial.body.status, "not_enough_data");
+
+    const ownedGroupResponse = await request(app)
+      .post("/api/groups")
+      .set("Authorization", `Bearer ${cacheUserToken}`)
+      .send({ name: "Cache user's own group" });
+    assert.equal(ownedGroupResponse.status, 201);
+    groupIds.push(ownedGroupResponse.body._id);
+
+    const afterCreate = await request(app)
+      .get(`/api/insights/trust-score/${cacheUser._id}`)
+      .set("Authorization", `Bearer ${cacheUserToken}`);
+    assert.equal(afterCreate.status, 200);
+    assert.equal(afterCreate.body.status, "new");
+    assert.equal(afterCreate.body.activity.groups, 1);
+
+    const sharedGroup = await makeGroup();
+    const added = await request(app)
+      .post(`/api/groups/${sharedGroup._id}/members`)
+      .set("Authorization", `Bearer ${creatorToken}`)
+      .send({ email: cacheUser.email });
+    assert.equal(added.status, 201);
+
+    const afterAdd = await request(app)
+      .get(`/api/insights/trust-score/${cacheUser._id}`)
+      .set("Authorization", `Bearer ${cacheUserToken}`);
+    assert.equal(afterAdd.body.activity.groups, 2);
+
+    const removed = await request(app)
+      .delete(`/api/groups/${sharedGroup._id}/members/${cacheUser._id}`)
+      .set("Authorization", `Bearer ${creatorToken}`);
+    assert.equal(removed.status, 200);
+
+    const afterRemove = await request(app)
+      .get(`/api/insights/trust-score/${cacheUser._id}`)
+      .set("Authorization", `Bearer ${cacheUserToken}`);
+    assert.equal(afterRemove.body.activity.groups, 1);
+
+    const reAdded = await request(app)
+      .post(`/api/groups/${sharedGroup._id}/members`)
+      .set("Authorization", `Bearer ${creatorToken}`)
+      .send({ email: cacheUser.email });
+    assert.equal(reAdded.status, 201);
+
+    const beforeDelete = await request(app)
+      .get(`/api/insights/trust-score/${cacheUser._id}`)
+      .set("Authorization", `Bearer ${cacheUserToken}`);
+    assert.equal(beforeDelete.body.activity.groups, 2);
+
+    const deleted = await request(app)
+      .delete(`/api/groups/${sharedGroup._id}`)
+      .set("Authorization", `Bearer ${creatorToken}`);
+    assert.equal(deleted.status, 200);
+
+    const afterDelete = await request(app)
+      .get(`/api/insights/trust-score/${cacheUser._id}`)
+      .set("Authorization", `Bearer ${cacheUserToken}`);
+    assert.equal(afterDelete.body.activity.groups, 1);
   });
 
   it("validates invitation emails and returns a useful not-found response", async () => {
