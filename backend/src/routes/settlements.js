@@ -551,9 +551,9 @@ router.post("/confirm", protect, async (req, res) => {
   let reservedGroupId = null;
   let reservedMutationToken = null;
   try {
-    const { groupId, fromUserId } = req.body || {};
-    if (!mongoose.isValidObjectId(groupId) || !mongoose.isValidObjectId(fromUserId)) {
-      return res.status(400).json({ message: "Invalid group or payer id" });
+    const { groupId, settlementId } = req.body || {};
+    if (!mongoose.isValidObjectId(groupId) || !mongoose.isValidObjectId(settlementId)) {
+      return res.status(400).json({ message: "Invalid group or settlement id" });
     }
 
     const group = await reserveGroupWrite(groupId, req.user.id);
@@ -564,19 +564,32 @@ router.post("/confirm", protect, async (req, res) => {
     reservedGroupId = group._id;
     reservedMutationToken = group.$locals.financialMutationToken;
 
-    // Expire overdue requests before a receiver can confirm them. This keeps
-    // the endpoint safe even when the periodic cleanup has not run yet.
+    // Expire overdue requests before a receiver can confirm them. A retry
+    // below is scoped to this exact settlement, never another payment by
+    // the same payer in the same group.
     await autoExpirePendingSettlements(groupId);
 
-    // Validate both participants before committing the payment transition.
+    const targetSettlement = await Settlement.findOne({
+      _id: settlementId,
+      group: groupId,
+      to: req.user.id,
+    }).select("from");
+    if (!targetSettlement) {
+      return res.status(404).json({ message: "Settlement request not found for this receiver" });
+    }
+
+    const fromUserId = targetSettlement.from.toString();
     const payerIsMember = group.members.some(member => member.user.toString() === fromUserId);
     if (!payerIsMember) {
       return res.status(400).json({ message: "Both users must still be members of this group" });
     }
 
-    // Compare-and-set: only one of confirm, reject, cancel, or expiry can win.
+    // Compare-and-set prevents confirm, reject, cancel, or expiry from
+    // overwriting one another. Repeating a completed confirmation returns
+    // the same record and cannot confirm a later request from this payer.
     const settlement = await Settlement.findOneAndUpdate(
       {
+        _id: settlementId,
         group: groupId,
         from: fromUserId,
         to: req.user.id,
@@ -587,7 +600,16 @@ router.post("/confirm", protect, async (req, res) => {
     );
 
     if (!settlement) {
-      return res.status(404).json({ message: "No pending settlement request found or already resolved" });
+      const current = await Settlement.findOne({
+        _id: settlementId,
+        group: groupId,
+        from: fromUserId,
+        to: req.user.id,
+      })
+        .populate("from", "name email upiId")
+        .populate("to", "name email upiId");
+      if (current?.status === "confirmed") return res.json(current);
+      return res.status(409).json({ message: "This settlement is no longer pending and cannot be confirmed" });
     }
 
     const linkedSchedule = await SettlementSchedule.findOneAndUpdate(
@@ -642,9 +664,9 @@ const handlePayerCancel = async (req, res) => {
   let reservedGroupId = null;
   let reservedMutationToken = null;
   try {
-    const { groupId, toUserId } = req.body || {};
-    if (!mongoose.isValidObjectId(groupId) || !mongoose.isValidObjectId(toUserId)) {
-      return res.status(400).json({ message: "Invalid group or recipient id" });
+    const { groupId, settlementId } = req.body || {};
+    if (!mongoose.isValidObjectId(groupId) || !mongoose.isValidObjectId(settlementId)) {
+      return res.status(400).json({ message: "Invalid group or settlement id" });
     }
 
     const group = await reserveGroupWrite(groupId, req.user.id);
@@ -658,9 +680,9 @@ const handlePayerCancel = async (req, res) => {
     await autoExpirePendingSettlements(groupId);
     const settlement = await Settlement.findOneAndUpdate(
       {
+        _id: settlementId,
         group: groupId,
         from: req.user.id,
-        to: toUserId,
         status: "pending",
       },
       { $set: { status: "cancelled" } },
@@ -668,7 +690,15 @@ const handlePayerCancel = async (req, res) => {
     );
 
     if (!settlement) {
-      return res.status(404).json({ message: "No pending settlement request found to cancel" });
+      const current = await Settlement.findOne({
+        _id: settlementId,
+        group: groupId,
+        from: req.user.id,
+      });
+      if (current?.status === "cancelled") {
+        return res.json({ message: "Settlement request cancelled successfully", settlement: current });
+      }
+      return res.status(409).json({ message: "This settlement is no longer pending and cannot be cancelled" });
     }
 
     await SettlementSchedule.updateOne(
@@ -680,14 +710,14 @@ const handlePayerCancel = async (req, res) => {
       group: groupId,
       actor: req.user.id,
       type: "settlement_cancelled",
-      meta: { amount: settlement.amount, toId: toUserId },
+      meta: { amount: settlement.amount, toId: settlement.to },
     }).catch(error => console.error("Could not record settlement-cancelled activity:", error));
 
     safeEmit(groupId, "settlement_undone", {
       fromId: req.user.id,
-      toId: toUserId,
+      toId: settlement.to.toString(),
     });
-    clearInsightCaches([req.user.id, toUserId]);
+    clearInsightCaches([req.user.id, settlement.to.toString()]);
 
     return res.json({ message: "Settlement request cancelled successfully", settlement });
   } catch (error) {
@@ -714,9 +744,9 @@ router.post("/reject", protect, async (req, res) => {
   let reservedGroupId = null;
   let reservedMutationToken = null;
   try {
-    const { groupId, fromUserId, reason } = req.body || {};
-    if (!mongoose.isValidObjectId(groupId) || !mongoose.isValidObjectId(fromUserId)) {
-      return res.status(400).json({ message: "Invalid group or payer id" });
+    const { groupId, settlementId, reason } = req.body || {};
+    if (!mongoose.isValidObjectId(groupId) || !mongoose.isValidObjectId(settlementId)) {
+      return res.status(400).json({ message: "Invalid group or settlement id" });
     }
 
     const group = await reserveGroupWrite(groupId, req.user.id);
@@ -727,15 +757,25 @@ router.post("/reject", protect, async (req, res) => {
     reservedGroupId = group._id;
     reservedMutationToken = group.$locals.financialMutationToken;
 
+    await autoExpirePendingSettlements(groupId);
+    const targetSettlement = await Settlement.findOne({
+      _id: settlementId,
+      group: groupId,
+      to: req.user.id,
+    }).select("from");
+    if (!targetSettlement) {
+      return res.status(404).json({ message: "Settlement request not found for this receiver" });
+    }
+
+    const fromUserId = targetSettlement.from.toString();
     const payerIsMember = group.members.some(member => member.user.toString() === fromUserId);
     if (!payerIsMember) {
       return res.status(400).json({ message: "Both users must still be members of this group" });
     }
 
-    await autoExpirePendingSettlements(groupId);
-    // Compare-and-set prevents a late rejection from overwriting confirmation.
     const settlement = await Settlement.findOneAndUpdate(
       {
+        _id: settlementId,
         group: groupId,
         from: fromUserId,
         to: req.user.id,
@@ -751,7 +791,16 @@ router.post("/reject", protect, async (req, res) => {
     ).populate("from", "name");
 
     if (!settlement) {
-      return res.status(404).json({ message: "No pending settlement request found to reject" });
+      const current = await Settlement.findOne({
+        _id: settlementId,
+        group: groupId,
+        from: fromUserId,
+        to: req.user.id,
+      }).populate("from", "name");
+      if (current?.status === "rejected") {
+        return res.json({ message: "Settlement request rejected", settlement: current });
+      }
+      return res.status(409).json({ message: "This settlement is no longer pending and cannot be rejected" });
     }
 
     await SettlementSchedule.updateOne(
