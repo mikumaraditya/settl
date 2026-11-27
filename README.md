@@ -590,7 +590,7 @@ All application endpoints are mounted under `/api` and require authenticated HTT
 ### Expenses (`/api/expenses`)
 | Method | Endpoint | Access | Description |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/api/expenses` | Protected | Create a new shared expense with equal, exact, or percentage splits. |
+| `POST` | `/api/expenses` | Protected | Create a new shared expense with equal, exact, or percentage splits. Optional `Idempotency-Key` header makes retries safe; reusing a key with changed details returns `409`. |
 | `GET` | `/api/expenses/group/:id` | Protected | Fetch paginated group expenses filtered by month. |
 | `DELETE`| `/api/expenses/:id` | Protected | Delete an expense (restricted to payer or group admin). |
 
