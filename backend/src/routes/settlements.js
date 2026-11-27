@@ -501,9 +501,12 @@ router.post("/settle", protect, async (req, res) => {
         upiReference,
         // Preserve the precise ledger basis for this payment. Accepted legacy
         // schedules did not capture it, so conservatively snapshot current rows.
-        sourceExpenseIds: scheduleId && Array.isArray(activeSchedule?.sourceExpenseIds)
-          ? activeSchedule.sourceExpenseIds
-          : getExpenseSourceIds(expenses),
+        sourceExpenseIds: [...new Set([
+          ...(scheduleId && Array.isArray(activeSchedule?.sourceExpenseIds)
+            ? activeSchedule.sourceExpenseIds
+            : []),
+          ...getExpenseSourceIds(expenses),
+        ].map((expenseId) => expenseId.toString()))],
         ...(idempotencyKey ? { idempotencyKey, idempotencyHash } : {}),
       });
       if (linkedSchedule) {
