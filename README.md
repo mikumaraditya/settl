@@ -582,7 +582,7 @@ All application endpoints are mounted under `/api` and require authenticated HTT
 ### Groups (`/api/groups`)
 | Method | Endpoint | Access | Description |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/api/groups` | Protected | Create a new expense group. |
+| `POST` | `/api/groups` | Protected | Create a new expense group. An optional `Idempotency-Key` makes retries safe; reusing a key with changed name or description returns `409`. Matching retries return the original group without consuming the creation rate limit. |
 | `GET` | `/api/groups` | Protected | List all groups the current user is a member of. |
 | `GET` | `/api/groups/:id` | Protected | Retrieve group details, member balances, and simplified debts. |
 | `POST` | `/api/groups/:id/members` | Protected | Add a registered user to the group by email address. |
