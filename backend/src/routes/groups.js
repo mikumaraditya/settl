@@ -117,6 +117,8 @@ router.post("/", groupCreateLimiter, async (req, res) => {
       members: [{ user: req.user.id, role: "admin" }],
     });
 
+    clearInsightCaches([req.user.id]);
+
     ActivityLog.create({
       group: group._id,
       actor: req.user.id,
