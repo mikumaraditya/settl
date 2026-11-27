@@ -79,6 +79,11 @@ const groupSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Unique owner for the active membership lease; expiry alone is not unique.
+    membershipMutationId: {
+      type: String,
+      default: null,
+    },
     membershipMutationExpiresAt: {
       type: Date,
       default: null,
