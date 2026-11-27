@@ -181,7 +181,7 @@ async function runTrustScore2Tests() {
   ]);
   const baselineScore = await getTrustScoreForUser(userA._id.toString());
   const overdueDueDate = new Date(scoreNow.getTime() - 2 * 864e5);
-  await SettlementSchedule.create({
+  const overdueSchedule = await SettlementSchedule.create({
     group: testGroup._id,
     from: userA._id,
     to: userB._id,
@@ -201,6 +201,14 @@ async function runTrustScore2Tests() {
     console.log("  ✅ PASS: One overdue accepted schedule deducts 10 Trust Score points");
   } else {
     throw new Error(`Unexpected overdue score values: ${JSON.stringify({ baselineScore, overdueScore })}`);
+  }
+
+  await SettlementSchedule.updateOne({ _id: overdueSchedule._id }, { $set: { status: "payment_pending" } });
+  const paymentPendingScore = await getTrustScoreForUser(userA._id.toString());
+  if (paymentPendingScore.score === baselineScore.score && paymentPendingScore.overdueRepaymentCount === 0) {
+    console.log("  ✅ PASS: Once payment is marked sent, the deadline deduction is lifted while receiver confirmation is pending");
+  } else {
+    throw new Error(`Payment awaiting receiver confirmation must not remain overdue: ${JSON.stringify(paymentPendingScore)}`);
   }
 
   console.log("\n[CLEANUP] Cleaning up test records...");
