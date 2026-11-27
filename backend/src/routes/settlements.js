@@ -499,8 +499,8 @@ router.post("/settle", protect, async (req, res) => {
         status: "pending",
         dueDate: defaultDueDate,
         upiReference,
-        // Preserve the precise ledger basis for this payment. Accepted legacy
-        // schedules did not capture it, so conservatively snapshot current rows.
+        // Preserve the accepted schedule's ledger snapshot and include any
+        // additional group ledger rows present when this payment is recorded.
         sourceExpenseIds: [...new Set([
           ...(scheduleId && Array.isArray(activeSchedule?.sourceExpenseIds)
             ? activeSchedule.sourceExpenseIds
