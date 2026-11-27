@@ -91,10 +91,19 @@ export default function SettleUp() {
   const getLocalTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
   const getDefaultScheduleDate = () => {
     const date = new Date()
-    date.setDate(date.getDate() + 7)
+    date.setDate(date.getDate() + 15)
     const month = String(date.getMonth() + 1).padStart(2, '0')
     const day = String(date.getDate()).padStart(2, '0')
     return `${date.getFullYear()}-${month}-${day}`
+  }
+  const getMaxScheduleDate = () => {
+    const today = new Date()
+    const targetMonth = new Date(today.getFullYear(), today.getMonth() + 3, 1)
+    const lastDay = new Date(targetMonth.getFullYear(), targetMonth.getMonth() + 1, 0).getDate()
+    targetMonth.setDate(Math.min(today.getDate(), lastDay))
+    const month = String(targetMonth.getMonth() + 1).padStart(2, '0')
+    const day = String(targetMonth.getDate()).padStart(2, '0')
+    return `${targetMonth.getFullYear()}-${month}-${day}`
   }
 
   const fetchData = async () => {
@@ -620,6 +629,11 @@ export default function SettleUp() {
                             Both sides agreed to this repayment date. The outstanding balance remains unchanged until payment is confirmed.
                           </p>
                         )}
+                        {schedule.status === 'accepted' && dueStatus === 'overdue' && (
+                          <p className="text-[11px] text-rose-300 font-semibold">
+                            This repayment missed its agreed date. The payer's Trust Score is reduced until the receiver confirms payment.
+                          </p>
+                        )}
                         {schedule.status !== 'payment_pending' && (
                           <button
                             onClick={() => handleScheduleCancel(schedule)}
@@ -920,12 +934,13 @@ export default function SettleUp() {
                 id="schedule-due-date"
                 type="date"
                 min={getLocalDateOnly()}
+                max={getMaxScheduleDate()}
                 value={scheduleDate}
                 onChange={(e) => setScheduleDate(e.target.value)}
                 className="w-full rounded-xl border border-white/10 bg-background px-4 py-3 text-sm font-bold text-white [color-scheme:dark] focus:outline-none focus:border-cyan-500/50"
               />
               <p className="text-[10px] text-cyan-200/80">
-                Optional. Leave blank to use {new Date(`${getDefaultScheduleDate()}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} (7 days from today).
+                Optional. Leave blank for the 15-day repayment deadline ({new Date(`${getDefaultScheduleDate()}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}). Choose any date up to three months ahead.
               </p>
             </div>
             <p className="text-[10px] leading-relaxed text-on-surface-variant">
