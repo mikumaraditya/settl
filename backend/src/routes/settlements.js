@@ -61,14 +61,16 @@ const completeLinkedSchedule = async (settlement, actorId) => {
     { new: true },
   );
   if (linkedSchedule) {
+    const fromId = settlement.from?._id?.toString?.() || settlement.from?.toString?.();
+    const toId = settlement.to?._id?.toString?.() || settlement.to?.toString?.();
     await ActivityLog.create({
       group: linkedSchedule.group,
       actor: actorId,
       type: "schedule_completed",
       meta: {
         amount: linkedSchedule.amount,
-        fromId: settlement.from,
-        toId: settlement.to,
+        fromId,
+        toId,
       },
     }).catch(error => console.error("Could not record schedule-completed activity:", error));
   }
