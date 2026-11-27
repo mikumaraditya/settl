@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import express from "express";
 import request from "supertest";
 import mongoose from "mongoose";
+import { createHash } from "node:crypto";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 dotenv.config();
@@ -383,6 +384,60 @@ test("schedule proposal idempotency replays the same proposal and rejects change
     await Promise.all([
       Settlement.deleteMany({ group: retryGroup._id }),
       Expense.deleteMany({ group: retryGroup._id }),
+      SettlementSchedule.deleteMany({ group: retryGroup._id }),
+      ActivityLog.deleteMany({ group: retryGroup._id }),
+      Group.deleteOne({ _id: retryGroup._id }),
+    ]);
+  }
+});
+
+test("a retry of a schedule whose due date has passed still replays its original record", async () => {
+  const retryGroup = await Group.create({
+    name: `Past schedule retry group ${Date.now()}`,
+    members: [{ user: userA._id }, { user: userB._id }],
+    createdBy: userA._id,
+  });
+  try {
+    const dueDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const payload = {
+      groupId: retryGroup._id.toString(),
+      toUserId: userB._id.toString(),
+      amount: 75,
+      dueDate,
+    };
+    const key = `past-schedule-retry-${Date.now()}`;
+    const idempotencyHash = createHash("sha256").update(JSON.stringify({
+      groupId: payload.groupId,
+      from: userA._id.toString(),
+      to: payload.toUserId,
+      amountPaise: 7500,
+      dueDate,
+      timeZone: null,
+    })).digest("hex");
+    const existing = await SettlementSchedule.create({
+      group: retryGroup._id,
+      from: userA._id,
+      to: userB._id,
+      amount: payload.amount,
+      dueDate: new Date(`${dueDate}T12:00:00.000Z`),
+      status: "accepted",
+      active: true,
+      idempotencyKey: key,
+      idempotencyHash,
+    });
+
+    const replay = await request(app)
+      .post("/api/settlements/schedule")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .set("Idempotency-Key", key)
+      .send(payload);
+    assert.equal(replay.status, 200, JSON.stringify(replay.body));
+    assert.equal(replay.body._id, existing._id.toString());
+    assert.equal(replay.body.status, "accepted");
+    assert.equal(await SettlementSchedule.countDocuments({ group: retryGroup._id }), 1);
+  } finally {
+    await Promise.all([
+      Settlement.deleteMany({ group: retryGroup._id }),
       SettlementSchedule.deleteMany({ group: retryGroup._id }),
       ActivityLog.deleteMany({ group: retryGroup._id }),
       Group.deleteOne({ _id: retryGroup._id }),
