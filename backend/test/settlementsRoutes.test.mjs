@@ -156,10 +156,10 @@ async function runRouteTests() {
     const res = await request(app)
       .post("/api/settlements/confirm")
       .set("Authorization", `Bearer ${tokenA}`)
-      .send({ groupId, fromUserId: userA._id.toString() });
+      .send({ groupId, settlementId: pendingSettlementId });
 
     console.log(`HTTP Status: ${res.status} | Response Body:`, res.body);
-    if (res.status === 404 && res.body.message.includes("No pending settlement")) {
+    if (res.status === 404 && res.body.message.includes("not found for this receiver")) {
       console.log("✅ PASS: Non-receiver cannot confirm settlement.");
     } else {
       console.error("❌ FAIL: Non-receiver was able to confirm settlement!");
@@ -175,10 +175,10 @@ async function runRouteTests() {
     const res = await request(app)
       .delete("/api/settlements/settle")
       .set("Authorization", `Bearer ${tokenC}`)
-      .send({ groupId, toUserId: userB._id.toString() });
+      .send({ groupId, settlementId: pendingSettlementId });
 
     console.log(`HTTP Status: ${res.status} | Response Body:`, res.body);
-    if (res.status === 404 && res.body.message.includes("No pending settlement")) {
+    if (res.status === 404 && res.body.message.includes("not found for this payer")) {
       console.log("✅ PASS: Non-payer cannot cancel someone else's settlement request.");
     } else {
       console.error("❌ FAIL: Non-payer was able to cancel settlement request!");
@@ -194,7 +194,7 @@ async function runRouteTests() {
     const res = await request(app)
       .delete("/api/settlements/settle")
       .set("Authorization", `Bearer ${tokenA}`)
-      .send({ groupId, toUserId: userB._id.toString() });
+      .send({ groupId, settlementId: pendingSettlementId });
 
     console.log(`HTTP Status: ${res.status} | Response Body:`, res.body);
     if (res.status === 200 && res.body.settlement?.status === "cancelled") {
@@ -256,6 +256,7 @@ async function runRouteTests() {
 
     console.log(`HTTP Status: ${res.status} | Response Body:`, res.body);
     if (res.status === 201 && res.body.status === "pending") {
+      pendingSettlementId = res.body._id;
       console.log("✅ PASS: Successfully created new settlement request after expiry.");
     } else {
       console.error("❌ FAIL: New settlement request after expiry failed!");
@@ -271,7 +272,7 @@ async function runRouteTests() {
     const res = await request(app)
       .post("/api/settlements/confirm")
       .set("Authorization", `Bearer ${tokenB}`)
-      .send({ groupId, fromUserId: userA._id.toString() });
+      .send({ groupId, settlementId: pendingSettlementId });
 
     console.log(`HTTP Status: ${res.status} | Response Body:`, res.body);
     if (res.status === 200 && res.body.status === "confirmed") {
