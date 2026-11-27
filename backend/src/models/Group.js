@@ -39,6 +39,20 @@ const groupSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Tracks whether safe preflight checks passed before destructive cleanup.
+    // A stale preflight lease is revalidated; an interrupted cleanup is retried.
+    deletionCleanupStarted: {
+      type: Boolean,
+      default: false,
+    },
+    deletionMutationId: {
+      type: String,
+      default: null,
+    },
+    deletionMutationExpiresAt: {
+      type: Date,
+      default: null,
+    },
     activeMutations: {
       type: Number,
       default: 0,

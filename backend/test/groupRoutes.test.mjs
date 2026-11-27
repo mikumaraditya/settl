@@ -600,14 +600,98 @@ describe("Group lifecycle routes", () => {
     assert.equal((await Group.findById(group._id)).isDeleting, false);
   });
 
-  it("can delete a group after an abandoned expense mutation lease has expired", async () => {
+  it("does not delete a group while a live financial mutation lease is held", async () => {
     const group = await makeGroup();
+    const expiresAt = new Date(Date.now() + 60_000);
     await Group.updateOne(
       { _id: group._id },
       {
         $set: {
           activeMutations: 1,
-          mutationExpiresAt: new Date(Date.now() - 1000),
+          mutationExpiresAt: expiresAt,
+          financialMutationId: "active-financial-write",
+          financialMutationExpiresAt: expiresAt,
+        },
+      },
+    );
+
+    const response = await request(app)
+      .delete(`/api/groups/${group._id}`)
+      .set("Authorization", `Bearer ${creatorToken}`);
+
+    assert.equal(response.status, 409);
+    const retained = await Group.findById(group._id).lean();
+    assert.ok(retained);
+    assert.equal(retained.isDeleting, false);
+    assert.equal(retained.financialMutationId, "active-financial-write");
+  });
+
+  it("does not allow a second deletion while another cleanup lease is active", async () => {
+    const group = await makeGroup();
+    const expiresAt = new Date(Date.now() + 60_000);
+    await Group.updateOne(
+      { _id: group._id },
+      {
+        $set: {
+          isDeleting: true,
+          deletionCleanupStarted: true,
+          deletionMutationId: "first-delete-owner",
+          deletionMutationExpiresAt: expiresAt,
+        },
+      },
+    );
+
+    const response = await request(app)
+      .delete(`/api/groups/${group._id}`)
+      .set("Authorization", `Bearer ${creatorToken}`);
+
+    assert.equal(response.status, 409);
+    const retained = await Group.findById(group._id).lean();
+    assert.equal(retained.deletionMutationId, "first-delete-owner");
+    assert.equal(retained.deletionCleanupStarted, true);
+  });
+
+  it("recovers an abandoned deletion cleanup lease and resumes idempotent cleanup", async () => {
+    const group = await makeGroup();
+    const expense = await Expense.create({
+      description: "Interrupted deletion cleanup",
+      amount: 20,
+      paidBy: creator._id,
+      group: group._id,
+      splits: [{ user: creator._id, amount: 20 }, { user: member._id, amount: 0 }],
+    });
+    await Group.updateOne(
+      { _id: group._id },
+      {
+        $set: {
+          isDeleting: true,
+          deletionCleanupStarted: true,
+          deletionMutationId: "abandoned-delete-owner",
+          deletionMutationExpiresAt: new Date(Date.now() - 1_000),
+        },
+      },
+    );
+
+    const response = await request(app)
+      .delete(`/api/groups/${group._id}`)
+      .set("Authorization", `Bearer ${creatorToken}`);
+
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    assert.equal(await Group.exists({ _id: group._id }), null);
+    assert.equal(await Expense.exists({ _id: expense._id }), null);
+  });
+
+  it("can delete a group after an abandoned expense mutation lease has expired", async () => {
+    const group = await makeGroup();
+    const expiredAt = new Date(Date.now() - 1000);
+    await Group.updateOne(
+      { _id: group._id },
+      {
+        $set: {
+          activeMutations: 1,
+          mutationExpiresAt: expiredAt,
+          financialMutationId: "abandoned-financial-write",
+          financialMutationExpiresAt: expiredAt,
         },
       },
     );
@@ -704,7 +788,11 @@ describe("Group lifecycle routes", () => {
       .set("Authorization", `Bearer ${creatorToken}`);
 
     assert.equal(response.status, 409);
-    assert.ok(await Group.exists({ _id: group._id }));
+    const retained = await Group.findById(group._id).lean();
+    assert.ok(retained);
+    assert.equal(retained.isDeleting, false, "a blocked preflight must not strand the group in deleting state");
+    assert.equal(retained.deletionMutationId, null);
+    assert.equal(retained.deletionCleanupStarted, false);
   });
 
   it("limits group creation per user without blocking another creator", async () => {
