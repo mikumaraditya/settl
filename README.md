@@ -320,9 +320,9 @@ The debt simplification engine ([`backend/src/utils/debtSimplify.js`](backend/sr
 1. **Paise-Integer Balance Mapping**: Computes net balances in integer paise. Each expense credits the payer for the full amount and debits each split member for their exact share.
 2. **Confirmed Settlement Offsets**: Only settlements with `status: "confirmed"` reduce outstanding balances.
 3. **Expense History Links**: New settlements and schedules store `sourceExpenseIds` for the complete group ledger snapshot used by debt simplification. Expense deletion protects linked pending/confirmed payments and active schedules; legacy records without the field retain a conservative timestamp-based compatibility guard.
-3. **Partitioning**: Members are partitioned into Creditors ($\text{balance} > 0$) and Debtors ($\text{balance} < 0$).
-4. **Deterministic Sorting**: Creditors and Debtors are sorted descending by absolute balance magnitude, using `userId` string comparison as a tie-breaker.
-5. **Greedy Matching Loop**: The largest debtor pays the largest creditor $\min(\text{debtorAmount}, \text{creditorAmount})$. The settled amount is subtracted from both balances, and pointers advance until all net balances reach zero.
+4. **Partitioning**: Members are partitioned into Creditors ($\text{balance} > 0$) and Debtors ($\text{balance} < 0$).
+5. **Deterministic Sorting**: Creditors and Debtors are sorted descending by absolute balance magnitude, using `userId` string comparison as a tie-breaker.
+6. **Greedy Matching Loop**: The largest debtor pays the largest creditor $\min(\text{debtorAmount}, \text{creditorAmount})$. The settled amount is subtracted from both balances, and pointers advance until all net balances reach zero.
 
 ---
 
