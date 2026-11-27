@@ -529,7 +529,9 @@ router.delete("/:id/members/:userId", async (req, res) => {
         group: group._id,
         actor: req.user.id,
         type: "member_left",
-        meta: {},
+        meta: successorAdmin
+          ? { ownershipTransferredTo: successorAdmin.user.toString() }
+          : {},
       }).catch(error => console.error("Could not record member-left activity:", error));
       try {
         await releaseMembershipMutation(reservedGroupId, reservedMembershipLease);
@@ -545,7 +547,10 @@ router.delete("/:id/members/:userId", async (req, res) => {
       group: group._id,
       actor: req.user.id,
       type: "member_removed",
-      meta: { removedId: targetId },
+      meta: {
+        removedId: targetId,
+        ...(successorAdmin ? { ownershipTransferredTo: successorAdmin.user.toString() } : {}),
+      },
     }).catch(error => console.error("Could not record member-removed activity:", error));
 
     try {
