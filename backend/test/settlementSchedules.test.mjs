@@ -875,6 +875,14 @@ test("only the receiver can accept; accepted schedule remains separate from paym
 });
 
 test("scheduled payment completes only after receiver confirms; rejection restores accepted schedule", async () => {
+  const laterLedgerExpense = await Expense.create({
+    description: "Expense added after the schedule was agreed",
+    amount: 25,
+    paidBy: userC._id,
+    group: group._id,
+    splits: [{ user: userC._id, amount: 25 }],
+  });
+
   const mismatch = await request(app)
     .post("/api/settlements/settle")
     .set("Authorization", `Bearer ${tokenA}`)
@@ -890,10 +898,16 @@ test("scheduled payment completes only after receiver confirms; rejection restor
   assert.equal(payment.body.status, "pending");
 
   let schedule = await SettlementSchedule.findById(scheduleId);
-  assert.deepEqual(
-    payment.body.sourceExpenseIds.map(String).sort(),
-    schedule.sourceExpenseIds.map(String).sort(),
+  const paymentSourceIds = new Set(payment.body.sourceExpenseIds.map(String));
+  assert.equal(
+    schedule.sourceExpenseIds.every((expenseId) => paymentSourceIds.has(expenseId.toString())),
+    true,
     "a scheduled payment must retain the source ledger snapshot from its accepted schedule",
+  );
+  assert.equal(
+    paymentSourceIds.has(laterLedgerExpense._id.toString()),
+    true,
+    "the payment also captures ledger rows present when the payment itself is recorded",
   );
   assert.equal(schedule.status, "payment_pending");
   assert.equal(schedule.paymentSettlement.toString(), payment.body._id);
