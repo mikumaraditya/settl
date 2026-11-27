@@ -46,6 +46,7 @@ let tokenD;
 let group;
 let groupId;
 let scheduleId;
+let initialExpense;
 
 before(async () => {
   const { testUri, testDbName } = getTestDbConfig();
@@ -71,7 +72,7 @@ before(async () => {
   });
   groupId = group._id.toString();
 
-  await Expense.create({
+  initialExpense = await Expense.create({
     description: "Schedule test expense",
     amount: 1000,
     paidBy: userB._id,
@@ -676,6 +677,7 @@ test("payer can propose a date without changing the group's debt", async () => {
   assert.equal(create.status, 201, JSON.stringify(create.body));
   assert.equal(create.body.status, "proposed");
   assert.equal(create.body.amount, 300);
+  assert.deepEqual(create.body.sourceExpenseIds.map(String), [initialExpense._id.toString()]);
   scheduleId = create.body._id;
 
   const privateScheduleList = await request(app)
@@ -871,6 +873,7 @@ test("scheduled payment completes only after receiver confirms; rejection restor
     .send({ groupId, toUserId: userB._id.toString(), amount: 300, scheduleId });
   assert.equal(payment.status, 201, JSON.stringify(payment.body));
   assert.equal(payment.body.status, "pending");
+  assert.deepEqual(payment.body.sourceExpenseIds.map(String), [initialExpense._id.toString()]);
 
   let schedule = await SettlementSchedule.findById(scheduleId);
   assert.equal(schedule.status, "payment_pending");
