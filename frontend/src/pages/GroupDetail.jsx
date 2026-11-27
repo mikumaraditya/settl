@@ -166,6 +166,7 @@ export default function GroupDetail() {
   const [exactAmounts, setExactAmounts] = useState({})
 
   const handleExactAmountChange = (userId, value) => {
+    resetExpenseIdempotencyKey()
     setExactAmounts(prev => {
       const next = { ...prev, [userId]: value }
       
@@ -224,6 +225,7 @@ export default function GroupDetail() {
   }, [expenseForm.amount, expenseForm.splitType, group?.members])
 
   const openAddExpenseModal = useCallback(() => {
+    resetExpenseIdempotencyKey()
     setExpenseError('')
     if (group?.members?.length > 0) {
       const equalShare = 100 / group.members.length;
@@ -250,6 +252,7 @@ export default function GroupDetail() {
   }, [group, searchParams, setSearchParams, openAddExpenseModal])
 
   const handleSliderChange = (changedUserId, newValue) => {
+    resetExpenseIdempotencyKey()
     const memberIds = group?.members?.map(member => member.user?._id).filter(Boolean) || []
     if (memberIds.length <= 1) {
       setSplitPercentages({ [changedUserId]: 100 })
@@ -295,6 +298,17 @@ export default function GroupDetail() {
   };
   const [addingExpense, setAddingExpense]     = useState(false)
   const addExpenseRequestInFlightRef = useRef(false)
+  const expenseIdempotencyKeyRef = useRef(null)
+  const resetExpenseIdempotencyKey = () => { expenseIdempotencyKeyRef.current = null }
+  const getExpenseIdempotencyKey = () => {
+    if (!expenseIdempotencyKeyRef.current) {
+      const generatedKey = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `expense-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      expenseIdempotencyKeyRef.current = generatedKey
+    }
+    return expenseIdempotencyKeyRef.current
+  }
   const deleteExpenseRequestInFlightRef = useRef(false)
   const deleteGroupRequestInFlightRef = useRef(false)
   const addMemberRequestInFlightRef = useRef(false)
@@ -667,7 +681,11 @@ export default function GroupDetail() {
         }))
       }
 
-      const { data: createdExpense } = await axios.post('/expenses', payload)
+      const idempotencyKey = getExpenseIdempotencyKey()
+      const { data: createdExpense } = await axios.post('/expenses', payload, {
+        headers: { 'Idempotency-Key': idempotencyKey },
+      })
+      resetExpenseIdempotencyKey()
       setNow(Date.now())
       setExpenses(prev => prev.some(item => item._id === createdExpense._id)
         ? prev.map(item => item._id === createdExpense._id ? createdExpense : item)
@@ -680,6 +698,10 @@ export default function GroupDetail() {
         ...(activityFetched ? [fetchActivity()] : []),
       ])
     } catch (err) {
+      const status = err.response?.status
+      if ([400, 401, 403, 404, 422].includes(status) || err.response?.data?.code === 'IDEMPOTENCY_KEY_REUSED') {
+        resetExpenseIdempotencyKey()
+      }
       setExpenseError(err.response?.data?.message || 'We could not save this expense. Check your connection and try again.')
     } finally {
       addExpenseRequestInFlightRef.current = false
@@ -2306,7 +2328,7 @@ export default function GroupDetail() {
                     <input
                       type="text" placeholder="Dinner, Movie, Rent..."
                       value={expenseForm.description}
-                      onChange={e => { setExpenseForm({ ...expenseForm, description: e.target.value }); setExpenseError('') }}
+                      onChange={e => { resetExpenseIdempotencyKey(); setExpenseForm({ ...expenseForm, description: e.target.value }); setExpenseError('') }}
                       className="w-full bg-transparent border-0 border-b border-white/10 focus:border-blue-500 focus:ring-0 text-white font-bold text-lg placeholder:text-white/20 transition-all p-0 pb-2 ml-1"
                       required
                     />
@@ -2319,7 +2341,7 @@ export default function GroupDetail() {
                       <input
                         type="number" placeholder="0.00"
                         value={expenseForm.amount}
-                        onChange={e => { setExpenseForm({ ...expenseForm, amount: e.target.value }); setExpenseError('') }}
+                        onChange={e => { resetExpenseIdempotencyKey(); setExpenseForm({ ...expenseForm, amount: e.target.value }); setExpenseError('') }}
                         className="w-full bg-transparent border-0 border-b border-white/10 focus:border-blue-500 focus:ring-0 text-white font-bold text-lg placeholder:text-white/20 transition-all p-0 pb-2"
                         required
                       />
@@ -2333,7 +2355,7 @@ export default function GroupDetail() {
                     <div className="block md:hidden ml-1">
                       <select
                         value={expenseForm.category}
-                        onChange={e => setExpenseForm({ ...expenseForm, category: e.target.value })}
+                        onChange={e => { resetExpenseIdempotencyKey(); setExpenseForm({ ...expenseForm, category: e.target.value }) }}
                         className="group-category-select w-full bg-[#131b2e] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-blue-500 transition-all font-semibold cursor-pointer"
                       >
                         <option value="food">🍽️ Food</option>
@@ -2376,7 +2398,7 @@ export default function GroupDetail() {
                         const isActive = expenseForm.category === cat
                         return (
                           <button key={cat} type="button"
-                            onClick={() => setExpenseForm({ ...expenseForm, category: cat })}
+                            onClick={() => { resetExpenseIdempotencyKey(); setExpenseForm({ ...expenseForm, category: cat }) }}
                             className={`flex flex-col items-center gap-1.5 p-2 rounded-2xl border transition-all cursor-pointer ${
                               isActive 
                                 ? 'bg-blue-500/10 text-blue-400 border-blue-500/20 shadow-md shadow-blue-500/5' 
@@ -2403,9 +2425,9 @@ export default function GroupDetail() {
               <div>
                 <p className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest mb-2">Split Method</p>
                 <div className="bg-white/5 border border-white/5 p-1 rounded-2xl flex gap-1 mb-5">
-                  <button type="button" onClick={() => setExpenseForm({...expenseForm, splitType: 'equal'})} className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${expenseForm.splitType === 'equal' ? 'bg-white/10 text-white border border-white/5 shadow-sm' : 'text-white/50 hover:text-white/80'}`}>Split Equally</button>
-                  <button type="button" onClick={() => setExpenseForm({...expenseForm, splitType: 'percentage'})} className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${expenseForm.splitType === 'percentage' ? 'bg-white/10 text-white border border-white/5 shadow-sm' : 'text-white/50 hover:text-white/80'}`}>Uneven Split</button>
-                  <button type="button" onClick={() => setExpenseForm({...expenseForm, splitType: 'exact'})} className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${expenseForm.splitType === 'exact' ? 'bg-white/10 text-white border border-white/5 shadow-sm' : 'text-white/50 hover:text-white/80'}`}>Exact Amount</button>
+                  <button type="button" onClick={() => { resetExpenseIdempotencyKey(); setExpenseForm({...expenseForm, splitType: 'equal'}) }} className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${expenseForm.splitType === 'equal' ? 'bg-white/10 text-white border border-white/5 shadow-sm' : 'text-white/50 hover:text-white/80'}`}>Split Equally</button>
+                  <button type="button" onClick={() => { resetExpenseIdempotencyKey(); setExpenseForm({...expenseForm, splitType: 'percentage'}) }} className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${expenseForm.splitType === 'percentage' ? 'bg-white/10 text-white border border-white/5 shadow-sm' : 'text-white/50 hover:text-white/80'}`}>Uneven Split</button>
+                  <button type="button" onClick={() => { resetExpenseIdempotencyKey(); setExpenseForm({...expenseForm, splitType: 'exact'}) }} className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${expenseForm.splitType === 'exact' ? 'bg-white/10 text-white border border-white/5 shadow-sm' : 'text-white/50 hover:text-white/80'}`}>Exact Amount</button>
                 </div>
                 
                 <div className="flex justify-between items-center mb-3">
