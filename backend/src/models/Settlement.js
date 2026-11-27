@@ -21,6 +21,15 @@ const settlementSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    // Expense records used when this payment amount was validated against
+    // the group's simplified debt ledger. Legacy settlements may omit it.
+    sourceExpenseIds: {
+      type: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Expense",
+      }],
+      default: undefined,
+    },
 
     // "pending"    → payer marked as paid, waiting for receiver to confirm
     // "confirmed"  → receiver confirmed receipt, balance is cleared
@@ -61,6 +70,9 @@ const settlementSchema = new mongoose.Schema(
   },
   { timestamps: true },
 );
+
+// Supports protecting the exact ledger rows that a payment was based on.
+settlementSchema.index({ group: 1, status: 1, sourceExpenseIds: 1 });
 
 // Prevent concurrent duplicate pending settlements at DB level
 settlementSchema.index(

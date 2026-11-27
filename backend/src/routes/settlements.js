@@ -10,6 +10,7 @@ import ActivityLog from '../models/ActivityLog.js';
 import protect from '../middleware/auth.js';
 import requireVerified from '../middleware/requireVerified.js';
 import simplifyDebts from '../utils/debtSimplify.js';
+import getExpenseSourceIds from "../utils/expenseSourceLinks.js";
 import { getIO } from '../socket.js';
 import { reserveGroupMutation, releaseGroupMutation } from '../utils/groupMutation.js';
 const safeEmit = (room, event, payload) => { try { getIO()?.to(room)?.emit(event, payload); } catch { /* ignore */ } };
@@ -498,6 +499,14 @@ router.post("/settle", protect, async (req, res) => {
         status: "pending",
         dueDate: defaultDueDate,
         upiReference,
+        // Preserve the accepted schedule's ledger snapshot and include any
+        // additional group ledger rows present when this payment is recorded.
+        sourceExpenseIds: [...new Set([
+          ...(scheduleId && Array.isArray(activeSchedule?.sourceExpenseIds)
+            ? activeSchedule.sourceExpenseIds
+            : []),
+          ...getExpenseSourceIds(expenses),
+        ].map((expenseId) => expenseId.toString()))],
         ...(idempotencyKey ? { idempotencyKey, idempotencyHash } : {}),
       });
       if (linkedSchedule) {
@@ -1048,6 +1057,7 @@ router.post("/schedule", async (req, res) => {
       schedule = await SettlementSchedule.create({
         group: groupId, from: req.user.id, to: toUserId, amount,
         dueDate: parsedDueDate, status: "proposed", active: true,
+        sourceExpenseIds: getExpenseSourceIds(expenses),
         ...(idempotencyKey ? { idempotencyKey, idempotencyHash } : {}),
       });
     } catch (createError) {

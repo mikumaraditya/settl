@@ -46,6 +46,7 @@ let tokenD;
 let group;
 let groupId;
 let scheduleId;
+let initialExpense;
 
 before(async () => {
   const { testUri, testDbName } = getTestDbConfig();
@@ -71,7 +72,7 @@ before(async () => {
   });
   groupId = group._id.toString();
 
-  await Expense.create({
+  initialExpense = await Expense.create({
     description: "Schedule test expense",
     amount: 1000,
     paidBy: userB._id,
@@ -397,7 +398,7 @@ test("settlement idempotency replays the same pending payment and rejects a chan
     createdBy: userA._id,
   });
   try {
-    await Expense.create({
+    const sourceExpense = await Expense.create({
       description: "Settlement idempotency debt",
       amount: 1000,
       paidBy: userB._id,
@@ -421,6 +422,7 @@ test("settlement idempotency replays the same pending payment and rejects a chan
       .set("Idempotency-Key", key)
       .send(payload);
     assert.equal(first.status, 201, JSON.stringify(first.body));
+    assert.deepEqual(first.body.sourceExpenseIds.map(String), [sourceExpense._id.toString()]);
 
     const replay = await request(app)
       .post("/api/settlements/settle")
@@ -668,6 +670,14 @@ test("payer can propose a date without changing the group's debt", async () => {
   const today = new Date().toISOString().slice(0, 10);
   const due = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
+  const unrelatedExpense = await Expense.create({
+    description: "Unrelated member-only expense",
+    amount: 25,
+    paidBy: userC._id,
+    group: group._id,
+    splits: [{ user: userC._id, amount: 25 }],
+  });
+
   const create = await request(app)
     .post("/api/settlements/schedule")
     .set("Authorization", `Bearer ${tokenA}`)
@@ -676,6 +686,13 @@ test("payer can propose a date without changing the group's debt", async () => {
   assert.equal(create.status, 201, JSON.stringify(create.body));
   assert.equal(create.body.status, "proposed");
   assert.equal(create.body.amount, 300);
+  const scheduleSourceIds = new Set(create.body.sourceExpenseIds.map(String));
+  assert.equal(scheduleSourceIds.has(initialExpense._id.toString()), true);
+  assert.equal(
+    scheduleSourceIds.has(unrelatedExpense._id.toString()),
+    true,
+    "group-wide debt simplification uses expenses across all members as its ledger snapshot",
+  );
   scheduleId = create.body._id;
 
   const privateScheduleList = await request(app)
@@ -858,6 +875,14 @@ test("only the receiver can accept; accepted schedule remains separate from paym
 });
 
 test("scheduled payment completes only after receiver confirms; rejection restores accepted schedule", async () => {
+  const laterLedgerExpense = await Expense.create({
+    description: "Expense added after the schedule was agreed",
+    amount: 25,
+    paidBy: userC._id,
+    group: group._id,
+    splits: [{ user: userC._id, amount: 25 }],
+  });
+
   const mismatch = await request(app)
     .post("/api/settlements/settle")
     .set("Authorization", `Bearer ${tokenA}`)
@@ -873,6 +898,17 @@ test("scheduled payment completes only after receiver confirms; rejection restor
   assert.equal(payment.body.status, "pending");
 
   let schedule = await SettlementSchedule.findById(scheduleId);
+  const paymentSourceIds = new Set(payment.body.sourceExpenseIds.map(String));
+  assert.equal(
+    schedule.sourceExpenseIds.every((expenseId) => paymentSourceIds.has(expenseId.toString())),
+    true,
+    "a scheduled payment must retain the source ledger snapshot from its accepted schedule",
+  );
+  assert.equal(
+    paymentSourceIds.has(laterLedgerExpense._id.toString()),
+    true,
+    "the payment also captures ledger rows present when the payment itself is recorded",
+  );
   assert.equal(schedule.status, "payment_pending");
   assert.equal(schedule.paymentSettlement.toString(), payment.body._id);
 
