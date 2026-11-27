@@ -520,9 +520,17 @@ router.delete("/:id", async (req, res) => {
       });
     }
 
-    // The data model does not link a settlement to a specific expense.
-    // Block deletion only when relevant payment activity was created after this
-    // expense (or is legacy data without a timestamp).
+    // New payment records explicitly snapshot the expense rows that formed
+    // the debt they were created against. Only those rows are protected.
+    // Legacy records predate this field, so retain the former conservative
+    // timestamp check only for documents where sourceExpenseIds is missing.
+    const legacySourceGuard = {
+      sourceExpenseIds: { $exists: false },
+      $or: [
+        { createdAt: { $gte: expense.createdAt } },
+        { createdAt: { $exists: false } },
+      ],
+    };
     const [hasSettlement, hasActiveSchedule] = await Promise.all([
       Settlement.exists({
         group: expense.group,
@@ -535,8 +543,8 @@ router.delete("/:id", async (req, res) => {
           },
           {
             $or: [
-              { createdAt: { $gte: expense.createdAt } },
-              { createdAt: { $exists: false } },
+              { sourceExpenseIds: expense._id },
+              legacySourceGuard,
             ],
           },
         ],
@@ -545,8 +553,8 @@ router.delete("/:id", async (req, res) => {
         group: expense.group,
         active: true,
         $or: [
-          { createdAt: { $gte: expense.createdAt } },
-          { createdAt: { $exists: false } },
+          { sourceExpenseIds: expense._id },
+          legacySourceGuard,
         ],
       }),
     ]);
