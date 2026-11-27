@@ -640,6 +640,7 @@ router.post("/confirm", protect, async (req, res) => {
         // Repair the linked schedule if the previous request stopped after
         // confirming the settlement but before completing the schedule.
         await completeLinkedSchedule(current, req.user.id);
+        clearInsightCaches([fromUserId]);
         return res.json(current);
       }
       return res.status(409).json({ message: "This settlement is no longer pending and cannot be confirmed" });
@@ -726,6 +727,7 @@ const handlePayerCancel = async (req, res) => {
       });
       if (current?.status === "cancelled") {
         await restoreLinkedSchedule(current._id);
+        clearInsightCaches([req.user.id, current.to?.toString()]);
         return res.json({ message: "Settlement request cancelled successfully", settlement: current });
       }
       return res.status(409).json({ message: "This settlement is no longer pending and cannot be cancelled" });
@@ -826,6 +828,7 @@ router.post("/reject", protect, async (req, res) => {
       }).populate("from", "name");
       if (current?.status === "rejected") {
         await restoreLinkedSchedule(current._id);
+        clearInsightCaches([fromUserId, req.user.id]);
         return res.json({ message: "Settlement request rejected", settlement: current });
       }
       return res.status(409).json({ message: "This settlement is no longer pending and cannot be rejected" });
