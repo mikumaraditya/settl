@@ -1,5 +1,6 @@
 import express from 'express';
 import mongoose from 'mongoose';
+import { randomUUID } from 'node:crypto';
 import rateLimit from 'express-rate-limit';
 import { createRateLimitStore } from '../config/rateLimitStore.js';
 import Group from '../models/Group.js';
@@ -462,30 +463,145 @@ router.delete("/:id/members/:userId", async (req, res) => {
 
 // DELETE GROUP (only when all balances and pending payment activity are clear)
 router.delete("/:id", async (req, res) => {
+  let deletionMutationId = null;
+  let cleanupStarted = false;
+  let lockedGroupId = null;
+
+  const releaseDeletionReservation = async ({ keepGroupLocked }) => {
+    if (!lockedGroupId || !deletionMutationId) return;
+    const update = keepGroupLocked
+      ? {
+          $set: {
+            deletionMutationId: null,
+            deletionMutationExpiresAt: null,
+          },
+        }
+      : {
+          $set: {
+            isDeleting: false,
+            deletionCleanupStarted: false,
+            deletionMutationId: null,
+            deletionMutationExpiresAt: null,
+            activeMutations: 0,
+            mutationExpiresAt: null,
+          },
+        };
+    await Group.updateOne(
+      {
+        _id: lockedGroupId,
+        isDeleting: true,
+        deletionMutationId,
+        ...(keepGroupLocked ? { deletionCleanupStarted: true } : { deletionCleanupStarted: { $ne: true } }),
+      },
+      update,
+    );
+    deletionMutationId = null;
+    lockedGroupId = null;
+  };
+
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {
       return res.status(400).json({ message: "Invalid group id" });
     }
 
-    const group = await Group.findById(req.params.id);
-    if (!group) {
+    const existingGroup = await Group.findById(req.params.id);
+    if (!existingGroup) {
       return res.status(404).json({ message: "Group not found" });
     }
 
-    if (group.createdBy.toString() !== req.user.id) {
+    if (existingGroup.createdBy.toString() !== req.user.id) {
       return res.status(403).json({ message: "Only the group creator can delete it" });
     }
 
-    // A previous deletion attempt may have completed part of the cleanup.
-    // Keep the group locked and let its creator safely retry the idempotent cleanup.
-    if (!group.isDeleting) {
+    // Acquire the deletion reservation BEFORE reading balances or payment state.
+    // Financial and membership writes check isDeleting and cannot begin after
+    // this atomic transition succeeds.
+    const now = new Date();
+    const token = randomUUID();
+    const leaseExpiresAt = new Date(now.getTime() + 15 * 60 * 1000);
+    const legacyCleanupRetry = existingGroup.isDeleting && !existingGroup.deletionMutationId;
+    const lock = await Group.findOneAndUpdate(
+      {
+        _id: existingGroup._id,
+        createdBy: req.user.id,
+        $and: [
+          {
+            $or: [
+              { isDeleting: { $ne: true } },
+              { isDeleting: true, deletionMutationId: { $in: [null, ""] } },
+              {
+                isDeleting: true,
+                deletionMutationExpiresAt: { $type: "date", $lte: now },
+              },
+            ],
+          },
+          {
+            $or: [
+              { isDeleting: true },
+              { membershipMutation: { $ne: true } },
+              {
+                membershipMutation: true,
+                membershipMutationExpiresAt: { $type: "date", $lte: now },
+              },
+            ],
+          },
+          {
+            $or: [
+              { isDeleting: true },
+              { financialMutationId: { $in: [null, ""] } },
+              { financialMutationExpiresAt: { $type: "date", $lte: now } },
+            ],
+          },
+          {
+            $or: [
+              { isDeleting: true },
+              { activeMutations: 0 },
+              { activeMutations: { $exists: false } },
+              {
+                activeMutations: { $gt: 0 },
+                mutationExpiresAt: { $type: "date", $lte: now },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        $set: {
+          isDeleting: true,
+          deletionMutationId: token,
+          deletionMutationExpiresAt: leaseExpiresAt,
+          deletionCleanupStarted: legacyCleanupRetry || existingGroup.deletionCleanupStarted === true,
+          activeMutations: 0,
+          mutationExpiresAt: null,
+          financialMutationId: null,
+          financialMutationExpiresAt: null,
+          membershipMutation: false,
+          membershipMutationExpiresAt: null,
+        },
+      },
+      { new: true },
+    );
+
+    if (!lock) {
+      return res.status(409).json({
+        message: "This group is being updated or deleted right now. Please wait a moment and try again.",
+      });
+    }
+
+    deletionMutationId = token;
+    lockedGroupId = lock._id;
+    cleanupStarted = lock.deletionCleanupStarted === true;
+
+    if (!cleanupStarted) {
+      // The group is now frozen. Read the current financial state under the
+      // reservation, not from the stale snapshot used to start the request.
       const [expenses, settlements, activeSchedule, pendingSettlement] = await Promise.all([
-        Expense.find({ group: group._id })
+        Expense.find({ group: lock._id })
           .populate("paidBy", "name")
           .populate("splits.user", "name"),
-        Settlement.find({ group: group._id }),
-        SettlementSchedule.exists({ group: group._id, active: true }),
-        Settlement.exists({ group: group._id, status: "pending" }),
+        Settlement.find({ group: lock._id }),
+        SettlementSchedule.exists({ group: lock._id, active: true }),
+        Settlement.exists({ group: lock._id, status: "pending" }),
       ]);
 
       const confirmedSettlements = settlements.filter(
@@ -493,76 +609,56 @@ router.delete("/:id", async (req, res) => {
       );
       const pendingTransactions = simplifyDebts(expenses, confirmedSettlements);
 
+      let blocker = null;
       if (pendingTransactions.length > 0) {
-        return res.status(409).json({
-          message: "This group still has unpaid balances. Settle all dues before deleting it.",
-        });
-      }
-      if (pendingSettlement) {
-        return res.status(409).json({
-          message: "A payment is still awaiting confirmation. Finish or cancel it before deleting this group.",
-        });
-      }
-      if (activeSchedule) {
-        return res.status(409).json({
-          message: "This group has an active payment schedule. Complete or cancel it before deleting the group.",
-        });
+        blocker = "This group still has unpaid balances. Settle all dues before deleting it.";
+      } else if (pendingSettlement) {
+        blocker = "A payment is still awaiting confirmation. Finish or cancel it before deleting this group.";
+      } else if (activeSchedule) {
+        blocker = "This group has an active payment schedule. Complete or cancel it before deleting the group.";
       }
 
-      // Acquire the deletion lock only when no expense create/delete operation
-      // is in flight. New expense writes reserve activeMutations atomically.
-      const lock = await Group.findOneAndUpdate(
+      if (blocker) {
+        await releaseDeletionReservation({ keepGroupLocked: false });
+        return res.status(409).json({ message: blocker });
+      }
+
+      // Persist the transition to destructive cleanup using the owner token.
+      // A second delete request cannot pass the same preflight concurrently.
+      const markedForCleanup = await Group.updateOne(
         {
-          _id: group._id,
+          _id: lock._id,
           createdBy: req.user.id,
-          isDeleting: { $ne: true },
-          $and: [
-            {
-              $or: [
-                { membershipMutation: { $ne: true } },
-                {
-                  membershipMutation: true,
-                  membershipMutationExpiresAt: { $type: "date", $lte: new Date() },
-                },
-              ],
-            },
-            {
-              $or: [
-                { activeMutations: 0 },
-                { activeMutations: { $exists: false } },
-                {
-                  activeMutations: { $gt: 0 },
-                  mutationExpiresAt: { $type: "date", $lte: new Date() },
-                },
-              ],
-            },
-          ],
+          isDeleting: true,
+          deletionMutationId: token,
+          deletionCleanupStarted: { $ne: true },
         },
-        { $set: { isDeleting: true, mutationExpiresAt: null, membershipMutation: false, membershipMutationExpiresAt: null } },
-        { new: true },
+        { $set: { deletionCleanupStarted: true } },
       );
-
-      if (!lock) {
+      if (markedForCleanup.modifiedCount !== 1) {
         return res.status(409).json({
-          message: "This group is being updated right now. Please wait a moment and try deleting it again.",
+          message: "The group deletion state changed. Refresh and try again.",
         });
       }
+      cleanupStarted = true;
     }
 
-    // Each operation is idempotent. If a step fails, the group remains locked
-    // so the creator can retry and finish cleanup without accepting new expenses.
+    // Each operation is idempotent. Once cleanup has started, a failure keeps
+    // the group closed to new writes so the creator can safely retry it.
     await Promise.all([
-      Expense.deleteMany({ group: group._id }),
-      Settlement.deleteMany({ group: group._id }),
-      SettlementSchedule.deleteMany({ group: group._id }),
-      ActivityLog.deleteMany({ group: group._id }),
-      Message.deleteMany({ group: group._id }),
+      Expense.deleteMany({ group: lock._id }),
+      Settlement.deleteMany({ group: lock._id }),
+      SettlementSchedule.deleteMany({ group: lock._id }),
+      ActivityLog.deleteMany({ group: lock._id }),
+      Message.deleteMany({ group: lock._id }),
     ]);
 
     const deleted = await Group.deleteOne({
-      _id: group._id,
+      _id: lock._id,
       createdBy: req.user.id,
       isDeleting: true,
+      deletionMutationId: token,
+      deletionCleanupStarted: true,
     });
 
     if (deleted.deletedCount !== 1) {
@@ -571,12 +667,25 @@ router.delete("/:id", async (req, res) => {
       });
     }
 
-    clearInsightCaches(group.members.map((member) => member.user));
+    deletionMutationId = null;
+    lockedGroupId = null;
+    clearInsightCaches(lock.members.map((member) => member.user));
     return res.json({ message: "Group deleted" });
   } catch (error) {
     console.error("Error deleting group:", error);
+    if (deletionMutationId && lockedGroupId) {
+      try {
+        // Preflight failures are reversible; cleanup failures are not. Keep
+        // only the latter frozen and release their token for an immediate retry.
+        await releaseDeletionReservation({ keepGroupLocked: cleanupStarted });
+      } catch (releaseError) {
+        console.error("Could not release group deletion reservation:", releaseError);
+      }
+    }
     return res.status(500).json({
-      message: "We could not finish deleting this group. Your group is locked against new expenses; retry the deletion to finish cleanup.",
+      message: cleanupStarted
+        ? "We could not finish deleting this group. Your group is locked against new writes; retry the deletion to finish cleanup."
+        : "We could not verify that this group is safe to delete. The group remains available; please try again.",
     });
   }
 });
