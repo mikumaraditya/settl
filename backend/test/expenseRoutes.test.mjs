@@ -244,6 +244,60 @@ describe("Expense creation and deletion lifecycle", () => {
     assert.equal(storedGroup.activeMutations, 0);
   });
 
+  it("replays a matching expense idempotency key and rejects changed payloads", async () => {
+    const group = await makeGroup();
+    const idempotencyKey = "expense-create-retry-001";
+    const payload = {
+      groupId: group._id.toString(),
+      description: "Retry-safe shared lunch",
+      amount: 240,
+      category: "food",
+      splitType: "equal",
+    };
+
+    const first = await request(app)
+      .post("/api/expenses")
+      .set("Authorization", `Bearer ${payerToken}`)
+      .set("Idempotency-Key", idempotencyKey)
+      .send(payload);
+    assert.equal(first.status, 201);
+
+    const replay = await request(app)
+      .post("/api/expenses")
+      .set("Authorization", `Bearer ${payerToken}`)
+      .set("Idempotency-Key", idempotencyKey)
+      .send(payload);
+    assert.equal(replay.status, 200);
+    assert.equal(replay.body._id, first.body._id);
+    assert.equal(await Expense.countDocuments({ group: group._id }), 1);
+
+    const changedPayload = await request(app)
+      .post("/api/expenses")
+      .set("Authorization", `Bearer ${payerToken}`)
+      .set("Idempotency-Key", idempotencyKey)
+      .send({ ...payload, amount: 260 });
+    assert.equal(changedPayload.status, 409);
+    assert.equal(changedPayload.body.code, "IDEMPOTENCY_KEY_REUSED");
+    assert.equal(await Expense.countDocuments({ group: group._id }), 1);
+    assert.equal((await Group.findById(group._id)).activeMutations, 0);
+  });
+
+  it("rejects malformed expense idempotency keys", async () => {
+    const group = await makeGroup();
+    const response = await request(app)
+      .post("/api/expenses")
+      .set("Authorization", `Bearer ${payerToken}`)
+      .set("Idempotency-Key", "bad key")
+      .send({
+        groupId: group._id.toString(),
+        description: "Invalid key",
+        amount: 25,
+      });
+
+    assert.equal(response.status, 400);
+    assert.equal(await Expense.countDocuments({ group: group._id }), 0);
+  });
+
   it("rejects exact splits with missing, duplicate or mismatched members", async () => {
     const group = await makeGroup();
     const badPayloads = [
