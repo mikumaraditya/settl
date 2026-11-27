@@ -1,6 +1,6 @@
 import express from 'express';
 import mongoose from 'mongoose';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import rateLimit from 'express-rate-limit';
 import { createRateLimitStore } from '../config/rateLimitStore.js';
 import Group from '../models/Group.js';
@@ -121,17 +121,14 @@ const membershipMutationConflict = async (groupId) => {
 };
 
 // CREATE GROUP
-router.post("/", groupCreateLimiter, async (req, res) => {
-  const rawName = req.body?.name;
-  const rawDescription = req.body?.description;
-
+const prepareGroupCreateRequest = async (req, res, next) => {
   try {
+    const rawName = req.body?.name;
+    const rawDescription = req.body?.description;
     const name = typeof rawName === "string" ? rawName.trim() : "";
     const description = typeof rawDescription === "string" ? rawDescription.trim() : "";
 
-    if (!name) {
-      return res.status(400).json({ message: "Group name is required" });
-    }
+    if (!name) return res.status(400).json({ message: "Group name is required" });
     if (name.length > 80) {
       return res.status(400).json({ message: "Group name cannot exceed 80 characters" });
     }
@@ -139,12 +136,76 @@ router.post("/", groupCreateLimiter, async (req, res) => {
       return res.status(400).json({ message: "Group description cannot exceed 280 characters" });
     }
 
-    const group = await Group.create({
-      name,
-      description,
-      createdBy: req.user.id,
-      members: [{ user: req.user.id, role: "admin" }],
-    });
+    const rawIdempotencyKey = req.get("Idempotency-Key");
+    const idempotencyKey = typeof rawIdempotencyKey === "string"
+      ? rawIdempotencyKey.trim()
+      : null;
+    if (idempotencyKey && !/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) {
+      return res.status(400).json({ message: "Invalid group idempotency key" });
+    }
+
+    const idempotencyHash = idempotencyKey
+      ? createHash("sha256").update(JSON.stringify({ name, description })).digest("hex")
+      : null;
+    req.groupCreatePayload = { name, description, idempotencyKey, idempotencyHash };
+
+    // Replay before rate limiting: a retry is not a new group creation.
+    if (idempotencyKey) {
+      const existing = await Group.findOne({
+        createdBy: req.user.id,
+        idempotencyKey,
+      });
+      if (existing) {
+        if (existing.idempotencyHash !== idempotencyHash) {
+          return res.status(409).json({
+            code: "IDEMPOTENCY_KEY_REUSED",
+            message: "This group creation request key was already used for different details.",
+          });
+        }
+        return res.status(200).json(existing);
+      }
+    }
+
+    return groupCreateLimiter(req, res, next);
+  } catch (error) {
+    console.error("Could not prepare group creation request:", error);
+    return res.status(500).json({ message: "We could not create this group. Please try again." });
+  }
+};
+
+router.post("/", prepareGroupCreateRequest, async (req, res) => {
+  const { name, description, idempotencyKey, idempotencyHash } = req.groupCreatePayload;
+
+  try {
+    let group;
+    try {
+      group = await Group.create({
+        name,
+        description,
+        createdBy: req.user.id,
+        members: [{ user: req.user.id, role: "admin" }],
+        ...(idempotencyKey ? { idempotencyKey, idempotencyHash } : {}),
+      });
+    } catch (createError) {
+      // Concurrent identical requests can both pass the initial lookup.
+      // The unique index makes the second writer replay the first record.
+      if (idempotencyKey && createError?.code === 11000) {
+        const existing = await Group.findOne({
+          createdBy: req.user.id,
+          idempotencyKey,
+        });
+        if (existing) {
+          if (existing.idempotencyHash !== idempotencyHash) {
+            return res.status(409).json({
+              code: "IDEMPOTENCY_KEY_REUSED",
+              message: "This group creation request key was already used for different details.",
+            });
+          }
+          return res.status(200).json(existing);
+        }
+      }
+      throw createError;
+    }
 
     clearInsightCaches([req.user.id]);
 
