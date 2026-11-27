@@ -582,6 +582,102 @@ describe("Expense creation and deletion lifecycle", () => {
     assert.ok(await Expense.exists({ _id: expense._id }));
   });
 
+  it("protects an expense explicitly referenced by a settlement even if the settlement predates it", async () => {
+    const group = await makeGroup();
+    const expense = await makeExpense(group);
+    const settlement = await Settlement.create({
+      group: group._id,
+      from: member._id,
+      to: payer._id,
+      amount: 10,
+      status: "confirmed",
+      sourceExpenseIds: [expense._id],
+    });
+    await Settlement.collection.updateOne(
+      { _id: settlement._id },
+      { $set: { createdAt: new Date(expense.createdAt.getTime() - 60_000) } },
+    );
+
+    const response = await request(app)
+      .delete(`/api/expenses/${expense._id}`)
+      .set("Authorization", `Bearer ${payerToken}`);
+
+    assert.equal(response.status, 409);
+    assert.ok(await Expense.exists({ _id: expense._id }));
+  });
+
+  it("allows deletion when a newer settlement explicitly does not reference the expense", async () => {
+    const group = await makeGroup();
+    const expense = await makeExpense(group);
+    const settlement = await Settlement.create({
+      group: group._id,
+      from: member._id,
+      to: payer._id,
+      amount: 10,
+      status: "confirmed",
+      sourceExpenseIds: [],
+    });
+    await Settlement.collection.updateOne(
+      { _id: settlement._id },
+      { $set: { createdAt: new Date(expense.createdAt.getTime() + 60_000) } },
+    );
+
+    const response = await request(app)
+      .delete(`/api/expenses/${expense._id}`)
+      .set("Authorization", `Bearer ${payerToken}`);
+
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    assert.equal(await Expense.exists({ _id: expense._id }), null);
+  });
+
+  it("uses explicit schedule expense links instead of schedule creation time", async () => {
+    const linkedGroup = await makeGroup();
+    const linkedExpense = await makeExpense(linkedGroup);
+    const linkedSchedule = await SettlementSchedule.create({
+      group: linkedGroup._id,
+      from: member._id,
+      to: payer._id,
+      amount: 10,
+      dueDate: new Date("2026-12-01T12:00:00.000Z"),
+      status: "accepted",
+      active: true,
+      sourceExpenseIds: [linkedExpense._id],
+    });
+    await SettlementSchedule.collection.updateOne(
+      { _id: linkedSchedule._id },
+      { $set: { createdAt: new Date(linkedExpense.createdAt.getTime() - 60_000) } },
+    );
+
+    const blocked = await request(app)
+      .delete(`/api/expenses/${linkedExpense._id}`)
+      .set("Authorization", `Bearer ${payerToken}`);
+    assert.equal(blocked.status, 409);
+    assert.ok(await Expense.exists({ _id: linkedExpense._id }));
+
+    const unrelatedGroup = await makeGroup();
+    const unrelatedExpense = await makeExpense(unrelatedGroup);
+    const unrelatedSchedule = await SettlementSchedule.create({
+      group: unrelatedGroup._id,
+      from: member._id,
+      to: payer._id,
+      amount: 10,
+      dueDate: new Date("2026-12-01T12:00:00.000Z"),
+      status: "accepted",
+      active: true,
+      sourceExpenseIds: [],
+    });
+    await SettlementSchedule.collection.updateOne(
+      { _id: unrelatedSchedule._id },
+      { $set: { createdAt: new Date(unrelatedExpense.createdAt.getTime() + 60_000) } },
+    );
+
+    const allowed = await request(app)
+      .delete(`/api/expenses/${unrelatedExpense._id}`)
+      .set("Authorization", `Bearer ${payerToken}`);
+    assert.equal(allowed.status, 200, JSON.stringify(allowed.body));
+    assert.equal(await Expense.exists({ _id: unrelatedExpense._id }), null);
+  });
+
   it("rejects expense deletion after the two-hour correction window", async () => {
     const group = await makeGroup();
     const expense = await makeExpense(group);
