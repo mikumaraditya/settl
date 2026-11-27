@@ -59,6 +59,16 @@ const settlementScheduleSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    // A retry-safe identity for the original proposal request. Legacy rows omit it.
+    idempotencyKey: {
+      type: String,
+      trim: true,
+      maxlength: 128,
+    },
+    idempotencyHash: {
+      type: String,
+      match: /^[a-f0-9]{64}$/,
+    },
   },
   { timestamps: true },
 );
@@ -66,6 +76,15 @@ const settlementScheduleSchema = new mongoose.Schema(
 settlementScheduleSchema.index(
   { group: 1, from: 1, to: 1 },
   { unique: true, partialFilterExpression: { active: true } },
+);
+
+// One logical proposal per payer/request key, even after it is accepted or cancelled.
+settlementScheduleSchema.index(
+  { from: 1, idempotencyKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { idempotencyKey: { $type: "string" } },
+  },
 );
 
 settlementScheduleSchema.index({ group: 1, active: 1, dueDate: 1 });
