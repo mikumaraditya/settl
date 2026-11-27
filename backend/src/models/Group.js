@@ -49,6 +49,17 @@ const groupSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // A single owner-token lease serializes balance-affecting writes across
+    // expense and settlement routes. The token prevents stale requests from
+    // releasing a newer request's reservation.
+    financialMutationId: {
+      type: String,
+      default: null,
+    },
+    financialMutationExpiresAt: {
+      type: Date,
+      default: null,
+    },
     // Membership changes are exclusive with expense writes and group deletion.
     membershipMutation: {
       type: Boolean,
