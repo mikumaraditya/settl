@@ -873,10 +873,6 @@ router.post("/schedule", async (req, res) => {
     if (Number.isNaN(parsedDueDate.getTime()) || parsedDueDate.toISOString().slice(0, 10) !== resolvedDueDate) {
       return res.status(400).json({ message: "Please provide a valid calendar date" });
     }
-    if (resolvedDueDate < getDateInTimeZone(body.timeZone)) {
-      return res.status(400).json({ message: "Due date cannot be in the past" });
-    }
-
     const requestedDate = dueDate === undefined || dueDate === null || dueDate === ""
       ? null
       : resolvedDueDate;
@@ -926,6 +922,12 @@ router.post("/schedule", async (req, res) => {
       if (previousSchedule) {
         return await respondWithExistingSchedule(previousSchedule);
       }
+    }
+
+    // An explicit date can be in the past by the time a successful proposal
+    // is retried. Check this only for new proposals, after replay lookup.
+    if (resolvedDueDate < getDateInTimeZone(body.timeZone)) {
+      return res.status(400).json({ message: "Due date cannot be in the past" });
     }
 
     const [existingPayment, existingSchedule] = await Promise.all([
