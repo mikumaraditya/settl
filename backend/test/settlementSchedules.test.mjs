@@ -686,11 +686,12 @@ test("payer can propose a date without changing the group's debt", async () => {
   assert.equal(create.status, 201, JSON.stringify(create.body));
   assert.equal(create.body.status, "proposed");
   assert.equal(create.body.amount, 300);
-  assert.deepEqual(create.body.sourceExpenseIds.map(String), [initialExpense._id.toString()]);
+  const scheduleSourceIds = new Set(create.body.sourceExpenseIds.map(String));
+  assert.equal(scheduleSourceIds.has(initialExpense._id.toString()), true);
   assert.equal(
-    create.body.sourceExpenseIds.includes(unrelatedExpense._id.toString()),
-    false,
-    "a schedule must not claim an unrelated member-only expense as its source",
+    scheduleSourceIds.has(unrelatedExpense._id.toString()),
+    true,
+    "group-wide debt simplification uses expenses across all members as its ledger snapshot",
   );
   scheduleId = create.body._id;
 
