@@ -503,7 +503,7 @@ router.post("/settle", protect, async (req, res) => {
         // schedules did not capture it, so conservatively snapshot current rows.
         sourceExpenseIds: scheduleId && Array.isArray(activeSchedule?.sourceExpenseIds)
           ? activeSchedule.sourceExpenseIds
-          : getExpenseSourceIds(expenses, req.user.id, toUserId),
+          : getExpenseSourceIds(expenses),
         ...(idempotencyKey ? { idempotencyKey, idempotencyHash } : {}),
       });
       if (linkedSchedule) {
@@ -1054,7 +1054,7 @@ router.post("/schedule", async (req, res) => {
       schedule = await SettlementSchedule.create({
         group: groupId, from: req.user.id, to: toUserId, amount,
         dueDate: parsedDueDate, status: "proposed", active: true,
-        sourceExpenseIds: getExpenseSourceIds(expenses, req.user.id, toUserId),
+        sourceExpenseIds: getExpenseSourceIds(expenses),
         ...(idempotencyKey ? { idempotencyKey, idempotencyHash } : {}),
       });
     } catch (createError) {
