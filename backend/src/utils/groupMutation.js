@@ -66,8 +66,9 @@ export async function reserveGroupMutation(groupId, userId) {
 }
 
 /**
- * Release only this request's lock. Decrement the in-flight counter separately
- * so an expired request cannot clear a newer request's token.
+ * Release only this request's lock. The token and active mutation counter
+ * are cleared in one conditional update, so an expired owner cannot clear
+ * a newer request's reservation.
  */
 export async function releaseGroupMutation(groupId, token) {
   if (!groupId || !token) return;
