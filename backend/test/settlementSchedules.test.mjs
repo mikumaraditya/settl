@@ -161,7 +161,7 @@ test("payer-provided UPI references are validated and visible only to settlement
   const rejected = await request(app)
     .post("/api/settlements/reject")
     .set("Authorization", `Bearer ${tokenB}`)
-    .send({ groupId, fromUserId: userA._id.toString(), reason: "Reference does not match receipt" });
+    .send({ groupId, settlementId: payment.body._id, reason: "Reference does not match receipt" });
   assert.equal(rejected.status, 200);
   assert.equal(rejected.body.settlement.upiReference, "123456789012");
 
@@ -667,7 +667,7 @@ test("scheduled payment completes only after receiver confirms; rejection restor
   const rejected = await request(app)
     .post("/api/settlements/reject")
     .set("Authorization", `Bearer ${tokenB}`)
-    .send({ groupId, fromUserId: userA._id.toString(), reason: "Payment not received" });
+    .send({ groupId, settlementId: payment.body._id, reason: "Payment not received" });
   assert.equal(rejected.status, 200);
   schedule = await SettlementSchedule.findById(scheduleId);
   assert.equal(schedule.status, "accepted");
@@ -688,7 +688,7 @@ test("scheduled payment completes only after receiver confirms; rejection restor
   const confirmed = await request(app)
     .post("/api/settlements/confirm")
     .set("Authorization", `Bearer ${tokenB}`)
-    .send({ groupId, fromUserId: userA._id.toString() });
+    .send({ groupId, settlementId: retry.body._id });
   assert.equal(confirmed.status, 200);
   assert.equal(confirmed.body.status, "confirmed");
 
@@ -738,15 +738,15 @@ test("settlement and schedule transitions respect an active group mutation lock"
     const confirm = await request(app)
       .post("/api/settlements/confirm")
       .set("Authorization", `Bearer ${tokenB}`)
-      .send({ groupId, fromUserId: userA._id.toString() });
+      .send({ groupId, settlementId: settlement._id.toString() });
     const reject = await request(app)
       .post("/api/settlements/reject")
       .set("Authorization", `Bearer ${tokenB}`)
-      .send({ groupId, fromUserId: userA._id.toString() });
+      .send({ groupId, settlementId: settlement._id.toString() });
     const cancel = await request(app)
       .delete("/api/settlements/settle")
       .set("Authorization", `Bearer ${tokenA}`)
-      .send({ groupId, toUserId: userB._id.toString() });
+      .send({ groupId, settlementId: settlement._id.toString() });
     const respond = await request(app)
       .post(`/api/settlements/schedule/${schedule._id}/respond`)
       .set("Authorization", `Bearer ${tokenB}`)
@@ -914,7 +914,7 @@ test("an overdue settlement is expired before the receiver can confirm it", asyn
     const confirm = await request(app)
       .post("/api/settlements/confirm")
       .set("Authorization", `Bearer ${tokenB}`)
-      .send({ groupId: expiryGroupId, fromUserId: userA._id.toString() });
+      .send({ groupId: expiryGroupId, settlementId: payment._id.toString() });
 
     assert.equal(confirm.status, 404, JSON.stringify(confirm.body));
     const storedPayment = await Settlement.findById(payment._id).lean();
