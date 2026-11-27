@@ -975,13 +975,6 @@ router.post("/schedule", async (req, res) => {
     if (Number.isNaN(parsedDueDate.getTime()) || parsedDueDate.toISOString().slice(0, 10) !== resolvedDueDate) {
       return res.status(400).json({ message: "Please provide a valid calendar date" });
     }
-    if (resolvedDueDate < today) {
-      return res.status(400).json({ message: "Due date cannot be in the past" });
-    }
-    const maxDueDate = addMonthsToDateOnly(today, 3);
-    if (!isDefaultDueDate && resolvedDueDate > maxDueDate) {
-      return res.status(400).json({ message: "Choose a repayment date within the next three calendar months" });
-    }
     const requestedDate = isDefaultDueDate ? null : resolvedDueDate;
     const idempotencyHash = idempotencyKey
       ? createHash("sha256").update(JSON.stringify({
@@ -990,7 +983,7 @@ router.post("/schedule", async (req, res) => {
         to: toUserId.toString(),
         amountPaise: Math.round(amount * 100),
         dueDate: requestedDate,
-        timeZone: requestedTimeZone,
+        timeZone: requestedDate === null ? requestedTimeZone : null,
       })).digest("hex")
       : null;
 
@@ -1028,10 +1021,14 @@ router.post("/schedule", async (req, res) => {
       }
     }
 
-    // An explicit date can be in the past by the time a successful proposal
-    // is retried. Check this only for new proposals, after replay lookup.
+    // Validate the date range only for a new proposal. A matching idempotent
+    // retry must still replay its original schedule after the due date passes.
     if (resolvedDueDate < today) {
       return res.status(400).json({ message: "Due date cannot be in the past" });
+    }
+    const maxDueDate = addMonthsToDateOnly(today, 3);
+    if (!isDefaultDueDate && resolvedDueDate > maxDueDate) {
+      return res.status(400).json({ message: "Choose a repayment date within the next three calendar months" });
     }
 
     const [existingPayment, existingSchedule] = await Promise.all([

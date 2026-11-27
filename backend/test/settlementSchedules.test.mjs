@@ -1034,10 +1034,10 @@ test("settlement and schedule transitions respect an active group mutation lock"
   }
 });
 
-test("blank due date defaults to seven calendar days", async () => {
+test("blank due date defaults to fifteen calendar days", async () => {
   const todayUtc = new Date().toISOString().slice(0, 10);
   const expectedDate = new Date(`${todayUtc}T12:00:00.000Z`);
-  expectedDate.setUTCDate(expectedDate.getUTCDate() + 7);
+  expectedDate.setUTCDate(expectedDate.getUTCDate() + 15);
   const expectedDueDate = expectedDate.toISOString().slice(0, 10);
 
   const create = await request(app)
