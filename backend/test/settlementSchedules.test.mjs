@@ -398,7 +398,7 @@ test("settlement idempotency replays the same pending payment and rejects a chan
     createdBy: userA._id,
   });
   try {
-    await Expense.create({
+    const sourceExpense = await Expense.create({
       description: "Settlement idempotency debt",
       amount: 1000,
       paidBy: userB._id,
@@ -422,6 +422,7 @@ test("settlement idempotency replays the same pending payment and rejects a chan
       .set("Idempotency-Key", key)
       .send(payload);
     assert.equal(first.status, 201, JSON.stringify(first.body));
+    assert.deepEqual(first.body.sourceExpenseIds.map(String), [sourceExpense._id.toString()]);
 
     const replay = await request(app)
       .post("/api/settlements/settle")
