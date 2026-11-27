@@ -587,6 +587,7 @@ All application endpoints are mounted under `/api` and require authenticated HTT
 | `GET` | `/api/groups` | Protected | List all groups the current user is a member of. |
 | `GET` | `/api/groups/:id` | Protected | Retrieve group details, member balances, and simplified debts. |
 | `POST` | `/api/groups/:id/members` | Protected | Add a registered user to the group by email address. |
+| `DELETE` | `/api/groups/:id/members/:userId` | Protected | Admin removes a member or a member leaves after balances and payment activity are clear. If the creator leaves or is removed, ownership transfers atomically to a remaining admin. |
 
 ### Expenses (`/api/expenses`)
 | Method | Endpoint | Access | Description |

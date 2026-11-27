@@ -474,6 +474,19 @@ router.delete("/:id/members/:userId", async (req, res) => {
       });
     }
 
+    // Group deletion is restricted to createdBy. If the creator leaves or
+    // is removed from a legacy/multi-admin group, transfer ownership in the
+    // same atomic membership update so the remaining group is still manageable.
+    const creatorIsLeaving = group.createdBy.toString() === targetId;
+    const successorAdmin = creatorIsLeaving
+      ? group.members.find(member => member.user.toString() !== targetId && member.role === "admin")
+      : null;
+    if (creatorIsLeaving && !successorAdmin) {
+      return res.status(409).json({
+        message: "Assign another admin before the group creator can leave or be removed.",
+      });
+    }
+
     const updateQuery = {
       _id: group._id,
       isDeleting: { $ne: true },
@@ -488,10 +501,18 @@ router.delete("/:id/members/:userId", async (req, res) => {
         $elemMatch: { user: req.user.id, role: "admin" },
       };
     }
+    if (creatorIsLeaving) {
+      updateQuery.createdBy = group.createdBy;
+    }
+
+    const membershipUpdate = { $pull: { members: { user: targetId } } };
+    if (successorAdmin) {
+      membershipUpdate.$set = { createdBy: successorAdmin.user };
+    }
 
     const updated = await Group.findOneAndUpdate(
       updateQuery,
-      { $pull: { members: { user: targetId } } },
+      membershipUpdate,
       { new: true },
     ).populate("members.user", "name email upiId");
 
@@ -508,7 +529,9 @@ router.delete("/:id/members/:userId", async (req, res) => {
         group: group._id,
         actor: req.user.id,
         type: "member_left",
-        meta: {},
+        meta: successorAdmin
+          ? { ownershipTransferredTo: successorAdmin.user.toString() }
+          : {},
       }).catch(error => console.error("Could not record member-left activity:", error));
       try {
         await releaseMembershipMutation(reservedGroupId, reservedMembershipLease);
@@ -524,7 +547,10 @@ router.delete("/:id/members/:userId", async (req, res) => {
       group: group._id,
       actor: req.user.id,
       type: "member_removed",
-      meta: { removedId: targetId },
+      meta: {
+        removedId: targetId,
+        ...(successorAdmin ? { ownershipTransferredTo: successorAdmin.user.toString() } : {}),
+      },
     }).catch(error => console.error("Could not record member-removed activity:", error));
 
     try {

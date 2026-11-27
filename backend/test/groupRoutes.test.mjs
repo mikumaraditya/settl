@@ -464,6 +464,68 @@ describe("Group lifecycle routes", () => {
     assert.equal((await Group.findById(group._id)).members.length, 1);
   });
 
+  it("transfers group ownership to a remaining admin when the creator leaves", async () => {
+    const group = await makeGroup();
+    await Group.updateOne(
+      { _id: group._id, "members.user": member._id },
+      { $set: { "members.$.role": "admin" } },
+    );
+
+    const response = await request(app)
+      .delete(`/api/groups/${group._id}/members/${creator._id}`)
+      .set("Authorization", `Bearer ${creatorToken}`);
+
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    const updated = await Group.findById(group._id).lean();
+    assert.equal(updated.createdBy.toString(), member._id.toString());
+    assert.equal(updated.members.length, 1);
+    assert.equal(updated.members[0].user.toString(), member._id.toString());
+    assert.equal(updated.members[0].role, "admin");
+
+    // The new owner can still perform the group-level deletion action.
+    const deleted = await request(app)
+      .delete(`/api/groups/${group._id}`)
+      .set("Authorization", `Bearer ${memberToken}`);
+    assert.equal(deleted.status, 200, JSON.stringify(deleted.body));
+  });
+
+  it("transfers group ownership when an admin removes the creator", async () => {
+    const group = await makeGroup();
+    await Group.updateOne(
+      { _id: group._id, "members.user": member._id },
+      { $set: { "members.$.role": "admin" } },
+    );
+
+    const response = await request(app)
+      .delete(`/api/groups/${group._id}/members/${creator._id}`)
+      .set("Authorization", `Bearer ${memberToken}`);
+
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    const updated = await Group.findById(group._id).lean();
+    assert.equal(updated.createdBy.toString(), member._id.toString());
+    assert.equal(updated.members.length, 1);
+    assert.equal(updated.members[0].user.toString(), member._id.toString());
+  });
+
+  it("does not let a legacy creator leave when no admin can inherit ownership", async () => {
+    const group = await Group.create({
+      name: `Legacy creator without admin ${Date.now()}`,
+      createdBy: creator._id,
+      members: [{ user: creator._id, role: "member" }],
+    });
+    groupIds.push(group._id);
+
+    const response = await request(app)
+      .delete(`/api/groups/${group._id}/members/${creator._id}`)
+      .set("Authorization", `Bearer ${creatorToken}`);
+
+    assert.equal(response.status, 409);
+    assert.match(response.body.message, /assign another admin/i);
+    const retained = await Group.findById(group._id).lean();
+    assert.equal(retained.createdBy.toString(), creator._id.toString());
+    assert.equal(retained.members.length, 1);
+  });
+
   it("does not allow a non-admin to remove another member", async () => {
     const group = await makeGroup();
     await request(app)
