@@ -888,9 +888,13 @@ test("scheduled payment completes only after receiver confirms; rejection restor
     .send({ groupId, toUserId: userB._id.toString(), amount: 300, scheduleId });
   assert.equal(payment.status, 201, JSON.stringify(payment.body));
   assert.equal(payment.body.status, "pending");
-  assert.deepEqual(payment.body.sourceExpenseIds.map(String), [initialExpense._id.toString()]);
 
   let schedule = await SettlementSchedule.findById(scheduleId);
+  assert.deepEqual(
+    payment.body.sourceExpenseIds.map(String).sort(),
+    schedule.sourceExpenseIds.map(String).sort(),
+    "a scheduled payment must retain the source ledger snapshot from its accepted schedule",
+  );
   assert.equal(schedule.status, "payment_pending");
   assert.equal(schedule.paymentSettlement.toString(), payment.body._id);
 
