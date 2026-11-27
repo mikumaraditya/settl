@@ -971,7 +971,7 @@ router.post("/schedule", async (req, res) => {
     if (typeof resolvedDueDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(resolvedDueDate)) {
       return res.status(400).json({ message: "Due date must use YYYY-MM-DD format" });
     }
-    const parsedDueDate = new Date(\`\${resolvedDueDate}T12:00:00.000Z\`);
+    const parsedDueDate = new Date(`${resolvedDueDate}T12:00:00.000Z`);
     if (Number.isNaN(parsedDueDate.getTime()) || parsedDueDate.toISOString().slice(0, 10) !== resolvedDueDate) {
       return res.status(400).json({ message: "Please provide a valid calendar date" });
     }
