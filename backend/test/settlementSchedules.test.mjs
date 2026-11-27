@@ -102,6 +102,118 @@ after(async () => {
   if (mongoose.connection.readyState) await mongoose.disconnect();
 });
 
+test("settlement confirmations and other lifecycle actions safely replay by exact settlement id", async () => {
+  const retryGroup = await Group.create({
+    name: `Targeted settlement lifecycle group ${Date.now()}`,
+    members: [{ user: userA._id }, { user: userB._id }],
+    createdBy: userA._id,
+  });
+  try {
+    await Expense.create({
+      description: "Targeted settlement lifecycle debt",
+      amount: 1000,
+      paidBy: userB._id,
+      group: retryGroup._id,
+      splits: [
+        { user: userA._id, amount: 500 },
+        { user: userB._id, amount: 500 },
+      ],
+    });
+
+    const groupPayload = { groupId: retryGroup._id.toString() };
+    const createPayment = async () => {
+      const created = await request(app)
+        .post("/api/settlements/settle")
+        .set("Authorization", `Bearer ${tokenA}`)
+        .send({
+          ...groupPayload,
+          toUserId: userB._id.toString(),
+          amount: 100,
+        });
+      assert.equal(created.status, 201, JSON.stringify(created.body));
+      return created.body;
+    };
+
+    const first = await createPayment();
+    const confirmPayload = { ...groupPayload, settlementId: first._id };
+    const confirmed = await request(app)
+      .post("/api/settlements/confirm")
+      .set("Authorization", `Bearer ${tokenB}`)
+      .send(confirmPayload);
+    assert.equal(confirmed.status, 200, JSON.stringify(confirmed.body));
+    assert.equal(confirmed.body.status, "confirmed");
+
+    const confirmedReplay = await request(app)
+      .post("/api/settlements/confirm")
+      .set("Authorization", `Bearer ${tokenB}`)
+      .send(confirmPayload);
+    assert.equal(confirmedReplay.status, 200, JSON.stringify(confirmedReplay.body));
+    assert.equal(confirmedReplay.body._id, first._id);
+
+    const second = await createPayment();
+    const staleReplay = await request(app)
+      .post("/api/settlements/confirm")
+      .set("Authorization", `Bearer ${tokenB}`)
+      .send(confirmPayload);
+    assert.equal(staleReplay.status, 200, JSON.stringify(staleReplay.body));
+    assert.equal(staleReplay.body._id, first._id);
+    assert.equal(staleReplay.body.status, "confirmed");
+    assert.equal(
+      (await Settlement.findById(second._id).lean()).status,
+      "pending",
+      "replaying an older confirmation must never confirm a newer payment",
+    );
+
+    const secondConfirmed = await request(app)
+      .post("/api/settlements/confirm")
+      .set("Authorization", `Bearer ${tokenB}`)
+      .send({ ...groupPayload, settlementId: second._id });
+    assert.equal(secondConfirmed.status, 200);
+    assert.equal(secondConfirmed.body.status, "confirmed");
+
+    const third = await createPayment();
+    const cancelPayload = { ...groupPayload, settlementId: third._id };
+    const cancelled = await request(app)
+      .delete("/api/settlements/settle")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .send(cancelPayload);
+    assert.equal(cancelled.status, 200, JSON.stringify(cancelled.body));
+    assert.equal(cancelled.body.settlement.status, "cancelled");
+    const cancelReplay = await request(app)
+      .delete("/api/settlements/settle")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .send(cancelPayload);
+    assert.equal(cancelReplay.status, 200, JSON.stringify(cancelReplay.body));
+    assert.equal(cancelReplay.body.settlement._id, third._id);
+    assert.equal(cancelReplay.body.settlement.status, "cancelled");
+
+    const fourth = await createPayment();
+    const rejectPayload = { ...groupPayload, settlementId: fourth._id };
+    const rejected = await request(app)
+      .post("/api/settlements/reject")
+      .set("Authorization", `Bearer ${tokenB}`)
+      .send(rejectPayload);
+    assert.equal(rejected.status, 200, JSON.stringify(rejected.body));
+    assert.equal(rejected.body.settlement.status, "rejected");
+    const rejectReplay = await request(app)
+      .post("/api/settlements/reject")
+      .set("Authorization", `Bearer ${tokenB}`)
+      .send(rejectPayload);
+    assert.equal(rejectReplay.status, 200, JSON.stringify(rejectReplay.body));
+    assert.equal(rejectReplay.body.settlement._id, fourth._id);
+    assert.equal(rejectReplay.body.settlement.status, "rejected");
+    assert.equal(await Settlement.countDocuments({ group: retryGroup._id }), 4);
+  } finally {
+    await Promise.all([
+      Settlement.deleteMany({ group: retryGroup._id }),
+      SettlementSchedule.deleteMany({ group: retryGroup._id }),
+      Expense.deleteMany({ group: retryGroup._id }),
+      ActivityLog.deleteMany({ group: retryGroup._id }),
+      Group.deleteOne({ _id: retryGroup._id }),
+    ]);
+  }
+});
+
 test("payer-provided UPI references are validated and visible only to settlement participants", async () => {
   const invalidShort = await request(app)
     .post("/api/settlements/settle")
