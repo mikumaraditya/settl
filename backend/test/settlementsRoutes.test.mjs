@@ -159,7 +159,7 @@ async function runRouteTests() {
       .send({ groupId, settlementId: pendingSettlementId });
 
     console.log(`HTTP Status: ${res.status} | Response Body:`, res.body);
-    if (res.status === 404 && res.body.message.includes("No pending settlement")) {
+    if (res.status === 404 && res.body.message.includes("not found for this receiver")) {
       console.log("✅ PASS: Non-receiver cannot confirm settlement.");
     } else {
       console.error("❌ FAIL: Non-receiver was able to confirm settlement!");
@@ -178,7 +178,7 @@ async function runRouteTests() {
       .send({ groupId, settlementId: pendingSettlementId });
 
     console.log(`HTTP Status: ${res.status} | Response Body:`, res.body);
-    if (res.status === 404 && res.body.message.includes("No pending settlement")) {
+    if (res.status === 404 && res.body.message.includes("not found for this payer")) {
       console.log("✅ PASS: Non-payer cannot cancel someone else's settlement request.");
     } else {
       console.error("❌ FAIL: Non-payer was able to cancel settlement request!");
