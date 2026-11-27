@@ -26,11 +26,13 @@ describe("Expense creation and deletion lifecycle", () => {
   let outsider;
   let rateLimitedPayer;
   let independentPayer;
+  let idempotencyPayer;
   let payerToken;
   let memberToken;
   let outsiderToken;
   let rateLimitedPayerToken;
   let independentPayerToken;
+  let idempotencyPayerToken;
   const groupIds = [];
 
   const makeGroup = async (overrides = {}) => {
@@ -97,12 +99,19 @@ describe("Expense creation and deletion lifecycle", () => {
       password: "test-password-hash",
       isEmailVerified: true,
     });
+    idempotencyPayer = await User.create({
+      name: "Idempotency Test Payer",
+      email: `expense-idempotency-${suffix}@example.com`,
+      password: "test-password-hash",
+      isEmailVerified: true,
+    });
 
     payerToken = jwt.sign({ id: payer._id.toString() }, jwtSecret, { expiresIn: "1h" });
     memberToken = jwt.sign({ id: member._id.toString() }, jwtSecret, { expiresIn: "1h" });
     outsiderToken = jwt.sign({ id: outsider._id.toString() }, jwtSecret, { expiresIn: "1h" });
     rateLimitedPayerToken = jwt.sign({ id: rateLimitedPayer._id.toString() }, jwtSecret, { expiresIn: "1h" });
     independentPayerToken = jwt.sign({ id: independentPayer._id.toString() }, jwtSecret, { expiresIn: "1h" });
+    idempotencyPayerToken = jwt.sign({ id: idempotencyPayer._id.toString() }, jwtSecret, { expiresIn: "1h" });
   });
 
   after(async () => {
@@ -116,7 +125,7 @@ describe("Expense creation and deletion lifecycle", () => {
         Group.deleteMany({ _id: { $in: groupIds } }),
       ]);
     }
-    const userIds = [payer?._id, member?._id, outsider?._id, rateLimitedPayer?._id, independentPayer?._id].filter(Boolean);
+    const userIds = [payer?._id, member?._id, outsider?._id, rateLimitedPayer?._id, independentPayer?._id, idempotencyPayer?._id].filter(Boolean);
     if (userIds.length) await User.deleteMany({ _id: { $in: userIds } });
     await mongoose.disconnect();
   });
@@ -248,7 +257,7 @@ describe("Expense creation and deletion lifecycle", () => {
     const group = await makeGroup();
     await Group.updateOne(
       { _id: group._id },
-      { $push: { members: { user: independentPayer._id, role: "member" } } },
+      { $push: { members: { user: idempotencyPayer._id, role: "member" } } },
     );
     const idempotencyKey = "expense-create-retry-001";
     const payload = {
@@ -261,14 +270,14 @@ describe("Expense creation and deletion lifecycle", () => {
 
     const first = await request(app)
       .post("/api/expenses")
-      .set("Authorization", `Bearer ${independentPayerToken}`)
+      .set("Authorization", `Bearer ${idempotencyPayerToken}`)
       .set("Idempotency-Key", idempotencyKey)
       .send(payload);
     assert.equal(first.status, 201);
 
     const replay = await request(app)
       .post("/api/expenses")
-      .set("Authorization", `Bearer ${independentPayerToken}`)
+      .set("Authorization", `Bearer ${idempotencyPayerToken}`)
       .set("Idempotency-Key", idempotencyKey)
       .send(payload);
     assert.equal(replay.status, 200);
@@ -277,7 +286,7 @@ describe("Expense creation and deletion lifecycle", () => {
 
     const changedPayload = await request(app)
       .post("/api/expenses")
-      .set("Authorization", `Bearer ${independentPayerToken}`)
+      .set("Authorization", `Bearer ${idempotencyPayerToken}`)
       .set("Idempotency-Key", idempotencyKey)
       .send({ ...payload, amount: 260 });
     assert.equal(changedPayload.status, 409);
@@ -287,7 +296,7 @@ describe("Expense creation and deletion lifecycle", () => {
     // A new key represents a new intentional expense, even with identical details.
     const intentionalDuplicate = await request(app)
       .post("/api/expenses")
-      .set("Authorization", `Bearer ${independentPayerToken}`)
+      .set("Authorization", `Bearer ${idempotencyPayerToken}`)
       .set("Idempotency-Key", "expense-create-new-002")
       .send(payload);
     assert.equal(intentionalDuplicate.status, 201);
