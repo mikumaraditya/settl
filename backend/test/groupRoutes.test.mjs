@@ -683,12 +683,15 @@ describe("Group lifecycle routes", () => {
 
   it("can delete a group after an abandoned expense mutation lease has expired", async () => {
     const group = await makeGroup();
+    const expiredAt = new Date(Date.now() - 1000);
     await Group.updateOne(
       { _id: group._id },
       {
         $set: {
           activeMutations: 1,
-          mutationExpiresAt: new Date(Date.now() - 1000),
+          mutationExpiresAt: expiredAt,
+          financialMutationId: "abandoned-financial-write",
+          financialMutationExpiresAt: expiredAt,
         },
       },
     );
