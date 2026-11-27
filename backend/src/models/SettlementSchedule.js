@@ -25,10 +25,13 @@ const settlementScheduleSchema = new mongoose.Schema(
     },
     // Expense records used when validating this future repayment agreement.
     // Legacy schedules may omit it and use the compatibility deletion guard.
-    sourceExpenseIds: [{
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Expense",
-    }],
+    sourceExpenseIds: {
+      type: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Expense",
+      }],
+      default: undefined,
+    },
     // Store date-only selections at UTC noon to avoid timezone date shifts
     // in common browser timezones while preserving a Date value in MongoDB.
     dueDate: {
