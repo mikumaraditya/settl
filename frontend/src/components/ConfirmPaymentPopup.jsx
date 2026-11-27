@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import axios from '../api/axios'
 
-export default function ConfirmPaymentPopup({ transaction, groupId, onConfirm, onCancel }) {
+export default function ConfirmPaymentPopup({ transaction, groupId, idempotencyKey, onConfirm, onCancel }) {
   const { to, amount } = transaction
 
   const [loading, setLoading] = useState(false)
@@ -17,6 +17,8 @@ export default function ConfirmPaymentPopup({ transaction, groupId, onConfirm, o
         amount,
         ...(transaction.scheduleId ? { scheduleId: transaction.scheduleId } : {}),
         ...(transaction.upiReference ? { upiReference: transaction.upiReference } : {}),
+      }, {
+        headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
       })
       onConfirm()
     } catch (err) {

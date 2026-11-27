@@ -34,6 +34,26 @@ export default function SettleUp() {
   const [previewSettlement, setPreviewSettlement] = useState(null)
 
   const socketRef = useRef(null)
+  const settlementRequestKeysRef = useRef(new Map())
+
+  const getSettlementRequestKey = (toUser, amount, scheduleId = null) => {
+    const amountPaise = Math.round(Number(amount) * 100)
+    const intent = `${id}:${toUser?._id || ''}:${amountPaise}:${scheduleId || 'immediate'}`
+    let key = settlementRequestKeysRef.current.get(intent)
+    if (!key) {
+      key = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `settlement-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      settlementRequestKeysRef.current.set(intent, key)
+    }
+    return key
+  }
+
+  const clearSettlementRequestKey = (toUser, amount, scheduleId = null) => {
+    const amountPaise = Math.round(Number(amount) * 100)
+    const intent = `${id}:${toUser?._id || ''}:${amountPaise}:${scheduleId || 'immediate'}`
+    settlementRequestKeysRef.current.delete(intent)
+  }
 
   const getLocalDateOnly = () => {
     const now = new Date()
@@ -88,10 +108,14 @@ export default function SettleUp() {
     setActionError('')
     setLoading_(key, true)
     try {
+      const idempotencyKey = getSettlementRequestKey(toUser, amount, scheduleId)
       await axios.post('/settlements/settle', {
         groupId: id, toUserId: toUser._id, amount,
         ...(scheduleId ? { scheduleId } : {}),
+      }, {
+        headers: { 'Idempotency-Key': idempotencyKey },
       })
+      clearSettlementRequestKey(toUser, amount, scheduleId)
       await fetchData()
     } catch (err) {
       setActionError(err.response?.data?.message || 'Error requesting settlement')
@@ -892,7 +916,16 @@ export default function SettleUp() {
           transaction={activeTransaction}
           onClose={() => { setShowPaymentModal(false); setActiveTransaction(null) }}
           onPaymentInitiated={(upiReference) => {
-            setActiveTransaction((current) => ({ ...current, upiReference: upiReference || null }))
+            const idempotencyKey = getSettlementRequestKey(
+              activeTransaction.to,
+              activeTransaction.amount,
+              activeTransaction.scheduleId,
+            )
+            setActiveTransaction((current) => ({
+              ...current,
+              upiReference: upiReference || null,
+              idempotencyKey,
+            }))
             setShowPaymentModal(false)
             setShowConfirmPopup(true)
           }}
@@ -902,7 +935,17 @@ export default function SettleUp() {
         <ConfirmPaymentPopup
           transaction={activeTransaction}
           groupId={id}
-          onConfirm={() => { setShowConfirmPopup(false); setActiveTransaction(null); fetchData() }}
+          idempotencyKey={activeTransaction.idempotencyKey}
+          onConfirm={() => {
+            clearSettlementRequestKey(
+              activeTransaction.to,
+              activeTransaction.amount,
+              activeTransaction.scheduleId,
+            )
+            setShowConfirmPopup(false)
+            setActiveTransaction(null)
+            fetchData()
+          }}
           onCancel={() => { setShowConfirmPopup(false); setShowPaymentModal(true) }}
         />
       )}
