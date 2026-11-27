@@ -29,52 +29,80 @@ const groupCreateLimiter = rateLimit({
   message: { message: "Too many groups created. Please try again in an hour." },
 });
 
-const acquireMembershipMutation = async (groupId) => Group.findOneAndUpdate(
-  {
-    _id: groupId,
-    isDeleting: { $ne: true },
-    $and: [
-      {
-        $or: [
-          { membershipMutation: { $ne: true } },
-          {
-            membershipMutation: true,
-            membershipMutationExpiresAt: { $type: "date", $lte: new Date() },
-          },
-        ],
-      },
-      {
-        $or: [
-          { activeMutations: 0 },
-          { activeMutations: { $exists: false } },
-          {
-            activeMutations: { $gt: 0 },
-            mutationExpiresAt: { $type: "date", $lte: new Date() },
-          },
-        ],
-      },
-    ],
-  },
-  {
-    $set: {
-      membershipMutation: true,
-      membershipMutationExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
-      activeMutations: 0,
-      mutationExpiresAt: null,
-    },
-  },
-  { new: true },
-);
+export const acquireMembershipMutation = async (groupId) => {
+  const now = new Date();
+  const token = randomUUID();
+  const leaseExpiresAt = new Date(now.getTime() + 5 * 60 * 1000);
 
-const releaseMembershipMutation = async (groupId, leaseExpiresAt) => {
-  if (!groupId || !leaseExpiresAt) return;
+  const group = await Group.findOneAndUpdate(
+    {
+      _id: groupId,
+      isDeleting: { $ne: true },
+      $and: [
+        {
+          $or: [
+            { membershipMutation: { $ne: true } },
+            {
+              membershipMutation: true,
+              membershipMutationExpiresAt: { $type: "date", $lte: now },
+            },
+            {
+              membershipMutation: true,
+              $or: [
+                { membershipMutationExpiresAt: null },
+                { membershipMutationExpiresAt: { $exists: false } },
+              ],
+            },
+          ],
+        },
+        {
+          $or: [
+            { financialMutationId: { $in: [null, ""] } },
+            { financialMutationExpiresAt: { $type: "date", $lte: now } },
+          ],
+        },
+        {
+          $or: [
+            { activeMutations: 0 },
+            { activeMutations: { $exists: false } },
+            {
+              activeMutations: { $gt: 0 },
+              mutationExpiresAt: { $type: "date", $lte: now },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      $set: {
+        membershipMutation: true,
+        membershipMutationId: token,
+        membershipMutationExpiresAt: leaseExpiresAt,
+        activeMutations: 0,
+        mutationExpiresAt: null,
+      },
+    },
+    { new: true },
+  );
+
+  return group ? { group, token } : null;
+};
+
+export const releaseMembershipMutation = async (groupId, token) => {
+  if (!groupId || !token) return;
   await Group.updateOne(
     {
       _id: groupId,
       membershipMutation: true,
-      membershipMutationExpiresAt: leaseExpiresAt,
+      membershipMutationId: token,
     },
-    { $set: { membershipMutation: false, membershipMutationExpiresAt: null } },
+    {
+      $set: {
+        membershipMutation: false,
+        membershipMutationId: null,
+        membershipMutationExpiresAt: null,
+      },
+    },
   );
 };
 
@@ -199,13 +227,14 @@ router.post("/:id/members", async (req, res) => {
       return res.status(400).json({ message: "Enter a valid email address" });
     }
 
-    const group = await acquireMembershipMutation(req.params.id);
-    if (!group) {
+    const reservation = await acquireMembershipMutation(req.params.id);
+    if (!reservation) {
       const conflict = await membershipMutationConflict(req.params.id);
       return res.status(conflict.status).json({ message: conflict.message });
     }
+    const { group, token } = reservation;
     reservedGroupId = group._id;
-    reservedMembershipLease = group.membershipMutationExpiresAt;
+    reservedMembershipLease = token;
 
     const requester = group.members.find(member => member.user.toString() === req.user.id);
     if (!requester || requester.role !== "admin") {
@@ -228,7 +257,7 @@ router.post("/:id/members", async (req, res) => {
         _id: group._id,
         isDeleting: { $ne: true },
         membershipMutation: true,
-        membershipMutationExpiresAt: reservedMembershipLease,
+        membershipMutationId: reservedMembershipLease,
         "members.user": { $ne: userToAdd._id },
         members: {
           $elemMatch: { user: req.user.id, role: "admin" },
@@ -300,13 +329,14 @@ router.delete("/:id/members/:userId", async (req, res) => {
       return res.status(400).json({ message: "Invalid group or member id" });
     }
 
-    const group = await acquireMembershipMutation(req.params.id);
-    if (!group) {
+    const reservation = await acquireMembershipMutation(req.params.id);
+    if (!reservation) {
       const conflict = await membershipMutationConflict(req.params.id);
       return res.status(conflict.status).json({ message: conflict.message });
     }
+    const { group, token } = reservation;
     reservedGroupId = group._id;
-    reservedMembershipLease = group.membershipMutationExpiresAt;
+    reservedMembershipLease = token;
 
     const requester = group.members.find(member => member.user.toString() === req.user.id);
     if (!requester) {
@@ -387,7 +417,7 @@ router.delete("/:id/members/:userId", async (req, res) => {
       _id: group._id,
       isDeleting: { $ne: true },
       membershipMutation: true,
-      membershipMutationExpiresAt: reservedMembershipLease,
+      membershipMutationId: reservedMembershipLease,
       "members.user": targetId,
     };
     if (isSelf) {
@@ -576,6 +606,7 @@ router.delete("/:id", async (req, res) => {
           financialMutationId: null,
           financialMutationExpiresAt: null,
           membershipMutation: false,
+          membershipMutationId: null,
           membershipMutationExpiresAt: null,
         },
       },
