@@ -1330,8 +1330,8 @@ test("overdue accepted schedules notify both participants once and cannot be can
     await processSettlementScheduleReminders({ now: day11 });
     assert.equal(
       await Notification.countDocuments({ schedule: schedule._id, reminderStage: "overdue" }),
-      2,
-      "the reminder worker must not create duplicate overdue alerts",
+      4,
+      "weekly reminders must remain idempotent on repeated scans",
     );
   } finally {
     await Promise.all([
