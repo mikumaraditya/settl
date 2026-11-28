@@ -9,7 +9,7 @@ import Expense from "../src/models/Expense.js";
 import Settlement from "../src/models/Settlement.js";
 import ScoreHistory from "../src/models/ScoreHistory.js";
 import SettlementSchedule from "../src/models/SettlementSchedule.js";
-import { computeMentorReport } from "../src/utils/financialMentor.js";
+import { computeMentorReport, getIsoWeekKey } from "../src/utils/financialMentor.js";
 import { getTrustScoreForUser } from "../src/routes/insights.js";
 
 async function runTrustScore2Tests() {
@@ -20,6 +20,22 @@ async function runTrustScore2Tests() {
   console.log("==================================================");
 
   await mongoose.connect(testUri);
+  // TEST 0A: ISO week keys correctly handle year boundaries.
+  console.log("\\n[TEST 0A] ISO week key year-boundary regression");
+  {
+    const cases = [
+      ["2020-12-31T23:30:00.000Z", "2020-W53"],
+      ["2021-01-01T00:30:00.000Z", "2020-W53"],
+      ["2021-01-04T00:00:00.000Z", "2021-W01"],
+      ["2022-01-01T12:00:00.000Z", "2021-W52"],
+    ];
+    for (const [input, expected] of cases) {
+      const actual = getIsoWeekKey(new Date(input));
+      if (actual !== expected) throw new Error(`ISO week mismatch for ${input}: expected ${expected}, got ${actual}`);
+    }
+    console.log("  PASS: ISO week-year boundaries produce stable week keys");
+  }
+
   // TEST 0: Weekly snapshot uniqueness is enforced at database level
   console.log("\\n[TEST 0] Weekly snapshot event uniqueness index");
   {

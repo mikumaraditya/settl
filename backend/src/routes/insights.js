@@ -8,7 +8,7 @@ import Settlement from "../models/Settlement.js";
 import SettlementSchedule from "../models/SettlementSchedule.js";
 import protect from "../middleware/auth.js";
 import requireVerified from "../middleware/requireVerified.js";
-import { computeMentorReport, computeWhatIfProjection } from "../utils/financialMentor.js";
+import { computeMentorReport, computeWhatIfProjection, getIsoWeekKey } from "../utils/financialMentor.js";
 import { getUserFinancialSummary } from "../services/mentorTools.js";
 import ActivityLog from "../models/ActivityLog.js";
 import ScoreHistory from "../models/ScoreHistory.js";
@@ -450,16 +450,7 @@ router.get("/mentor", protect, requireVerified, mentorRateLimiter, async (req, r
           // across concurrent mentor requests.
           let eventId = null;
           if (eventType === "weekly_snapshot") {
-            const snapshotDate = new Date();
-            const isoWeekDate = new Date(Date.UTC(
-              snapshotDate.getUTCFullYear(),
-              snapshotDate.getUTCMonth(),
-              snapshotDate.getUTCDate(),
-            ));
-            isoWeekDate.setUTCDate(isoWeekDate.getUTCDate() + 4 - (isoWeekDate.getUTCDay() || 7));
-            const isoWeekYear = isoWeekDate.getUTCFullYear();
-            const weekNumber = Math.ceil((((isoWeekDate - new Date(Date.UTC(isoWeekYear, 0, 1))) / 86400000) + 1) / 7);
-            eventId = `weekly_snapshot:${isoWeekYear}-W${String(weekNumber).padStart(2, "0")}`;
+            eventId = `weekly_snapshot:${getIsoWeekKey(new Date())}`;
           }
 
           const newlyCreated = await ScoreHistory.create({
