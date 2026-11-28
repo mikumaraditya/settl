@@ -69,6 +69,7 @@ export function NotificationProvider({ children }) {
         const { data } = await axios.get('/notifications')
         if (disposed) return
         const serverNotifications = data.notifications || []
+        setServerUnreadCount(Number.isFinite(data.unreadCount) ? data.unreadCount : serverNotifications.filter(n => !n.read).length)
         setNotificationState(previous => {
           const current = previous.userId === notificationUserId ? previous.items : []
           const transient = current.filter(notification => !notification.persistent)
@@ -216,6 +217,7 @@ export function NotificationProvider({ children }) {
         if (prev.some(item => item.id === notification.id)) return prev
         return [notification, ...prev].slice(0, 30)
       })
+      if (!notification.read) setServerUnreadCount(prev => prev + 1)
     }
 
     const onScheduleCancelled = (schedule) => {
@@ -293,10 +295,12 @@ export function NotificationProvider({ children }) {
     }
   }, [notificationUserId, setNotifications])
 
-  const unreadCount = notifications.filter(n => !n.read).length
+  const [serverUnreadCount, setServerUnreadCount] = useState(0)
+  const unreadCount = serverUnreadCount + notifications.filter(n => !n.persistent && !n.read).length
 
   const markAllRead = () => {
     setNotifications(prev => prev.map(notification => ({ ...notification, read: true })))
+    setServerUnreadCount(0)
     axios.patch('/notifications/read-all').catch(() => {})
   }
 
@@ -304,6 +308,7 @@ export function NotificationProvider({ children }) {
     const notification = notifications.find(item => item.id === id)
     setNotifications(prev => prev.map(item => item.id === id ? { ...item, read: true } : item))
     if (notification?.persistent) {
+      if (!notification.read) setServerUnreadCount(prev => Math.max(0, prev - 1))
       axios.patch(`/notifications/${id}/read`).catch(() => {})
     }
   }
