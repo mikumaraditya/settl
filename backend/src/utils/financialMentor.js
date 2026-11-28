@@ -38,6 +38,23 @@ export function calculateOverduePenaltyPoints(overdueCommitments = []) {
   return Math.min(30, Math.round(combined));
 }
 
+// Upfront recognition is a small additive bonus: +1 per qualifying expense, capped at 5.
+export function calculateUpfrontContributionBonus(expenses = [], userId = null) {
+  if (!Array.isArray(expenses)) return 0;
+  const userKey = userId == null ? null : String(userId);
+  const qualifyingCount = expenses.filter((expense) => {
+    const payerId = expense?.paidBy?._id?.toString?.() || expense?.paidBy?.toString?.();
+    const isPayer = expense?.isPaidByUser === true || (userKey !== null && payerId === userKey);
+    if (!isPayer || !Array.isArray(expense?.splits)) return false;
+    const otherSplits = expense.splits.filter((split) => {
+      const splitUserId = split?.user?._id?.toString?.() || split?.user?.toString?.();
+      return splitUserId && (payerId ? splitUserId !== payerId : split.paid !== true) && Number(split.amount) > 0;
+    });
+    return otherSplits.length > 0 && otherSplits.every((split) => split.acknowledged === true);
+  }).length;
+  return Math.min(5, qualifyingCount);
+}
+
 export function computeMentorReport(settlements = [], personalExpenses = [], rejections = [], overdueCommitments = [], referenceDate = new Date()) {
   // Ignore malformed timestamps so invalid records cannot crash monthly bucketing
   // or silently receive full recency credit in Trust Score calculations.
@@ -300,7 +317,8 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
     score -= penaltyPoints;
   }
   score -= overduePenaltyPoints;
-  score = clamp(Math.round(score), 0, 100);
+  const upfrontBonusPoints = calculateUpfrontContributionBonus(personalExpenses);
+  score = clamp(Math.round(score + upfrontBonusPoints), 0, 100);
 
   let scoreBand = "New";
   let scoreBandSummary = "Build a history across shared expenses and payments to unlock a fair score.";
@@ -385,6 +403,16 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
       value: Math.max(0, 100 - overduePenaltyPoints),
       penaltyApplied: overduePenaltyPoints,
       description: "A lighter penalty applies during the 3-day grace period (1, 2, then 2 points). From Day 4, overdue-tier penalties increase with lateness, combined with diminishing impact and capped at 30. The deduction is removed after payment confirmation."
+    });
+  }
+
+  if (upfrontBonusPoints > 0) {
+    signalBreakdown.push({
+      key: "upfrontContributionBonus",
+      label: "Acknowledged upfront contribution",
+      value: upfrontBonusPoints,
+      bonusApplied: upfrontBonusPoints,
+      description: "Small capped recognition for paying group expenses upfront after every other member acknowledges their share."
     });
   }
 
