@@ -196,6 +196,39 @@ describe("Expense creation and deletion lifecycle", () => {
     assert.equal(outsiderResponse.status, 403);
   });
 
+  it("allows a member to acknowledge their own split exactly once and rejects invalid acknowledgements", async () => {
+    const group = await makeGroup();
+    const expense = await makeExpense(group);
+
+    const firstAck = await request(app)
+      .patch(`/api/expenses/${expense._id}/splits/${member._id}/acknowledge`)
+      .set("Authorization", `Bearer ${memberToken}`);
+    assert.equal(firstAck.status, 200);
+    assert.equal(firstAck.body.splits.find(split => split.user._id === member._id.toString()).acknowledged, true);
+    assert.ok(firstAck.body.splits.find(split => split.user._id === member._id.toString()).acknowledgedAt);
+
+    const repeatAck = await request(app)
+      .patch(`/api/expenses/${expense._id}/splits/${member._id}/acknowledge`)
+      .set("Authorization", `Bearer ${memberToken}`);
+    assert.equal(repeatAck.status, 200);
+    assert.equal(await Expense.findById(expense._id).then(doc => doc.splits.find(split => split.user.toString() === member._id.toString()).acknowledged), true);
+
+    const payerAck = await request(app)
+      .patch(`/api/expenses/${expense._id}/splits/${payer._id}/acknowledge`)
+      .set("Authorization", `Bearer ${payerToken}`);
+    assert.equal(payerAck.status, 400);
+
+    const impersonation = await request(app)
+      .patch(`/api/expenses/${expense._id}/splits/${payer._id}/acknowledge`)
+      .set("Authorization", `Bearer ${memberToken}`);
+    assert.equal(impersonation.status, 403);
+
+    const outsiderAck = await request(app)
+      .patch(`/api/expenses/${expense._id}/splits/${member._id}/acknowledge`)
+      .set("Authorization", `Bearer ${outsiderToken}`);
+    assert.equal(outsiderAck.status, 403);
+  });
+
   it("rejects missing or blank expense descriptions with a validation response", async () => {
     const group = await makeGroup();
     for (const description of [undefined, "   "]) {
