@@ -82,8 +82,8 @@ export async function processSettlementScheduleReminders({ now = new Date() } = 
     // First overdue reminder on Day 4, then weekly on Days 11, 18, 25...
     const overdueReminderKey = overdueDays === 4
       ? "day4"
-      : overdueDays >= 11 && (overdueDays - 4) % 7 === 0
-        ? "weekly-" + overdueDays
+      : overdueDays >= 11
+        ? "weekly-" + Math.floor((overdueDays - 4) / 7)
         : null;
 
     if (!reminderStage || !schedule.from?._id || !schedule.to?._id) continue;
