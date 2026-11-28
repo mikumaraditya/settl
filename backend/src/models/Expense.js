@@ -30,6 +30,11 @@ const expenseSchema = new mongoose.Schema(
         amount: {
           type: Number,
         },
+        percentage: {
+          type: Number,
+          min: 0,
+          max: 100,
+        },
         paid: {
           type: Boolean,
           default: false,

@@ -470,6 +470,152 @@ describe("Expense creation and deletion lifecycle", () => {
     assert.equal(await Expense.countDocuments({ group: group._id }), 0);
   });
 
+  it("allows the payer to edit a recent expense and recalculates its exact splits", async () => {
+    const group = await makeGroup();
+    const expense = await makeExpense(group);
+    const response = await request(app)
+      .put(`/api/expenses/${expense._id}`)
+      .set("Authorization", `Bearer ${payerToken}`)
+      .send({
+        description: "Updated dinner",
+        amount: 120,
+        category: "groceries",
+        splitType: "exact",
+        members: [payer._id.toString(), member._id.toString()],
+        splits: [
+          { user: payer._id.toString(), amount: 70 },
+          { user: member._id.toString(), amount: 50 },
+        ],
+      });
+
+    assert.equal(response.status, 200, JSON.stringify(response.body));
+    assert.equal(response.body._id, expense._id.toString());
+    assert.equal(response.body.description, "Updated dinner");
+    assert.equal(response.body.amount, 120);
+    assert.equal(response.body.category, "groceries");
+    assert.equal(response.body.splitType, "exact");
+    assert.equal(
+      response.body.splits.reduce((sum, split) => sum + Math.round(split.amount * 100), 0),
+      12000,
+    );
+    const stored = await Expense.findById(expense._id).lean();
+    assert.equal(stored.description, "Updated dinner");
+    assert.deepEqual(
+      stored.splits.map((split) => split.amount).sort((a, b) => a - b),
+      [50, 70],
+    );
+  });
+
+  it("only allows the original payer to edit an expense", async () => {
+    const group = await makeGroup();
+    const expense = await makeExpense(group);
+    const response = await request(app)
+      .put(`/api/expenses/${expense._id}`)
+      .set("Authorization", `Bearer ${memberToken}`)
+      .send({ description: "Unauthorized edit", amount: 100, members: [payer._id.toString(), member._id.toString()] });
+
+    assert.equal(response.status, 403);
+    assert.equal((await Expense.findById(expense._id)).description, "Test expense");
+  });
+
+  it("rejects edits after the two-hour correction window", async () => {
+    const group = await makeGroup();
+    const expense = await makeExpense(group);
+    await Expense.collection.updateOne(
+      { _id: expense._id },
+      { $set: { createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000) } },
+    );
+    const response = await request(app)
+      .put(`/api/expenses/${expense._id}`)
+      .set("Authorization", `Bearer ${payerToken}`)
+      .send({ description: "Too late", amount: 100, members: [payer._id.toString(), member._id.toString()] });
+
+    assert.equal(response.status, 403);
+    assert.equal((await Expense.findById(expense._id)).description, "Test expense");
+  });
+
+  it("protects expenses referenced by pending or confirmed settlements and active schedules from edits", async () => {
+    const settlementGroup = await makeGroup();
+    const settlementExpense = await makeExpense(settlementGroup);
+    await Settlement.create({
+      group: settlementGroup._id,
+      from: member._id,
+      to: payer._id,
+      amount: 10,
+      status: "confirmed",
+      sourceExpenseIds: [settlementExpense._id],
+    });
+    const settlementEdit = await request(app)
+      .put(`/api/expenses/${settlementExpense._id}`)
+      .set("Authorization", `Bearer ${payerToken}`)
+      .send({ description: "Should be immutable", amount: 100, members: [payer._id.toString(), member._id.toString()] });
+    assert.equal(settlementEdit.status, 409);
+    assert.equal((await Expense.findById(settlementExpense._id)).description, "Test expense");
+
+    const scheduleGroup = await makeGroup();
+    const scheduledExpense = await makeExpense(scheduleGroup);
+    await SettlementSchedule.create({
+      group: scheduleGroup._id,
+      from: member._id,
+      to: payer._id,
+      amount: 10,
+      dueDate: new Date("2026-12-01T12:00:00.000Z"),
+      status: "accepted",
+      active: true,
+      sourceExpenseIds: [scheduledExpense._id],
+    });
+    const scheduleEdit = await request(app)
+      .put(`/api/expenses/${scheduledExpense._id}`)
+      .set("Authorization", `Bearer ${payerToken}`)
+      .send({ description: "Should also be immutable", amount: 100, members: [payer._id.toString(), member._id.toString()] });
+    assert.equal(scheduleEdit.status, 409);
+    assert.equal((await Expense.findById(scheduledExpense._id)).description, "Test expense");
+  });
+
+  it("validates edit split totals and supports percentage allocations", async () => {
+    const group = await makeGroup();
+    const expense = await makeExpense(group);
+    const invalid = await request(app)
+      .put(`/api/expenses/${expense._id}`)
+      .set("Authorization", `Bearer ${payerToken}`)
+      .send({
+        description: "Invalid edit",
+        amount: 100,
+        splitType: "exact",
+        members: [payer._id.toString(), member._id.toString()],
+        splits: [
+          { user: payer._id.toString(), amount: 60 },
+          { user: member._id.toString(), amount: 30 },
+        ],
+      });
+    assert.equal(invalid.status, 400);
+    assert.equal((await Expense.findById(expense._id)).description, "Test expense");
+
+    const valid = await request(app)
+      .put(`/api/expenses/${expense._id}`)
+      .set("Authorization", `Bearer ${payerToken}`)
+      .send({
+        description: "Percentage edit",
+        amount: 101,
+        category: "food",
+        splitType: "percentage",
+        members: [payer._id.toString(), member._id.toString()],
+        splits: [
+          { user: payer._id.toString(), percentage: 60 },
+          { user: member._id.toString(), percentage: 40 },
+        ],
+      });
+    assert.equal(valid.status, 200, JSON.stringify(valid.body));
+    assert.deepEqual(
+      valid.body.splits.map((split) => split.percentage).sort((a, b) => a - b),
+      [40, 60],
+    );
+    assert.equal(
+      valid.body.splits.reduce((sum, split) => sum + Math.round(split.amount * 100), 0),
+      10100,
+    );
+  });
+
   it("allows the payer to delete a recent expense and rejects repeat deletion", async () => {
     const group = await makeGroup();
     const expense = await makeExpense(group);
