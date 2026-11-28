@@ -94,7 +94,7 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
     let weightedGapSum = 0;
     let weightedInitiativeSum = 0;
 
-    settlements.forEach((s) => {
+    eligibleSettlements.forEach((s) => {
       const settlementGroup = s.group ? s.group.toString() : "";
       const settlementTime = new Date(s.createdAt);
 
