@@ -80,7 +80,7 @@ const normalizeExpenseInput = (body = {}, group, userId) => {
     );
   };
 
-  let finalSplits = [];
+  let finalSplits;
   if (splitType === "equal") {
     const baseShare = Math.floor(totalPaise / selectedIds.length);
     const remainder = totalPaise % selectedIds.length;
@@ -275,7 +275,6 @@ router.post("/", expenseCreateLimiter, async (req, res) => {
     }
     const {
       description,
-      amount,
       totalPaise,
       paidBy,
       splits: finalSplits,
