@@ -28,6 +28,11 @@ const mentorCache = new Map();
 // correctly serves every group member viewing the same user simultaneously.
 const TRUST_SCORE_CACHE_TTL_MS = 20 * 60 * 1000;
 const trustScoreCache = new Map();
+// Cache generations prevent an in-flight computation from repopulating stale data
+// after a mutation invalidates the score cache.
+const trustScoreCacheGeneration = new Map();
+export const shouldStoreTrustScoreCacheResult = (startedGeneration, currentGeneration) =>
+  startedGeneration === currentGeneration;
 
 /**
  * Evict a user's cached trust score immediately.
@@ -36,7 +41,9 @@ const trustScoreCache = new Map();
  * waiting for the 20-minute TTL to expire.
  */
 export function clearTrustScoreCache(userId) {
-  trustScoreCache.delete(String(userId));
+  const key = String(userId);
+  trustScoreCache.delete(key);
+  trustScoreCacheGeneration.set(key, (trustScoreCacheGeneration.get(key) || 0) + 1);
 }
 
 export function clearMentorCache(userId) {
@@ -220,12 +227,17 @@ router.get("/trust-score/:userId", protect, requireVerified, trustScoreRateLimit
       return res.json(cached.data);
     }
 
-    // Compute fresh and cache
+    // Compute fresh and cache. Mutations can invalidate while this request is
+    // in-flight, so only store if the generation remains unchanged.
+    const startedGeneration = trustScoreCacheGeneration.get(cacheKey) || 0;
     const result = await getTrustScoreForUser(targetUserId);
-    trustScoreCache.set(cacheKey, {
-      data: result,
-      expiresAt: Date.now() + TRUST_SCORE_CACHE_TTL_MS,
-    });
+    const currentGeneration = trustScoreCacheGeneration.get(cacheKey) || 0;
+    if (shouldStoreTrustScoreCacheResult(startedGeneration, currentGeneration)) {
+      trustScoreCache.set(cacheKey, {
+        data: result,
+        expiresAt: Date.now() + TRUST_SCORE_CACHE_TTL_MS,
+      });
+    }
     return res.json(result);
   } catch (error) {
     console.error("Error fetching user trust score:", error);

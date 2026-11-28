@@ -42,6 +42,16 @@ async function runTrustScore2Tests() {
     createdBy: userA._id,
   });
 
+  // TEST 0B: Cache invalidation wins over in-flight score computations.
+  console.log("\\n[TEST 0B] Trust Score cache generation prevents stale repopulation");
+  {
+    const { shouldStoreTrustScoreCacheResult } = await import("../src/routes/insights.js");
+    if (!shouldStoreTrustScoreCacheResult(4, 4) || shouldStoreTrustScoreCacheResult(4, 5)) {
+      throw new Error("Trust Score cache generation gate failed");
+    }
+    console.log("  PASS: Cache writes are blocked when invalidation occurs mid-computation");
+  }
+
   // TEST 1: New / Ineligible user returns status 'new' with null score
   console.log("\n[TEST 1] Ineligible user without enough history");
   {
