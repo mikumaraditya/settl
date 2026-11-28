@@ -150,6 +150,8 @@ export default function GroupDetail() {
 
   // ── Modals / forms ────────────────────────────────────────────────────────────
   const [showAddExpense, setShowAddExpense]   = useState(false)
+  const [editingExpense, setEditingExpense] = useState(null)
+  const [expenseMemberIds, setExpenseMemberIds] = useState([])
   const [showAddMember, setShowAddMember]     = useState(false)
   const [showDeleteGroup, setShowDeleteGroup] = useState(false)
   const [showLeaveGroup, setShowLeaveGroup]   = useState(false)
@@ -169,15 +171,14 @@ export default function GroupDetail() {
     setExactAmounts(prev => {
       const next = { ...prev, [userId]: value }
       
-      if (group?.members && group.members.length > 0) {
-        const lastMemberId = group.members[group.members.length - 1].user?._id
+      if (expenseMemberIds.length > 0) {
+        const lastMemberId = expenseMemberIds[expenseMemberIds.length - 1]
         
         if (userId !== lastMemberId) {
           const totalAmount = parseFloat(expenseForm.amount) || 0
           if (totalAmount > 0) {
             let sumOthers = 0
-            group.members.slice(0, -1).forEach(m => {
-              const mId = m.user?._id
+            expenseMemberIds.slice(0, -1).forEach(mId => {
               const val = mId === userId ? parseFloat(value) : parseFloat(prev[mId])
               sumOthers += val || 0
             })
@@ -193,10 +194,10 @@ export default function GroupDetail() {
   }
 
   useEffect(() => {
-    if (expenseForm.splitType !== 'exact' || !group?.members || group.members.length === 0) return
+    if (expenseForm.splitType !== 'exact' || expenseMemberIds.length === 0) return
 
     const totalAmount = parseFloat(expenseForm.amount) || 0
-    const lastMemberId = group.members[group.members.length - 1].user?._id
+    const lastMemberId = expenseMemberIds[expenseMemberIds.length - 1]
 
     if (totalAmount <= 0) {
       setTimeout(() => {
@@ -211,8 +212,8 @@ export default function GroupDetail() {
     setTimeout(() => {
       setExactAmounts(prev => {
         let sumOthers = 0
-        group.members.slice(0, -1).forEach(m => {
-          sumOthers += parseFloat(prev[m.user?._id]) || 0
+        expenseMemberIds.slice(0, -1).forEach(memberId => {
+          sumOthers += parseFloat(prev[memberId]) || 0
         })
         const remaining = totalAmount - sumOthers
         const autoFilledVal = remaining >= 0 ? remaining.toFixed(2) : '0.00'
@@ -221,7 +222,7 @@ export default function GroupDetail() {
         return { ...prev, [lastMemberId]: autoFilledVal }
       })
     }, 0)
-  }, [expenseForm.amount, expenseForm.splitType, group?.members])
+  }, [expenseForm.amount, expenseForm.splitType, expenseMemberIds])
 
   const openAddExpenseModal = useCallback(() => {
     setExpenseError('')
@@ -235,9 +236,50 @@ export default function GroupDetail() {
       });
       setSplitPercentages(initial);
       setExactAmounts(initialExact);
+      setExpenseMemberIds(group.members.map(member => member.user?._id).filter(Boolean));
     }
+    setEditingExpense(null);
+    setExpenseForm({ description: '', amount: '', category: 'food', splitType: 'equal' });
     setShowAddExpense(true);
   }, [group, setShowAddExpense, setExpenseError]);
+
+  const openEditExpenseModal = (expense) => {
+    const participantIds = expense.splits
+      .map(split => split.user?._id || split.user)
+      .filter(Boolean)
+      .map(String)
+    if (!participantIds.length) {
+      setExpenseError('The original split participants could not be loaded. Refresh this group and try again.')
+      return
+    }
+    const hasStoredPercentages = expense.splitType === 'percentage' &&
+      expense.splits.every(split => Number.isFinite(Number(split.percentage)) && Number(split.percentage) > 0) &&
+      Math.abs(expense.splits.reduce((sum, split) => sum + Number(split.percentage), 0) - 100) <= 0.000001
+    const splitType = expense.splitType === 'percentage' && !hasStoredPercentages
+      ? 'exact'
+      : (expense.splitType || 'equal')
+    const percentages = {}
+    const exact = {}
+    expense.splits.forEach(split => {
+      const memberId = String(split.user?._id || split.user)
+      percentages[memberId] = hasStoredPercentages
+        ? Number(split.percentage)
+        : (Number(split.amount) / Number(expense.amount)) * 100
+      exact[memberId] = Number(split.amount).toFixed(2)
+    })
+    setEditingExpense(expense)
+    setExpenseError('')
+    setExpenseForm({
+      description: expense.description || '',
+      amount: String(expense.amount || ''),
+      category: expense.category || 'other',
+      splitType,
+    })
+    setExpenseMemberIds(participantIds)
+    setSplitPercentages(percentages)
+    setExactAmounts(exact)
+    setShowAddExpense(true)
+  }
 
   // Home can deep-link into the existing add-expense flow without duplicating the form.
   useEffect(() => {
@@ -250,7 +292,7 @@ export default function GroupDetail() {
   }, [group, searchParams, setSearchParams, openAddExpenseModal])
 
   const handleSliderChange = (changedUserId, newValue) => {
-    const memberIds = group?.members?.map(member => member.user?._id).filter(Boolean) || []
+    const memberIds = expenseMemberIds
     if (memberIds.length <= 1) {
       setSplitPercentages({ [changedUserId]: 100 })
       return
@@ -604,8 +646,9 @@ export default function GroupDetail() {
       return
     }
 
-    const memberIds = group?.members?.map(member => member.user?._id) || []
-    if (!memberIds.length || memberIds.some(memberId => !memberId)) {
+    const memberIds = expenseMemberIds
+    const availableMemberIds = new Set(group?.members?.map(member => member.user?._id).filter(Boolean) || [])
+    if (!memberIds.length || memberIds.some(memberId => !memberId || !availableMemberIds.has(memberId))) {
       setExpenseError('Group members could not be verified. Refresh the group and try again.')
       return
     }
@@ -665,7 +708,7 @@ export default function GroupDetail() {
     setAddingExpense(true)
     setExpenseError('')
     try {
-      const payload = { ...expenseForm, description, amount: totalPaise / 100, groupId: id }
+      const payload = { ...expenseForm, description, amount: totalPaise / 100, groupId: id, members: memberIds }
       if (expenseForm.splitType === 'percentage') {
         payload.splits = memberIds.map(userId => ({
           user: userId,
@@ -678,16 +721,24 @@ export default function GroupDetail() {
         }))
       }
 
-      const idempotencyKey = getExpenseIdempotencyKey()
-      const { data: createdExpense } = await axios.post('/expenses', payload, {
-        headers: { 'Idempotency-Key': idempotencyKey },
-      })
-      resetExpenseIdempotencyKey()
+      let savedExpense
+      if (editingExpense) {
+        const { data } = await axios.put(`/expenses/${editingExpense._id}`, payload)
+        savedExpense = data
+      } else {
+        const idempotencyKey = getExpenseIdempotencyKey()
+        const { data } = await axios.post('/expenses', payload, {
+          headers: { 'Idempotency-Key': idempotencyKey },
+        })
+        resetExpenseIdempotencyKey()
+        savedExpense = data
+      }
       setNow(Date.now())
-      setExpenses(prev => prev.some(item => item._id === createdExpense._id)
-        ? prev.map(item => item._id === createdExpense._id ? createdExpense : item)
-        : [createdExpense, ...prev])
+      setExpenses(prev => prev.some(item => item._id === savedExpense._id)
+        ? prev.map(item => item._id === savedExpense._id ? savedExpense : item)
+        : [savedExpense, ...prev])
       setExpenseForm({ description: '', amount: '', category: 'food', splitType: 'equal' })
+      setEditingExpense(null)
       setShowAddExpense(false)
       setExpenseError('')
       await Promise.all([
@@ -1423,19 +1474,29 @@ export default function GroupDetail() {
                                     </div>
                                   </div>
 
-                                  {/* Delete button */}
+                                  {/* Edit and delete controls share the same correction window. */}
                                   {expense.paidBy?._id === user._id && (() => {
                                     const { canDelete, label } = getTimeStatus(expense.createdAt)
                                     if (!canDelete) return null
                                     return (
-                                      <button
-                                        onClick={() => { setNow(Date.now()); setDeleteExpenseError(''); setExpenseToDelete(expense) }}
-                                        className="absolute bottom-3.5 right-3.5 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-on-surface-variant hover:text-[#f87171] opacity-75 hover:opacity-100 active:scale-95 transition-all cursor-pointer p-1 rounded-lg border border-transparent hover:bg-white/5 hover:border-white/5"
-                                        title="Delete Expense"
-                                      >
-                                        <span className="material-symbols-outlined text-[15px]">delete</span>
-                                        <span>{label}</span>
-                                      </button>
+                                      <div className="absolute bottom-3.5 right-3.5 flex items-center gap-2">
+                                        <button
+                                          onClick={() => openEditExpenseModal(expense)}
+                                          className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-on-surface-variant hover:text-blue-300 opacity-75 hover:opacity-100 active:scale-95 transition-all cursor-pointer p-1 rounded-lg border border-transparent hover:bg-white/5 hover:border-white/5"
+                                          title="Edit Expense"
+                                        >
+                                          <span className="material-symbols-outlined text-[15px]">edit</span>
+                                          <span>Edit</span>
+                                        </button>
+                                        <button
+                                          onClick={() => { setNow(Date.now()); setDeleteExpenseError(''); setExpenseToDelete(expense) }}
+                                          className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-on-surface-variant hover:text-[#f87171] opacity-75 hover:opacity-100 active:scale-95 transition-all cursor-pointer p-1 rounded-lg border border-transparent hover:bg-white/5 hover:border-white/5"
+                                          title="Delete Expense"
+                                        >
+                                          <span className="material-symbols-outlined text-[15px]">delete</span>
+                                          <span>{label}</span>
+                                        </button>
+                                      </div>
                                     )
                                   })()}
                                 </div>
@@ -1649,10 +1710,19 @@ export default function GroupDetail() {
                                         color: '#2563eb', 
                                         label: (l) => `added "${l.meta?.description}" — ₹${Number(l.meta?.amount).toLocaleString('en-IN')}` 
                                       },
-                                      expense_deleted: { 
-                                        icon: 'delete', 
-                                        color: '#f87171', 
-                                        label: (l) => `deleted expense "${l.meta?.description}" — ₹${Number(l.meta?.amount).toLocaleString('en-IN')}` 
+                                      expense_updated: {
+                                        icon: 'edit',
+                                        color: '#60a5fa',
+                                        label: (l) => {
+                                          const before = l.meta?.before || {}
+                                          const after = l.meta?.after || {}
+                                          return `updated "${after.description || before.description || 'an expense'}" — ₹${Number(before.amount || 0).toLocaleString('en-IN')} → ₹${Number(after.amount || 0).toLocaleString('en-IN')}`
+                                        },
+                                      },
+                                      expense_deleted: {
+                                        icon: 'delete',
+                                        color: '#f87171',
+                                        label: (l) => `deleted expense "${l.meta?.description}" — ₹${Number(l.meta?.amount).toLocaleString('en-IN')}`
                                       },
                                       settlement_requested: { 
                                         icon: 'payments', 
@@ -2305,7 +2375,7 @@ export default function GroupDetail() {
 
       {/* ── Add Expense Modal ─────────────────────────────────────────────────── */}
       {showAddExpense && (
-        <div className="modal-overlay bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={(e) => { if (e.target === e.currentTarget && !addingExpense) { setShowAddExpense(false); setExpenseError('') } }}>
+        <div className="modal-overlay bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={(e) => { if (e.target === e.currentTarget && !addingExpense) { setShowAddExpense(false); setEditingExpense(null); setExpenseError('') } }}>
           <div className="glass-modal rounded-3xl max-w-2xl w-full border border-white/10 shadow-2xl overflow-y-auto md:overflow-hidden max-h-[90vh] md:max-h-[none] flex flex-col md:flex-row animate-in zoom-in-95 duration-200 hide-scrollbar">
             {/* Left section: Category and Amount */}
             <div className="md:w-5/12 bg-white/[0.02] border-b md:border-b-0 md:border-r border-white/5 p-6 flex flex-col justify-between relative overflow-hidden">
@@ -2313,10 +2383,10 @@ export default function GroupDetail() {
               
               <div>
                 <div className="flex items-center gap-3 mb-6">
-                  <button onClick={() => { if (!addingExpense) { setShowAddExpense(false); setExpenseError('') } }} disabled={addingExpense} className="w-8 h-8 rounded-xl flex items-center justify-center bg-white/5 hover:bg-white/10 border border-white/5 transition-all cursor-pointer text-white">
+                  <button onClick={() => { if (!addingExpense) { setShowAddExpense(false); setEditingExpense(null); setExpenseError('') } }} disabled={addingExpense} className="w-8 h-8 rounded-xl flex items-center justify-center bg-white/5 hover:bg-white/10 border border-white/5 transition-all cursor-pointer text-white">
                     <span className="material-symbols-outlined text-white text-sm">close</span>
                   </button>
-                  <h3 className="text-base font-extrabold text-white">Add Expense</h3>
+                  <h3 className="text-base font-extrabold text-white">{editingExpense ? 'Edit Expense' : 'Add Expense'}</h3>
                 </div>
                 
                 <div className="space-y-5 mt-6">
@@ -2428,13 +2498,13 @@ export default function GroupDetail() {
                 </div>
                 
                 <div className="flex justify-between items-center mb-3">
-                  <p className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Split with group members</p>
+                  <p className="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest">Choose participants for this split</p>
                   {(() => {
-                    if (expenseForm.splitType !== 'exact' || !group?.members || group.members.length === 0) return null;
+                    if (expenseForm.splitType !== 'exact' || expenseMemberIds.length === 0) return null;
                     const total = parseFloat(expenseForm.amount) || 0;
                     let sumOthers = 0;
-                    group.members.slice(0, -1).forEach(m => {
-                      sumOthers += parseFloat(exactAmounts[m.user?._id]) || 0;
+                    expenseMemberIds.slice(0, -1).forEach(memberId => {
+                      sumOthers += parseFloat(exactAmounts[memberId]) || 0;
                     });
                     if (sumOthers > total) {
                       const diff = sumOthers - total;
@@ -2457,38 +2527,63 @@ export default function GroupDetail() {
                   })()}
                 </div>
                 <div className="space-y-2 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
-                  {group?.members.map((m, index) => {
-                    const pct = splitPercentages[m.user?._id] || 0;
-                    const amount = expenseForm.amount ? parseFloat(expenseForm.amount) : 0;
-                    const calculatedShare = expenseForm.splitType === 'percentage' 
-                      ? (amount * (pct / 100)) 
+                  {group?.members.map((m) => {
+                    const memberId = m.user?._id
+                    const isSelected = expenseMemberIds.includes(memberId)
+                    const selectedIndex = expenseMemberIds.indexOf(memberId)
+                    const pct = splitPercentages[memberId] || 0
+                    const amount = expenseForm.amount ? parseFloat(expenseForm.amount) : 0
+                    const calculatedShare = !isSelected ? 0 : expenseForm.splitType === 'percentage'
+                      ? (amount * (pct / 100))
                       : expenseForm.splitType === 'exact'
-                        ? (parseFloat(exactAmounts[m.user?._id]) || 0)
-                        : (amount / group.members.length);
-                    const isLastMember = index === group.members.length - 1;
+                        ? (parseFloat(exactAmounts[memberId]) || 0)
+                        : (amount / Math.max(1, expenseMemberIds.length))
+                    const isLastMember = isSelected && selectedIndex === expenseMemberIds.length - 1;
                       
                     return (
                     <div key={m.user?._id} className="p-3 bg-white/[0.01] hover:bg-white/[0.03] border border-white/5 rounded-2xl flex flex-col gap-2 text-xs transition-all">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-zinc-700 to-zinc-600 text-white flex items-center justify-center font-bold text-[10px]">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="flex items-center gap-2.5 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            disabled={isSelected && expenseMemberIds.length === 1}
+                            onChange={(e) => {
+                              const nextIds = e.target.checked
+                                ? [...expenseMemberIds, memberId]
+                                : expenseMemberIds.filter(id => id !== memberId)
+                              if (!nextIds.length) return
+                              setExpenseMemberIds(nextIds)
+                              const equalPercentage = 100 / nextIds.length
+                              setSplitPercentages(prev => ({
+                                ...prev,
+                                ...Object.fromEntries(nextIds.map(id => [id, equalPercentage])),
+                              }))
+                              if (e.target.checked) {
+                                setExactAmounts(prev => ({ ...prev, [memberId]: '' }))
+                              }
+                              setExpenseError('')
+                            }}
+                            className="accent-blue-500"
+                          />
+                          <span className="w-7 h-7 rounded-xl bg-gradient-to-tr from-zinc-700 to-zinc-600 text-white flex items-center justify-center font-bold text-[10px]">
                             {m.user?.name?.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <p className="font-bold text-white">{m.user?._id === user._id ? 'You' : m.user?.name}</p>
-                            <p className="text-[9px] text-on-surface-variant/70 font-semibold">{m.user?._id === user._id ? 'Paid full amount' : 'Share assigned'}</p>
-                          </div>
-                        </div>
-                        <span className="font-bold text-white/80">
-                          ₹{calculatedShare.toFixed(2)}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block font-bold text-white truncate">{m.user?._id === user._id ? 'You' : m.user?.name}</span>
+                            <span className="block text-[9px] text-on-surface-variant/70 font-semibold">{isSelected ? (m.user?._id === user._id ? 'Paid full amount' : 'Share assigned') : 'Not included'}</span>
+                          </span>
+                        </label>
+                        <span className="font-bold text-white/80 whitespace-nowrap">
+                          {isSelected ? `₹${calculatedShare.toFixed(2)}` : '—'}
                         </span>
                       </div>
                       
-                      {expenseForm.splitType === 'percentage' && (
+                      {isSelected && expenseForm.splitType === 'percentage' && (
                         <div className="flex items-center gap-3 mt-1">
                           <input 
                             type="range" 
-                            min="1" max={Math.max(1, 101 - group.members.length)} step="1"
+                            min="1" max={Math.max(1, 101 - expenseMemberIds.length)} step="1"
                             value={pct}
                             onChange={(e) => handleSliderChange(m.user?._id, e.target.value)}
                             className="flex-1 accent-blue-500 h-1 bg-white/10 rounded-lg appearance-none cursor-pointer"
@@ -2497,7 +2592,7 @@ export default function GroupDetail() {
                         </div>
                       )}
                       
-                      {expenseForm.splitType === 'exact' && (
+                      {isSelected && expenseForm.splitType === 'exact' && (
                         <div className="flex items-center gap-3 mt-1 relative">
                           <span className="text-[12px] font-bold text-white/50">₹</span>
                           <input 
@@ -2536,9 +2631,9 @@ export default function GroupDetail() {
                   <span>Today</span>
                 </div>
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => { setShowAddExpense(false); setExpenseError('') }} disabled={addingExpense} className="px-4 py-2 border border-white/10 rounded-xl text-white font-bold text-xs uppercase tracking-wider hover:bg-white/5 transition-all cursor-pointer">Cancel</button>
+                  <button type="button" onClick={() => { setShowAddExpense(false); setEditingExpense(null); setExpenseError('') }} disabled={addingExpense} className="px-4 py-2 border border-white/10 rounded-xl text-white font-bold text-xs uppercase tracking-wider hover:bg-white/5 transition-all cursor-pointer">Cancel</button>
                   <button type="submit" disabled={addingExpense} className="px-5 py-2 bg-blue-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-md shadow-blue-500/10 border border-blue-500/20 hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-50">
-                    {addingExpense ? 'Saving...' : 'Save Expense'}
+                    {addingExpense ? (editingExpense ? 'Updating...' : 'Saving...') : (editingExpense ? 'Update Expense' : 'Save Expense')}
                   </button>
                 </div>
               </div>
