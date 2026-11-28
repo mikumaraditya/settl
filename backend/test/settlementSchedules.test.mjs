@@ -1359,15 +1359,16 @@ test("overdue accepted schedules notify both participants once and cannot be can
       "Day-4 reminders must be idempotent across repeated scans",
     );
 
-    const day11 = new Date(`${addDaysDateOnly(today, 7)}T15:00:00.000Z`);
-    await processSettlementScheduleReminders({ now: day11 });
+    // Simulate a worker outage on Day 11; scanning on Day 12 should catch up.
+    const day12 = new Date(`${addDaysDateOnly(today, 8)}T15:00:00.000Z`);
+    await processSettlementScheduleReminders({ now: day12 });
     assert.equal(
       await Notification.countDocuments({ schedule: schedule._id, reminderStage: "overdue" }),
       4,
       "weekly overdue reminders should recur after seven days",
     );
 
-    await processSettlementScheduleReminders({ now: day11 });
+    await processSettlementScheduleReminders({ now: day12 });
     assert.equal(
       await Notification.countDocuments({ schedule: schedule._id, reminderStage: "overdue" }),
       4,
