@@ -115,8 +115,9 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
   }
 
   // 4. Spending Consistency: recency-weighted monthly variance
-  const refYear = refDate.getFullYear();
-  const refMonth = refDate.getMonth();
+  // Expense buckets are UTC month strings, so recency weights must use UTC too.
+  const refYear = refDate.getUTCFullYear();
+  const refMonth = refDate.getUTCMonth();
 
   const monthlyTotals = {};
   let equalSplitCount = 0;
