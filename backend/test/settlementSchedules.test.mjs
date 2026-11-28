@@ -1365,7 +1365,13 @@ test("overdue accepted schedules notify both participants once and cannot be can
     assert.equal(
       await Notification.countDocuments({ schedule: schedule._id, reminderStage: "overdue" }),
       4,
-      "weekly overdue reminders should recur after seven days",
+      "weekly overdue reminders should catch up after a missed Day-11 scan",
+    );
+    const weeklyRows = await Notification.find({ schedule: schedule._id, reminderStage: "overdue" }).lean();
+    assert.equal(
+      weeklyRows.filter(item => item.dedupeKey.includes("weekly-1")).length,
+      2,
+      "the catch-up scan should use the same stable weekly dedupe bucket",
     );
 
     await processSettlementScheduleReminders({ now: day12 });
