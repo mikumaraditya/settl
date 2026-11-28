@@ -75,7 +75,7 @@ Settl is a modern full-stack bill-sharing and personal finance platform built fo
 
 ### 7. Real-Time Synchronization & Audit Logs
 - **Socket.IO Room Partitioning**: Group members join isolated socket rooms (`groupId`) to receive instant live updates without polling.
-- **Live Event Broadcasts**: Instant UI updates on `expense_added`, `expense_deleted`, `settlement_requested`, `settlement_done`, and `settlement_undone`.
+- **Live Event Broadcasts**: Instant UI updates on `expense_added`, `expense_updated`, `expense_deleted`, `settlement_requested`, `settlement_done`, and `settlement_undone`.
 - **Group Activity Feed**: Chronological, paged audit feed of all member additions, expenses, and settlement lifecycle transitions.
 - **Group Chat**: In-app messaging inside group workspaces with real-time delivery (`message_created`).
 
@@ -596,7 +596,8 @@ All application endpoints are mounted under `/api` and require authenticated HTT
 | :--- | :--- | :--- | :--- |
 | `POST` | `/api/expenses` | Protected | Create a new shared expense with equal, exact, or percentage splits. Optional `Idempotency-Key` header makes retries safe; reusing a key with changed details returns `409`. |
 | `GET` | `/api/expenses/group/:id` | Protected | Fetch paginated group expenses filtered by month. |
-| `DELETE`| `/api/expenses/:id` | Protected | Delete an expense (restricted to payer or group admin). |
+| `PUT` | `/api/expenses/:id` | Protected | Edit an expense within two hours, restricted to its original payer. Expenses linked to pending/confirmed payments or active repayment schedules are immutable; add a correcting expense instead. |
+| `DELETE`| `/api/expenses/:id` | Protected | Delete an expense (restricted to its original payer within two hours). |
 
 ### Settlements (`/api/settlements`)
 | Method | Endpoint | Access | Description |

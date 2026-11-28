@@ -18,6 +18,7 @@ const activityLogSchema = new mongoose.Schema(
       required: true,
       enum: [
         'expense_added',
+        'expense_updated',
         'expense_deleted',
         'settlement_requested',
         'settlement_confirmed',
