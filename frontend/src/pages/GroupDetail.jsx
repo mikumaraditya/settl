@@ -63,6 +63,8 @@ export default function GroupDetail() {
   const [expenseLoadError, setExpenseLoadError] = useState('')
   const [expensePageError, setExpensePageError] = useState('')
   const [expenses, setExpenses] = useState([])
+  const [acknowledgingSplitId, setAcknowledgingSplitId] = useState(null)
+  const [expenseAcknowledgeError, setExpenseAcknowledgeError] = useState('')
   const [loading, setLoading]   = useState(true)
 
   // ── Pagination state ─────────────────────────────────────────────────────────
@@ -763,6 +765,21 @@ export default function GroupDetail() {
     } finally {
       addExpenseRequestInFlightRef.current = false
       setAddingExpense(false)
+    }
+  }
+
+  const handleAcknowledgeExpenseShare = async (expense) => {
+    const key = `${expense._id}:${user._id}`
+    if (acknowledgingSplitId) return
+    setAcknowledgingSplitId(key)
+    setExpenseAcknowledgeError('')
+    try {
+      const { data } = await axios.patch(`/expenses/${expense._id}/splits/${user._id}/acknowledge`)
+      setExpenses(prev => prev.map(item => item._id === data._id ? data : item))
+    } catch (error) {
+      setExpenseAcknowledgeError(error.response?.data?.message || 'Unable to acknowledge this share right now.')
+    } finally {
+      setAcknowledgingSplitId(null)
     }
   }
 
@@ -1486,6 +1503,18 @@ export default function GroupDetail() {
                                               {isPayer && <span className="text-emerald-400 text-[8px] ml-1 font-bold uppercase tracking-wider">(paid)</span>}:
                                               {' '}<span className={`font-bold ${isPayer ? 'text-emerald-400' : 'text-white'}`}>₹{split.amount.toLocaleString('en-IN')}</span>
                                             </span>
+                                            {!isPayer && split.user?._id === user._id && !split.acknowledged && (
+                                              <button
+                                                onClick={() => handleAcknowledgeExpenseShare(expense)}
+                                                disabled={acknowledgingSplitId === `${expense._id}:${user._id}`}
+                                                className="text-[9px] font-bold uppercase tracking-wide text-secondary hover:text-white border border-secondary/30 rounded-md px-1.5 py-0.5 disabled:opacity-50"
+                                              >
+                                                {acknowledgingSplitId === `${expense._id}:${user._id}` ? 'Saving…' : 'Acknowledge'}
+                                              </button>
+                                            )}
+                                            {!isPayer && split.user?._id === user._id && split.acknowledged && (
+                                              <span className="text-[9px] text-emerald-400 font-bold uppercase">Acknowledged</span>
+                                            )}
                                           </div>
                                         )
                                       })}
