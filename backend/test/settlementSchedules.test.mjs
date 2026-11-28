@@ -1290,7 +1290,7 @@ test("overdue accepted schedules notify both participants once and cannot be can
       from: userA._id,
       to: userB._id,
       amount: 100,
-      dueDate: new Date(`${addDaysDateOnly(today, -2)}T12:00:00.000Z`),
+      dueDate: new Date(`${addDaysDateOnly(today, -4)}T12:00:00.000Z`),
       timeZone: "UTC",
       status: "accepted",
       active: true,
@@ -1316,7 +1316,22 @@ test("overdue accepted schedules notify both participants once and cannot be can
     assert.equal(
       await Notification.countDocuments({ schedule: schedule._id, reminderStage: "overdue" }),
       2,
-      "the reminder worker must not create duplicate overdue alerts",
+      "Day-4 reminders must be idempotent across repeated scans",
+    );
+
+    const day11 = new Date(`${addDaysDateOnly(today, 7)}T15:00:00.000Z`);
+    await processSettlementScheduleReminders({ now: day11 });
+    assert.equal(
+      await Notification.countDocuments({ schedule: schedule._id, reminderStage: "overdue" }),
+      4,
+      "weekly overdue reminders should recur after seven days",
+    );
+
+    await processSettlementScheduleReminders({ now: day11 });
+    assert.equal(
+      await Notification.countDocuments({ schedule: schedule._id, reminderStage: "overdue" }),
+      4,
+      "weekly reminders must remain idempotent on repeated scans",
     );
   } finally {
     await Promise.all([
