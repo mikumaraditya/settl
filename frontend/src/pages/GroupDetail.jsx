@@ -945,6 +945,13 @@ export default function GroupDetail() {
       setExpenses(prev => prev.filter(e => e._id !== expenseId))
       fetchSettlements()
     }
+    const onExpenseUpdated = (updatedExpense) => {
+      setNow(Date.now())
+      setExpenses(prev => prev.map(expense =>
+        expense._id === updatedExpense._id ? updatedExpense : expense
+      ))
+      fetchSettlements()
+    }
 
     // Settlement events — refresh smart settlement widget
     const onSettlementDone      = () => fetchSettlements()
@@ -970,6 +977,7 @@ export default function GroupDetail() {
 
     socket.on('expense_added',                onExpenseAdded)
     socket.on('expense_deleted',              onExpenseDeleted)
+    socket.on('expense_updated',              onExpenseUpdated)
     socket.on('settlement_done',              onSettlementDone)
     socket.on('settlement_undone',            onSettlementUndone)
     socket.on('settlement_requested',         onSettlementRequested)
@@ -979,6 +987,7 @@ export default function GroupDetail() {
       socket.emit('leave_group', id)
       socket.off('expense_added',                onExpenseAdded)
       socket.off('expense_deleted',              onExpenseDeleted)
+      socket.off('expense_updated',              onExpenseUpdated)
       socket.off('settlement_done',              onSettlementDone)
       socket.off('settlement_undone',            onSettlementUndone)
       socket.off('settlement_requested',         onSettlementRequested)
