@@ -1,6 +1,6 @@
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export function computeMentorReport(settlements = [], personalExpenses = [], rejections = [], overdueCommitments = []) {
+export function computeMentorReport(settlements = [], personalExpenses = [], rejections = [], overdueCommitments = [], referenceDate = new Date()) {
   // Cancelled/rejected requests are audit records, not repayment activity.
   const eligibleSettlements = settlements.filter((s) => s.status !== "cancelled" && s.status !== "rejected");
   const hasSettlements = eligibleSettlements.length >= 1;
@@ -8,31 +8,9 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
   let settlementInitiative = 0;
   let averageInitiativeHours = 14 * 24;
 
-  // 1. Determine reference date for recency calculations (latest transaction date in the dataset, fallback to today)
-  let latestDate = new Date();
-  let firstTimeInit = true;
-  eligibleSettlements.forEach(s => {
-    const d = new Date(s.createdAt);
-    if (firstTimeInit || d > latestDate) {
-      latestDate = d;
-      firstTimeInit = false;
-    }
-  });
-  personalExpenses.forEach(e => {
-    const d = new Date(e.createdAt);
-    if (firstTimeInit || d > latestDate) {
-      latestDate = d;
-      firstTimeInit = false;
-    }
-  });
-  rejections.forEach(r => {
-    const d = new Date(r.createdAt);
-    if (firstTimeInit || d > latestDate) {
-      latestDate = d;
-      firstTimeInit = false;
-    }
-  });
-  const refDate = latestDate;
+  // Recency and monthly weighting must age against the actual current/reference date,
+  // not the newest transaction in a user's history.
+  const refDate = referenceDate instanceof Date ? referenceDate : new Date(referenceDate);
 
   if (hasSettlements) {
     // 2. Follow-Through: confirmed settlements / total settlements, weighted by recency & staleness.
