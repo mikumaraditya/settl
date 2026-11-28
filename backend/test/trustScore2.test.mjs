@@ -69,6 +69,40 @@ async function runTrustScore2Tests() {
     }
   }
 
+  // TEST 2B: Cancelled/rejected settlements do not unlock repayment reliability or affect initiative
+  console.log("\n[TEST 2B] Invalid settlement records excluded from eligibility and initiative");
+  {
+    const invalidOnly = [
+      { status: "cancelled", createdAt: new Date(Date.now() - 2 * 864e5), group: testGroup._id },
+      { status: "rejected", createdAt: new Date(Date.now() - 1 * 864e5), group: testGroup._id },
+    ];
+    const invalidReport = computeMentorReport(invalidOnly, [], []);
+    if (!invalidReport.signalBreakdown.some((s) => s.key === "repaymentReliability")) {
+      console.log("  PASS: Cancelled/rejected-only history does not qualify repayment reliability");
+    } else {
+      throw new Error("Cancelled/rejected settlements incorrectly qualified repayment reliability");
+    }
+
+    const expenseDate = new Date(Date.now() - 10 * 864e5);
+    const baselineSettlements = [
+      { status: "confirmed", createdAt: new Date(expenseDate.getTime() + 24 * 3600000), group: testGroup._id },
+    ];
+    const initiativeExpenses = [
+      { personalShare: 100, isPaidByUser: true, createdAt: expenseDate, group: testGroup._id },
+    ];
+    const baseline = computeMentorReport(baselineSettlements, initiativeExpenses, []);
+    const withInvalid = computeMentorReport([
+      ...baselineSettlements,
+      { status: "cancelled", createdAt: new Date(Date.now() - 1 * 864e5), group: testGroup._id },
+      { status: "rejected", createdAt: new Date(Date.now() - 1 * 864e5), group: testGroup._id },
+    ], initiativeExpenses, []);
+    if (withInvalid.signals.settlementInitiative === baseline.signals.settlementInitiative) {
+      console.log("  PASS: Cancelled/rejected records do not influence settlement initiative");
+    } else {
+      throw new Error("Cancelled/rejected settlements changed settlement initiative");
+    }
+  }
+
   // TEST 3: Preservation of rejected settlements (auditability)
   console.log("\n[TEST 3] Preserved rejected settlement record & due date assignment");
   {
