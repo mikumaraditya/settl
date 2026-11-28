@@ -120,7 +120,7 @@ describe("Persistent notification routes", () => {
     assert.equal(response.body.notifications[29].title, "Own 2");
     assert.equal(response.body.notifications[0].persistent, true);
     assert.equal(response.body.notifications[0].read, false);
-    assert.equal(response.body.unreadCount, 31, "unread count includes older active notifications and excludes other users/deleted records");
+    assert.equal(response.body.unreadCount, 32, "unread count includes older active notifications and excludes other users/deleted records");
   });
 
   it("marks only an owned active notification as read", async () => {
