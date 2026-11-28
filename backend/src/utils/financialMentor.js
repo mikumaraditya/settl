@@ -12,6 +12,32 @@ export function getIsoWeekKey(date = new Date()) {
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
+const getPenaltyForOverdueDays = (overdueDays) => {
+  if (!Number.isFinite(overdueDays) || overdueDays <= 0) return 0;
+  if (overdueDays <= 3) return overdueDays === 1 ? 1 : 2;
+  if (overdueDays <= 7) return 3;
+  if (overdueDays <= 15) return 7;
+  if (overdueDays <= 30) return 12;
+  if (overdueDays <= 60) return 20;
+  return 30;
+};
+
+// During the grace period, penalties are lighter (1, 2, 2 points). After Day 3,
+// the regular overdue tiers apply. Multiple schedules combine with diminishing
+// impact, and the aggregate deduction is capped at 30 points.
+export function calculateOverduePenaltyPoints(overdueCommitments = []) {
+  const individualPenalties = (Array.isArray(overdueCommitments) ? overdueCommitments : [])
+    .map((commitment) => getPenaltyForOverdueDays(commitment?.overdueDays))
+    .filter((points) => points > 0)
+    .sort((a, b) => b - a);
+  const diminishingMultipliers = [1, 0.5, 0.25];
+  const combined = individualPenalties.reduce((sum, points, index) => {
+    const multiplier = diminishingMultipliers[index] ?? 0.125;
+    return sum + points * multiplier;
+  }, 0);
+  return Math.min(30, Math.round(combined));
+}
+
 export function computeMentorReport(settlements = [], personalExpenses = [], rejections = [], overdueCommitments = [], referenceDate = new Date()) {
   // Ignore malformed timestamps so invalid records cannot crash monthly bucketing
   // or silently receive full recency credit in Trust Score calculations.
@@ -239,7 +265,7 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
   const penaltyPoints = Math.round(50 * (1 - Math.exp(-0.4 * weightedRejectionsCount)));
   const reliabilityScore = Math.max(0, 100 - penaltyPoints);
   const overdueRepaymentCount = Array.isArray(overdueCommitments) ? overdueCommitments.length : 0;
-  const overduePenaltyPoints = Math.min(30, overdueRepaymentCount * 10);
+  const overduePenaltyPoints = calculateOverduePenaltyPoints(overdueCommitments);
 
   // Rebalanced score formula:
   const DIMENSION_CONFIG = {
@@ -358,7 +384,7 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
       label: "Missed repayment dates",
       value: Math.max(0, 100 - overduePenaltyPoints),
       penaltyApplied: overduePenaltyPoints,
-      description: "Each accepted repayment still unpaid after its due date costs 10 Trust Score points, up to 30. The deduction is removed after the receiver confirms payment."
+      description: "A lighter penalty applies during the 3-day grace period (1, 2, then 2 points). From Day 4, overdue-tier penalties increase with lateness, combined with diminishing impact and capped at 30. The deduction is removed after payment confirmation."
     });
   }
 
