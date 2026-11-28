@@ -145,7 +145,7 @@ async function runTrustScore2Tests() {
     const weights = [0.3, 0.6, 1.0]; // UTC month differences: 3, 2, and 1
     const weightedMean = totals.reduce((sum, value, i) => sum + value * weights[i], 0) / weights.reduce((sum, w) => sum + w, 0);
     const weightedVariance = totals.reduce((sum, value, i) => sum + weights[i] * ((value - weightedMean) ** 2), 0) / weights.reduce((sum, w) => sum + w, 0);
-    const expectedConsistency = Math.round(Math.max(0, Math.min(100, 100 * (1 - Math.sqrt(weightedVariance) / weightedMean))) * 100) / 100;
+    const expectedConsistency = Math.round(Math.max(0, Math.min(100, 100 * (1 - Math.sqrt(weightedVariance) / weightedMean))));
     if (Math.abs(report.signals.consistency - expectedConsistency) < 0.01) {
       console.log("  PASS: Month recency weights match UTC calendar month boundaries");
     } else {
