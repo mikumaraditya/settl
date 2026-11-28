@@ -20,6 +20,17 @@ async function runTrustScore2Tests() {
   console.log("==================================================");
 
   await mongoose.connect(testUri);
+  // TEST 0: Weekly snapshot uniqueness is enforced at database level
+  console.log("\\n[TEST 0] Weekly snapshot event uniqueness index");
+  {
+    const weeklyIndex = ScoreHistory.schema.indexes().find(([keys, options]) =>
+      keys.user === 1 && keys.eventId === 1 && options?.unique === true
+      && options?.partialFilterExpression?.eventType === "weekly_snapshot"
+    );
+    if (!weeklyIndex) throw new Error("Missing unique weekly snapshot index on ScoreHistory");
+    console.log("  ✅ PASS: Weekly snapshots have a unique event index");
+  }
+
 
   const timestamp = Date.now();
   const userA = await User.create({ name: "TrustUserA", email: `trust_a_${timestamp}@test.com`, password: "password123", isEmailVerified: true });
