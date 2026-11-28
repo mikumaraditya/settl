@@ -12,6 +12,11 @@ const scoreHistorySchema = new mongoose.Schema({
 
 // Index for fast single-user lookups sorted by date
 scoreHistorySchema.index({ user: 1, createdAt: -1 });
+// Prevent concurrent mentor requests from duplicating weekly snapshots.
+scoreHistorySchema.index(
+  { user: 1, eventId: 1 },
+  { unique: true, partialFilterExpression: { eventType: "weekly_snapshot", eventId: { $type: "string" } } },
+);
 
 const ScoreHistory = mongoose.model("ScoreHistory", scoreHistorySchema);
 
