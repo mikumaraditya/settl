@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import Expense from "../models/Expense.js";
 import Group from "../models/Group.js";
 import Settlement from "../models/Settlement.js";
+import SettlementSchedule from "../models/SettlementSchedule.js";
 import protect from "../middleware/auth.js";
 import requireVerified from "../middleware/requireVerified.js";
 import { computeMentorReport, computeWhatIfProjection } from "../utils/financialMentor.js";
@@ -51,6 +52,25 @@ export function clearInsightCaches(userIds) {
 }
 
 const round = (value) => Math.round(value * 100) / 100;
+
+const getDateInTimeZone = (timeZone, now = new Date()) => {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: typeof timeZone === "string" && timeZone.length <= 64 ? timeZone : "UTC",
+      year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(now);
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+  } catch {
+    return now.toISOString().slice(0, 10);
+  }
+};
+const getOverdueRepaymentSchedules = (schedules = [], now = new Date()) =>
+  schedules.filter((schedule) => {
+    if (!schedule?.dueDate) return false;
+    const dateOnly = new Date(schedule.dueDate).toISOString().slice(0, 10);
+    return dateOnly < getDateInTimeZone(schedule.timeZone, now);
+  });
 
 const fallbackMentorCopy = (score, scoreBand, signalBreakdown, scoreTrend = null, whatIf = null) => {
   let explanation = `Your Trust Score is ${score}/100, placing you in the '${scoreBand}' category.`;
@@ -109,7 +129,7 @@ export async function getTrustScoreForUser(userId) {
     return { status: "not_enough_data", score: null, scoreBand: "N/A" };
   }
 
-  const [expenses, settlements, rejections] = await Promise.all([
+  const [expenses, settlements, rejections, acceptedSchedules] = await Promise.all([
     Expense.find({
       group: { $in: groupIds },
       $or: [{ "splits.user": userId }, { paidBy: userId }],
@@ -126,7 +146,11 @@ export async function getTrustScoreForUser(userId) {
     })
       .select("createdAt")
       .lean(),
+    SettlementSchedule.find({ group: { $in: groupIds }, from: userId, status: "accepted", active: true })
+      .select("dueDate timeZone")
+      .lean(),
   ]);
+  const overdueSchedules = getOverdueRepaymentSchedules(acceptedSchedules);
 
   const groupNames = new Map(groups.map((group) => [group._id.toString(), group.name]));
   const personalExpenses = expenses
@@ -153,11 +177,13 @@ export async function getTrustScoreForUser(userId) {
     };
   }
 
-  const report = computeMentorReport(settlements, personalExpenses, rejections);
+  const report = computeMentorReport(settlements, personalExpenses, rejections, overdueSchedules);
   return {
     status: "ready",
     score: report.score,
-    scoreBand: report.scoreBand
+    scoreBand: report.scoreBand,
+    overdueRepaymentCount: report.signals.overdueRepaymentCount,
+    overduePenaltyPoints: report.signals.overduePenaltyPoints,
   };
 }
 
@@ -229,7 +255,7 @@ router.get("/mentor", protect, requireVerified, mentorRateLimiter, async (req, r
       return res.json(data);
     }
 
-    const [expenses, settlements, rejections, pendingCommitmentsRaw, historyRecords] = await Promise.all([
+    const [expenses, settlements, rejections, pendingCommitmentsRaw, historyRecords, acceptedSchedulesRaw] = await Promise.all([
       Expense.find({
         group: { $in: groupIds },
         $or: [ { "splits.user": req.user.id }, { paidBy: req.user.id } ]
@@ -256,7 +282,13 @@ router.get("/mentor", protect, requireVerified, mentorRateLimiter, async (req, r
         .sort({ createdAt: -1 })
         .limit(10)
         .lean(),
+      SettlementSchedule.find({ group: { $in: groupIds }, from: req.user.id, status: "accepted", active: true })
+        .populate("to", "name")
+        .populate("group", "name")
+        .sort({ dueDate: 1 })
+        .lean(),
     ]);
+    const overdueSchedules = getOverdueRepaymentSchedules(acceptedSchedulesRaw);
 
     const groupNames = new Map(groups.map((group) => [group._id.toString(), group.name]));
 
@@ -279,6 +311,18 @@ router.get("/mentor", protect, requireVerified, mentorRateLimiter, async (req, r
       };
     });
 
+    pendingCommitments.push(...overdueSchedules.map((schedule) => ({
+      id: schedule._id.toString(),
+      amount: schedule.amount,
+      groupName: schedule.group?.name || "Group",
+      counterpartName: schedule.to?.name || "Member",
+      direction: "outgoing",
+      status: "overdue",
+      ageDays: Math.max(0, Math.round((Date.now() - new Date(schedule.dueDate).getTime()) / 86400000)),
+      isOverdue: true,
+      dueDate: schedule.dueDate,
+      createdAt: schedule.createdAt,
+    })));
     const recentHistory = (historyRecords || []).map((h) => ({
       id: h._id.toString(),
       score: h.score,
@@ -328,7 +372,7 @@ router.get("/mentor", protect, requireVerified, mentorRateLimiter, async (req, r
     }
 
     // Call computeMentorReport utility
-    const report = computeMentorReport(settlements, personalExpenses, rejections);
+    const report = computeMentorReport(settlements, personalExpenses, rejections, overdueSchedules);
 
     const totalPersonalShare = personalExpenses.reduce((sum, e) => sum + e.personalShare, 0);
     const totalFrontedAmount = personalExpenses.filter(e => e.isPaidByUser).reduce((sum, e) => sum + e.amount, 0);
@@ -354,6 +398,9 @@ router.get("/mentor", protect, requireVerified, mentorRateLimiter, async (req, r
     }
 
     // 3. Reliability
+    if (report.signals.overdueRepaymentCount > 0) {
+      observations.push(`${report.signals.overdueRepaymentCount} accepted repayment(s) are overdue. Your Trust Score includes a ${report.signals.overduePenaltyPoints}-point missed-deadline deduction until the receiver confirms payment.`);
+    }
     const rejectionsCount = report.signals.rejectionsCount || 0;
     const totalSettlements = report.signals.totalSettlements || 0;
     if (totalSettlements > 0) {
@@ -429,7 +476,7 @@ router.get("/mentor", protect, requireVerified, mentorRateLimiter, async (req, r
     const qualifyingBreakdown = report.signalBreakdown.filter(s => s.key !== "reliabilityIncidents");
     const weakestEntry = qualifyingBreakdown.reduce((min, s) => (!min || s.value < min.value) ? s : min, null);
     const whatIf = weakestEntry
-      ? computeWhatIfProjection(settlements, personalExpenses, rejections, weakestEntry.key, report.score)
+      ? computeWhatIfProjection(settlements, personalExpenses, rejections, weakestEntry.key, report.score, overdueSchedules)
       : null;
 
     // --- Why Facts ---
@@ -531,6 +578,8 @@ router.get("/mentor", protect, requireVerified, mentorRateLimiter, async (req, r
       score: report.score,
       scoreBand: report.scoreBand,
       scoreBandSummary: report.scoreBandSummary,
+      overdueRepaymentCount: report.signals.overdueRepaymentCount,
+      overduePenaltyPoints: report.signals.overduePenaltyPoints,
       signalBreakdown: report.signalBreakdown,
       observations,
       ...mentor,

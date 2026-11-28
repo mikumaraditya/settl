@@ -11,7 +11,7 @@ const notificationSchema = new mongoose.Schema(
     type: {
       type: String,
       required: true,
-      enum: ["settlement_schedule_reminder"],
+      enum: ["settlement_schedule_reminder", "settlement_schedule_overdue"],
     },
     title: { type: String, required: true, trim: true, maxlength: 160 },
     body: { type: String, required: true, trim: true, maxlength: 400 },
@@ -29,7 +29,7 @@ const notificationSchema = new mongoose.Schema(
     },
     reminderStage: {
       type: String,
-      enum: ["day_before", "due_today"],
+      enum: ["day_before", "due_today", "overdue"],
       required: true,
     },
     dedupeKey: { type: String, required: true },

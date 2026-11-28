@@ -1,6 +1,6 @@
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export function computeMentorReport(settlements = [], personalExpenses = [], rejections = []) {
+export function computeMentorReport(settlements = [], personalExpenses = [], rejections = [], overdueCommitments = []) {
   const hasSettlements = settlements.length >= 1;
   let followThrough = 0;
   let settlementInitiative = 0;
@@ -239,6 +239,8 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
   // Diminishing returns penalty formula: max 50 points penalty
   const penaltyPoints = Math.round(50 * (1 - Math.exp(-0.4 * weightedRejectionsCount)));
   const reliabilityScore = Math.max(0, 100 - penaltyPoints);
+  const overdueRepaymentCount = Array.isArray(overdueCommitments) ? overdueCommitments.length : 0;
+  const overduePenaltyPoints = Math.min(30, overdueRepaymentCount * 10);
 
   // Rebalanced score formula:
   const DIMENSION_CONFIG = {
@@ -270,14 +272,15 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
 
   let score = rawScore;
   if (weightedRejectionsCount > 0) {
-    score = Math.max(0, score - penaltyPoints);
+    score -= penaltyPoints;
   }
+  score -= overduePenaltyPoints;
   score = clamp(Math.round(score), 0, 100);
 
   let scoreBand = "New";
   let scoreBandSummary = "Build a history across shared expenses and payments to unlock a fair score.";
 
-  if (qualifying.length > 0 || weightedRejectionsCount > 0) {
+  if (qualifying.length > 0 || weightedRejectionsCount > 0 || overdueRepaymentCount > 0) {
     scoreBand = "At Risk";
     scoreBandSummary = "Recent payment activity needs attention before others can rely on it.";
     if (score >= 80) {
@@ -350,6 +353,15 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
     penaltyApplied: penaltyPoints,
     description: "Payments a receiver said they did not receive. These lower the score."
   });
+  if (overdueRepaymentCount > 0) {
+    signalBreakdown.push({
+      key: "overdueRepayments",
+      label: "Missed repayment dates",
+      value: Math.max(0, 100 - overduePenaltyPoints),
+      penaltyApplied: overduePenaltyPoints,
+      description: "Each accepted repayment still unpaid after its due date costs 10 Trust Score points, up to 30. The deduction is removed after the receiver confirms payment."
+    });
+  }
 
   // Compute biggest lever (primaryFocus)
   let primaryFocus = "settlement_speed";
@@ -394,7 +406,9 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
       reliabilityIncidents: Math.round(reliabilityScore),
       confirmedSettlements: hasSettlements ? settlements.filter((s) => !s.status || s.status === "confirmed").length : 0,
       totalSettlements: settlements.length,
-      rejectionsCount: rejections.length
+      rejectionsCount: rejections.length,
+      overdueRepaymentCount,
+      overduePenaltyPoints
     }
   };
 }
@@ -410,7 +424,7 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
  * @param {number} currentScore - real score, used to ensure we never project lower
  * @returns {{ dimension: string, projectedScore: number, delta: number } | null}
  */
-export function computeWhatIfProjection(settlements, personalExpenses, rejections, weakestDimension, currentScore) {
+export function computeWhatIfProjection(settlements, personalExpenses, rejections, weakestDimension, currentScore, overdueCommitments = []) {
   try {
     if (weakestDimension === "repaymentReliability") {
       // Hypothetical: user settles within 3 days (72 hours) on every debt instead of their real average.
@@ -440,7 +454,7 @@ export function computeWhatIfProjection(settlements, personalExpenses, rejection
         return { ...s, createdAt: hypotheticalCreatedAt, status: "confirmed" };
       });
 
-      const projected = computeMentorReport(hypotheticalSettlements, personalExpenses, rejections);
+      const projected = computeMentorReport(hypotheticalSettlements, personalExpenses, rejections, overdueCommitments);
       const projectedScore = Math.max(currentScore, projected.score);
       return {
         dimension: "repaymentReliability",
@@ -468,7 +482,7 @@ export function computeWhatIfProjection(settlements, personalExpenses, rejection
         return e;
       });
 
-      const projected = computeMentorReport(settlements, modifiedExpenses, rejections);
+      const projected = computeMentorReport(settlements, modifiedExpenses, rejections, overdueCommitments);
       const projectedScore = Math.max(currentScore, projected.score);
       return {
         dimension: "contribution",

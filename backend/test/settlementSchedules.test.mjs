@@ -1034,10 +1034,10 @@ test("settlement and schedule transitions respect an active group mutation lock"
   }
 });
 
-test("blank due date defaults to seven calendar days", async () => {
+test("blank due date defaults to fifteen calendar days", async () => {
   const todayUtc = new Date().toISOString().slice(0, 10);
   const expectedDate = new Date(`${todayUtc}T12:00:00.000Z`);
-  expectedDate.setUTCDate(expectedDate.getUTCDate() + 7);
+  expectedDate.setUTCDate(expectedDate.getUTCDate() + 15);
   const expectedDueDate = expectedDate.toISOString().slice(0, 10);
 
   const create = await request(app)
@@ -1185,6 +1185,147 @@ test("an overdue settlement is expired before the receiver can confirm it", asyn
       SettlementSchedule.deleteMany({ group: expiryGroup._id }),
       Expense.deleteMany({ group: expiryGroup._id }),
       Group.deleteOne({ _id: expiryGroup._id }),
+    ]);
+  }
+});
+
+
+const addDaysDateOnly = (dateOnly, days) => {
+  const date = new Date(`${dateOnly}T12:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+};
+
+const addMonthsDateOnly = (dateOnly, months) => {
+  const [year, month, day] = dateOnly.split("-").map(Number);
+  const target = new Date(Date.UTC(year, month - 1 + months, 1));
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(day, lastDay));
+  return target.toISOString().slice(0, 10);
+};
+
+test("schedule creation defaults to 15 days and limits selected dates to three calendar months", async () => {
+  const policyGroup = await Group.create({
+    name: `Schedule date policy ${Date.now()}`,
+    members: [{ user: userA._id }, { user: userB._id }],
+    createdBy: userA._id,
+  });
+  try {
+    await Expense.create({
+      description: "Date policy debt",
+      amount: 1000,
+      paidBy: userB._id,
+      group: policyGroup._id,
+      splits: [{ user: userA._id, amount: 500 }, { user: userB._id, amount: 500 }],
+    });
+    const today = new Date().toISOString().slice(0, 10);
+    const payload = {
+      groupId: policyGroup._id.toString(),
+      toUserId: userB._id.toString(),
+      amount: 100,
+      timeZone: "UTC",
+    };
+
+    const defaultSchedule = await request(app)
+      .post("/api/settlements/schedule")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .send(payload);
+    assert.equal(defaultSchedule.status, 201, JSON.stringify(defaultSchedule.body));
+    assert.equal(defaultSchedule.body.isDefaultDueDate, true);
+    assert.equal(defaultSchedule.body.timeZone, "UTC");
+    assert.equal(defaultSchedule.body.dueDate.slice(0, 10), addDaysDateOnly(today, 15));
+
+    const cancelDefault = await request(app)
+      .post(`/api/settlements/schedule/${defaultSchedule.body._id}/cancel`)
+      .set("Authorization", `Bearer ${tokenA}`);
+    assert.equal(cancelDefault.status, 200, JSON.stringify(cancelDefault.body));
+
+    const maxDate = addMonthsDateOnly(today, 3);
+    const maxAllowed = await request(app)
+      .post("/api/settlements/schedule")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .send({ ...payload, dueDate: maxDate });
+    assert.equal(maxAllowed.status, 201, JSON.stringify(maxAllowed.body));
+    assert.equal(maxAllowed.body.dueDate.slice(0, 10), maxDate);
+
+    await request(app)
+      .post(`/api/settlements/schedule/${maxAllowed.body._id}/cancel`)
+      .set("Authorization", `Bearer ${tokenA}`);
+
+    const outsideWindow = await request(app)
+      .post("/api/settlements/schedule")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .send({ ...payload, dueDate: addDaysDateOnly(maxDate, 1) });
+    assert.equal(outsideWindow.status, 400);
+    assert.match(outsideWindow.body.message, /three calendar months/i);
+  } finally {
+    await Promise.all([
+      Settlement.deleteMany({ group: policyGroup._id }),
+      SettlementSchedule.deleteMany({ group: policyGroup._id }),
+      Expense.deleteMany({ group: policyGroup._id }),
+      ActivityLog.deleteMany({ group: policyGroup._id }),
+      Notification.deleteMany({ group: policyGroup._id }),
+      Group.deleteOne({ _id: policyGroup._id }),
+    ]);
+  }
+});
+
+test("overdue accepted schedules notify both participants once and cannot be cancelled", async () => {
+  const overdueGroup = await Group.create({
+    name: `Overdue schedule policy ${Date.now()}`,
+    members: [{ user: userA._id }, { user: userB._id }],
+    createdBy: userA._id,
+  });
+  try {
+    await Expense.create({
+      description: "Overdue policy debt",
+      amount: 500,
+      paidBy: userB._id,
+      group: overdueGroup._id,
+      splits: [{ user: userA._id, amount: 250 }, { user: userB._id, amount: 250 }],
+    });
+    const today = new Date().toISOString().slice(0, 10);
+    const schedule = await SettlementSchedule.create({
+      group: overdueGroup._id,
+      from: userA._id,
+      to: userB._id,
+      amount: 100,
+      dueDate: new Date(`${addDaysDateOnly(today, -2)}T12:00:00.000Z`),
+      timeZone: "UTC",
+      status: "accepted",
+      active: true,
+    });
+
+    const cancelAttempt = await request(app)
+      .post(`/api/settlements/schedule/${schedule._id}/cancel`)
+      .set("Authorization", `Bearer ${tokenA}`);
+    assert.equal(cancelAttempt.status, 409);
+
+    const now = new Date(`${today}T15:00:00.000Z`);
+    await processSettlementScheduleReminders({ now });
+    const alerts = await Notification.find({
+      schedule: schedule._id,
+      reminderStage: "overdue",
+    }).lean();
+    assert.equal(alerts.length, 2);
+    assert.equal(alerts.some((item) => item.user.toString() === userA._id.toString()), true);
+    assert.equal(alerts.some((item) => item.user.toString() === userB._id.toString()), true);
+    assert.equal(alerts.every((item) => item.type === "settlement_schedule_overdue"), true);
+
+    await processSettlementScheduleReminders({ now });
+    assert.equal(
+      await Notification.countDocuments({ schedule: schedule._id, reminderStage: "overdue" }),
+      2,
+      "the reminder worker must not create duplicate overdue alerts",
+    );
+  } finally {
+    await Promise.all([
+      Settlement.deleteMany({ group: overdueGroup._id }),
+      SettlementSchedule.deleteMany({ group: overdueGroup._id }),
+      Expense.deleteMany({ group: overdueGroup._id }),
+      ActivityLog.deleteMany({ group: overdueGroup._id }),
+      Notification.deleteMany({ group: overdueGroup._id }),
+      Group.deleteOne({ _id: overdueGroup._id }),
     ]);
   }
 });

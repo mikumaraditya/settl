@@ -8,6 +8,7 @@ import Group from "../src/models/Group.js";
 import Expense from "../src/models/Expense.js";
 import Settlement from "../src/models/Settlement.js";
 import ScoreHistory from "../src/models/ScoreHistory.js";
+import SettlementSchedule from "../src/models/SettlementSchedule.js";
 import { computeMentorReport } from "../src/utils/financialMentor.js";
 import { getTrustScoreForUser } from "../src/routes/insights.js";
 
@@ -145,8 +146,74 @@ async function runTrustScore2Tests() {
     }
   }
 
+  // TEST 5: An accepted repayment schedule that has passed its due date lowers live Trust Score.
+  console.log("\n[TEST 5] Live overdue schedule Trust Score impact");
+  const scoreNow = new Date();
+  await Expense.create([
+    {
+      description: "Overdue score expense one",
+      amount: 600,
+      paidBy: userB._id,
+      group: testGroup._id,
+      splits: [{ user: userA._id, amount: 300 }, { user: userB._id, amount: 300 }],
+      createdAt: new Date(scoreNow.getTime() - 90 * 864e5),
+    },
+    {
+      description: "Overdue score expense two",
+      amount: 600,
+      paidBy: userB._id,
+      group: testGroup._id,
+      splits: [{ user: userA._id, amount: 300 }, { user: userB._id, amount: 300 }],
+      createdAt: new Date(scoreNow.getTime() - 45 * 864e5),
+    },
+    {
+      description: "Overdue score expense three",
+      amount: 600,
+      paidBy: userA._id,
+      group: testGroup._id,
+      splits: [{ user: userA._id, amount: 300 }, { user: userB._id, amount: 300 }],
+      createdAt: new Date(scoreNow.getTime() - 5 * 864e5),
+    },
+  ]);
+  await Settlement.create([
+    { group: testGroup._id, from: userA._id, to: userB._id, amount: 100, status: "confirmed", createdAt: new Date(scoreNow.getTime() - 30 * 864e5) },
+    { group: testGroup._id, from: userA._id, to: userB._id, amount: 100, status: "confirmed", createdAt: new Date(scoreNow.getTime() - 2 * 864e5) },
+  ]);
+  const baselineScore = await getTrustScoreForUser(userA._id.toString());
+  const overdueDueDate = new Date(scoreNow.getTime() - 2 * 864e5);
+  const overdueSchedule = await SettlementSchedule.create({
+    group: testGroup._id,
+    from: userA._id,
+    to: userB._id,
+    amount: 100,
+    dueDate: overdueDueDate,
+    timeZone: "UTC",
+    status: "accepted",
+    active: true,
+  });
+  const overdueScore = await getTrustScoreForUser(userA._id.toString());
+  if (
+    baselineScore.status === "ready" &&
+    overdueScore.overdueRepaymentCount === 1 &&
+    overdueScore.overduePenaltyPoints === 10 &&
+    overdueScore.score === Math.max(0, baselineScore.score - 10)
+  ) {
+    console.log("  ✅ PASS: One overdue accepted schedule deducts 10 Trust Score points");
+  } else {
+    throw new Error(`Unexpected overdue score values: ${JSON.stringify({ baselineScore, overdueScore })}`);
+  }
+
+  await SettlementSchedule.updateOne({ _id: overdueSchedule._id }, { $set: { status: "payment_pending" } });
+  const paymentPendingScore = await getTrustScoreForUser(userA._id.toString());
+  if (paymentPendingScore.score === baselineScore.score && paymentPendingScore.overdueRepaymentCount === 0) {
+    console.log("  ✅ PASS: Once payment is marked sent, the deadline deduction is lifted while receiver confirmation is pending");
+  } else {
+    throw new Error(`Payment awaiting receiver confirmation must not remain overdue: ${JSON.stringify(paymentPendingScore)}`);
+  }
+
   console.log("\n[CLEANUP] Cleaning up test records...");
   await Settlement.deleteMany({ group: testGroup._id });
+  await SettlementSchedule.deleteMany({ group: testGroup._id });
   await Expense.deleteMany({ group: testGroup._id });
   await ScoreHistory.deleteMany({ user: { $in: [userA._id, userB._id] } });
   await Group.findByIdAndDelete(testGroup._id);

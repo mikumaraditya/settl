@@ -38,6 +38,16 @@ const settlementScheduleSchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
+    timeZone: {
+      type: String,
+      trim: true,
+      maxlength: 64,
+      default: "UTC",
+    },
+    isDefaultDueDate: {
+      type: Boolean,
+      default: false,
+    },
     status: {
       type: String,
       enum: ["proposed", "accepted", "rejected", "cancelled", "payment_pending", "completed"],
