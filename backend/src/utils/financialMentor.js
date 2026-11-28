@@ -1,3 +1,15 @@
+// Returns the ISO week-year/week key (e.g. 2020-W53), handling year boundaries.
+export function getIsoWeekKey(date = new Date()) {
+  const source = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(source.getTime())) throw new TypeError("Invalid date for ISO week key");
+  const utcDate = new Date(Date.UTC(source.getUTCFullYear(), source.getUTCMonth(), source.getUTCDate()));
+  utcDate.setUTCDate(utcDate.getUTCDate() + 4 - (utcDate.getUTCDay() || 7));
+  const isoYear = utcDate.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+  const week = Math.ceil(((utcDate - yearStart) / 86400000 + 1) / 7);
+  return `${isoYear}-W${String(week).padStart(2, "0")}`;
+}
+
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 export function computeMentorReport(settlements = [], personalExpenses = [], rejections = [], overdueCommitments = [], referenceDate = new Date()) {
