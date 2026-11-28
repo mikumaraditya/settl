@@ -10,7 +10,7 @@ import Settlement from "../src/models/Settlement.js";
 import ScoreHistory from "../src/models/ScoreHistory.js";
 import SettlementSchedule from "../src/models/SettlementSchedule.js";
 import { computeMentorReport, getIsoWeekKey } from "../src/utils/financialMentor.js";
-import { getTrustScoreForUser } from "../src/routes/insights.js";
+import { getTrustScoreForUser, getOverdueRepaymentSchedules } from "../src/routes/insights.js";
 
 async function runTrustScore2Tests() {
   const { testUri, testDbName } = getTestDbConfig();
@@ -20,6 +20,25 @@ async function runTrustScore2Tests() {
   console.log("==================================================");
 
   await mongoose.connect(testUri);
+  // TEST 0D: Invalid due dates and reference dates are handled safely.
+  console.log("\\n[TEST 0D] Overdue schedule date validation");
+  {
+    const now = new Date("2026-11-28T12:00:00.000Z");
+    const schedules = [
+      { _id: "invalid", dueDate: "not-a-date", timeZone: "UTC" },
+      { _id: "missing", timeZone: "UTC" },
+      { _id: "overdue", dueDate: new Date("2026-11-27T00:00:00.000Z"), timeZone: "UTC" },
+      { _id: "today", dueDate: new Date("2026-11-28T00:00:00.000Z"), timeZone: "UTC" },
+    ];
+    const overdue = getOverdueRepaymentSchedules(schedules, now).map((s) => s._id);
+    if (overdue.length !== 1 || overdue[0] !== "overdue") {
+      throw new Error(`Unexpected overdue schedule results: ${JSON.stringify(overdue)}`);
+    }
+    const invalidReference = getOverdueRepaymentSchedules(schedules, new Date("invalid"));
+    if (invalidReference.length !== 0) throw new Error("Invalid reference date should fail safely");
+    console.log("  PASS: Invalid dates are ignored; only genuinely overdue schedules are returned");
+  }
+
   // TEST 0C: Malformed activity dates are ignored safely and don't affect score signals.
   console.log("\\n[TEST 0C] Malformed activity dates are excluded from Trust Score");
   {

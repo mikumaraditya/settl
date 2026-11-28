@@ -72,12 +72,18 @@ const getDateInTimeZone = (timeZone, now = new Date()) => {
     return now.toISOString().slice(0, 10);
   }
 };
-const getOverdueRepaymentSchedules = (schedules = [], now = new Date()) =>
-  schedules.filter((schedule) => {
+export const getOverdueRepaymentSchedules = (schedules = [], now = new Date()) => {
+  const referenceDate = now instanceof Date ? now : new Date(now);
+  if (Number.isNaN(referenceDate.getTime())) return [];
+  return schedules.filter((schedule) => {
     if (!schedule?.dueDate) return false;
-    const dateOnly = new Date(schedule.dueDate).toISOString().slice(0, 10);
-    return dateOnly < getDateInTimeZone(schedule.timeZone, now);
+    const dueDate = new Date(schedule.dueDate);
+    // Ignore invalid dates rather than throwing during Trust Score requests.
+    if (Number.isNaN(dueDate.getTime())) return false;
+    const dateOnly = dueDate.toISOString().slice(0, 10);
+    return dateOnly < getDateInTimeZone(schedule.timeZone, referenceDate);
   });
+};
 
 const fallbackMentorCopy = (score, scoreBand, signalBreakdown, scoreTrend = null, whatIf = null) => {
   let explanation = `Your Trust Score is ${score}/100, placing you in the '${scoreBand}' category.`;
