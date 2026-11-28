@@ -241,7 +241,16 @@ export default function GroupDetail() {
     setEditingExpense(null);
     setExpenseForm({ description: '', amount: '', category: 'food', splitType: 'equal' });
     setShowAddExpense(true);
-  }, [group, setShowAddExpense, setExpenseError]);
+  }, [
+    group,
+    setShowAddExpense,
+    setExpenseError,
+    setSplitPercentages,
+    setExactAmounts,
+    setExpenseMemberIds,
+    setEditingExpense,
+    setExpenseForm,
+  ]);
 
   const openEditExpenseModal = (expense) => {
     const participantIds = expense.splits
