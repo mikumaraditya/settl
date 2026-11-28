@@ -12,12 +12,16 @@ router.use(protect, requireVerified);
 // receives another member's schedule reminders through this endpoint.
 router.get("/", async (req, res) => {
   try {
-    const notifications = await Notification.find({ user: req.user.id, deletedAt: null })
-      .sort({ createdAt: -1 })
-      .limit(30)
-      .lean();
+    const [notifications, unreadCount] = await Promise.all([
+      Notification.find({ user: req.user.id, deletedAt: null })
+        .sort({ createdAt: -1 })
+        .limit(30)
+        .lean(),
+      Notification.countDocuments({ user: req.user.id, readAt: null, deletedAt: null }),
+    ]);
 
     res.json({
+      unreadCount,
       notifications: notifications.map((notification) => ({
         id: notification._id.toString(),
         type: notification.type,
