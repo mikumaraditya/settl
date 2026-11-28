@@ -103,6 +103,23 @@ async function runTrustScore2Tests() {
     }
   }
 
+  // TEST 2C: Historical records age against the current/reference date, not the newest transaction.
+  console.log("\\n[TEST 2C] Recency aging uses current reference date");
+  {
+    const referenceDate = new Date("2026-11-28T12:00:00.000Z");
+    const expenses = [
+      { personalShare: 100, isPaidByUser: true, createdAt: new Date("2026-07-31T12:00:00.000Z") }, // 120 days old
+      { personalShare: 100, isPaidByUser: false, createdAt: new Date("2026-11-23T12:00:00.000Z") }, // 5 days old
+      { personalShare: 100, isPaidByUser: false, createdAt: new Date("2026-11-26T12:00:00.000Z") }, // 2 days old
+    ];
+    const report = computeMentorReport([], expenses, [], [], referenceDate);
+    if (report.signals.contribution === 9) {
+      console.log("  PASS: Old paid expense is down-weighted while recent unpaid expenses retain full weight");
+    } else {
+      throw new Error(`Historical expense recency did not age as expected: contribution=${report.signals.contribution}`);
+    }
+  }
+
   // TEST 3: Preservation of rejected settlements (auditability)
   console.log("\n[TEST 3] Preserved rejected settlement record & due date assignment");
   {
