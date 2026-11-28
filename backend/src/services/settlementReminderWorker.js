@@ -68,7 +68,10 @@ export async function processSettlementScheduleReminders({ now = new Date() } = 
     const dueDateOnly = schedule.dueDate.toISOString().slice(0, 10);
     const today = getDateInTimeZone(schedule.timeZone, now);
     const tomorrow = addDays(today, 1);
-    const reminderStage = dueDateOnly < today
+    const overdueDays = dueDateOnly < today
+      ? Math.floor((Date.parse(today + "T00:00:00.000Z") - Date.parse(dueDateOnly + "T00:00:00.000Z")) / 86400000)
+      : 0;
+    const reminderStage = overdueDays >= 4
       ? "overdue"
       : dueDateOnly === today
         ? "due_today"
@@ -76,7 +79,15 @@ export async function processSettlementScheduleReminders({ now = new Date() } = 
           ? "day_before"
           : null;
 
+    // First overdue reminder on Day 4, then weekly on Days 11, 18, 25...
+    const overdueReminderKey = overdueDays === 4
+      ? "day4"
+      : overdueDays >= 11 && (overdueDays - 4) % 7 === 0
+        ? "weekly-" + overdueDays
+        : null;
+
     if (!reminderStage || !schedule.from?._id || !schedule.to?._id) continue;
+    if (reminderStage === "overdue" && !overdueReminderKey) continue;
 
     const formattedDate = new Date(`${dueDateOnly}T12:00:00.000Z`).toLocaleDateString("en-IN", {
       day: "numeric",
@@ -113,7 +124,8 @@ export async function processSettlementScheduleReminders({ now = new Date() } = 
         ];
 
     for (const participant of participants) {
-      const dedupeKey = `schedule:${schedule._id.toString()}:${reminderStage}:${participant.userId}`;
+      const stageKey = reminderStage === "overdue" ? overdueReminderKey : reminderStage;
+      const dedupeKey = `schedule:${schedule._id.toString()}:${stageKey}:${participant.userId}`;
       const notification = {
         user: participant.userId,
         type: reminderStage === "overdue" ? "settlement_schedule_overdue" : "settlement_schedule_reminder",
