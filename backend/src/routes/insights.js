@@ -433,12 +433,30 @@ router.get("/mentor", protect, requireVerified, mentorRateLimiter, async (req, r
             ? `Score adjusted by ${delta} pt${delta !== -1 ? 's' : ''} due to pending delay or dispute`
             : `Weekly health check verification`;
 
+          const eventType = delta !== 0 ? "score_adjustment" : "weekly_snapshot";
+          // Stable UTC ISO-week event keys make weekly snapshots idempotent
+          // across concurrent mentor requests.
+          let eventId = null;
+          if (eventType === "weekly_snapshot") {
+            const snapshotDate = new Date();
+            const isoWeekDate = new Date(Date.UTC(
+              snapshotDate.getUTCFullYear(),
+              snapshotDate.getUTCMonth(),
+              snapshotDate.getUTCDate(),
+            ));
+            isoWeekDate.setUTCDate(isoWeekDate.getUTCDate() + 4 - (isoWeekDate.getUTCDay() || 7));
+            const isoWeekYear = isoWeekDate.getUTCFullYear();
+            const weekNumber = Math.ceil((((isoWeekDate - new Date(Date.UTC(isoWeekYear, 0, 1))) / 86400000) + 1) / 7);
+            eventId = `weekly_snapshot:${isoWeekYear}-W${String(weekNumber).padStart(2, "0")}`;
+          }
+
           const newlyCreated = await ScoreHistory.create({
             user: req.user.id,
             score: report.score,
             delta,
             reason,
-            eventType: delta !== 0 ? "score_adjustment" : "weekly_snapshot",
+            eventType,
+            eventId,
             createdAt: new Date(),
           });
 
