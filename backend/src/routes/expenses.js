@@ -418,6 +418,44 @@ router.post("/", expenseCreateLimiter, async (req, res) => {
   }
 });
 
+// Member acknowledgement for their own share of an upfront group expense.
+router.patch("/:expenseId/splits/:splitUserId/acknowledge", async (req, res) => {
+  try {
+    const { expenseId, splitUserId } = req.params;
+    if (!mongoose.isValidObjectId(expenseId) || !mongoose.isValidObjectId(splitUserId)) {
+      return res.status(400).json({ message: "Invalid expense or member id" });
+    }
+    if (splitUserId !== req.user.id) {
+      return res.status(403).json({ message: "You can only acknowledge your own expense share" });
+    }
+    const expense = await Expense.findById(expenseId);
+    if (!expense) return res.status(404).json({ message: "Expense not found" });
+    if (expense.paidBy?.toString() === req.user.id) {
+      return res.status(400).json({ message: "The upfront payer cannot acknowledge their own paid share" });
+    }
+    const group = await Group.findById(expense.group);
+    if (!group) return res.status(404).json({ message: "Group not found" });
+    if (!group.members.some(member => member.user?.toString() === req.user.id)) {
+      return res.status(403).json({ message: "You are not a member of this group" });
+    }
+    const split = expense.splits.find(item => item.user?.toString() === req.user.id);
+    if (!split) return res.status(404).json({ message: "Your share is not part of this expense" });
+    if (!split.acknowledged) {
+      split.acknowledged = true;
+      split.acknowledgedAt = new Date();
+      await expense.save();
+    }
+    clearInsightCaches([expense.paidBy, ...expense.splits.map(item => item.user)]);
+    const updated = await Expense.findById(expenseId)
+      .populate("paidBy", "name email")
+      .populate("splits.user", "name email upiId");
+    return res.json(updated);
+  } catch (error) {
+    console.error("Error acknowledging expense share:", error);
+    return res.status(500).json({ message: "Unable to acknowledge this expense share." });
+  }
+});
+
 // GET EXPENSES FOR A GROUP — with month-wise pagination
 //
 // Query params:
