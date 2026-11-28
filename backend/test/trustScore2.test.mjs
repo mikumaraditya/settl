@@ -104,7 +104,7 @@ async function runTrustScore2Tests() {
   }
 
   // TEST 2C: Historical records age against the current/reference date, not the newest transaction.
-  console.log("\\n[TEST 2C] Recency aging uses current reference date");
+  console.log("\n[TEST 2C] Recency aging uses current reference date");
   {
     const referenceDate = new Date("2026-11-28T12:00:00.000Z");
     const expenses = [
