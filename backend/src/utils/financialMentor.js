@@ -1,7 +1,9 @@
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 export function computeMentorReport(settlements = [], personalExpenses = [], rejections = [], overdueCommitments = []) {
-  const hasSettlements = settlements.length >= 1;
+  // Cancelled/rejected requests are audit records, not repayment activity.
+  const eligibleSettlements = settlements.filter((s) => s.status !== "cancelled" && s.status !== "rejected");
+  const hasSettlements = eligibleSettlements.length >= 1;
   let followThrough = 0;
   let settlementInitiative = 0;
   let averageInitiativeHours = 14 * 24;
@@ -9,7 +11,7 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
   // 1. Determine reference date for recency calculations (latest transaction date in the dataset, fallback to today)
   let latestDate = new Date();
   let firstTimeInit = true;
-  settlements.forEach(s => {
+  eligibleSettlements.forEach(s => {
     const d = new Date(s.createdAt);
     if (firstTimeInit || d > latestDate) {
       latestDate = d;
@@ -49,7 +51,7 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
     let weightedConfirmedSum = 0;
     let weightedTotalSum = 0;
 
-    settlements.forEach((s) => {
+    eligibleSettlements.forEach((s) => {
       if (s.status === "cancelled" || s.status === "rejected") return;
 
       const ageDays = Math.max(0, (refDate - new Date(s.createdAt)) / 864e5);
@@ -250,7 +252,7 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
   };
 
   const activeMonthsCount = Object.keys(monthlyTotals).length;
-  const repaymentQualifies = settlements.length >= DIMENSION_CONFIG.repaymentReliability.minSettlements;
+  const repaymentQualifies = eligibleSettlements.length >= DIMENSION_CONFIG.repaymentReliability.minSettlements;
   const contributionQualifies = personalExpenses.length >= DIMENSION_CONFIG.contribution.minInvolvedExpenses;
   const consistencyQualifies = activeMonthsCount >= DIMENSION_CONFIG.consistency.minActiveMonths;
 
@@ -404,7 +406,7 @@ export function computeMentorReport(settlements = [], personalExpenses = [], rej
       consistency: Math.round(consistency),
       contribution: Math.round(contribution),
       reliabilityIncidents: Math.round(reliabilityScore),
-      confirmedSettlements: hasSettlements ? settlements.filter((s) => !s.status || s.status === "confirmed").length : 0,
+      confirmedSettlements: hasSettlements ? eligibleSettlements.filter((s) => !s.status || s.status === "confirmed").length : 0,
       totalSettlements: settlements.length,
       rejectionsCount: rejections.length,
       overdueRepaymentCount,
