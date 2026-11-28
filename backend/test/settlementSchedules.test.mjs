@@ -1270,6 +1270,46 @@ test("schedule creation defaults to 15 days and limits selected dates to three c
   }
 });
 
+test("overdue reminder day counts follow the schedule timezone at UTC date boundaries", async () => {
+  const timezoneGroup = await Group.create({
+    name: `Timezone reminder boundary ${Date.now()}`,
+    members: [{ user: userA._id }, { user: userB._id }],
+    createdBy: userA._id,
+  });
+  try {
+    // At 20:00 UTC, Kolkata is already on the next calendar day.
+    const utcToday = new Date().toISOString().slice(0, 10);
+    const now = new Date(`${utcToday}T20:00:00.000Z`);
+    const localToday = addDaysDateOnly(utcToday, 1);
+    const dueDate = addDaysDateOnly(localToday, -4);
+    const schedule = await SettlementSchedule.create({
+      group: timezoneGroup._id,
+      from: userA._id,
+      to: userB._id,
+      amount: 250,
+      dueDate: new Date(`${dueDate}T12:00:00.000Z`),
+      timeZone: "Asia/Kolkata",
+      status: "accepted",
+      active: true,
+    });
+
+    const created = await processSettlementScheduleReminders({ now });
+    const reminders = await Notification.find({ schedule: schedule._id, reminderStage: "overdue" }).lean();
+    assert.equal(created, 2, "Kolkata-local Day 4 should trigger reminders even while UTC is Day 3");
+    assert.equal(reminders.length, 2);
+    assert.equal(reminders.every(item => item.dedupeKey.includes("day4")), true);
+  } finally {
+    await Promise.all([
+      Settlement.deleteMany({ group: timezoneGroup._id }),
+      SettlementSchedule.deleteMany({ group: timezoneGroup._id }),
+      Expense.deleteMany({ group: timezoneGroup._id }),
+      ActivityLog.deleteMany({ group: timezoneGroup._id }),
+      Notification.deleteMany({ group: timezoneGroup._id }),
+      Group.deleteOne({ _id: timezoneGroup._id }),
+    ]);
+  }
+});
+
 test("overdue accepted schedules notify both participants once and cannot be cancelled", async () => {
   const overdueGroup = await Group.create({
     name: `Overdue schedule policy ${Date.now()}`,
