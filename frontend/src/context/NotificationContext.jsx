@@ -26,6 +26,7 @@ const loadStored = (userId) => {
 export function NotificationProvider({ children }) {
   const { user } = useAuth()
   const notificationUserId = user?._id?.toString?.() || null
+  const [serverUnreadCount, setServerUnreadCount] = useState(0)
   const [notificationState, setNotificationState] = useState(() => ({
     userId: notificationUserId,
     items: loadStored(notificationUserId),
@@ -295,7 +296,6 @@ export function NotificationProvider({ children }) {
     }
   }, [notificationUserId, setNotifications])
 
-  const [serverUnreadCount, setServerUnreadCount] = useState(0)
   const unreadCount = serverUnreadCount + notifications.filter(n => !n.persistent && !n.read).length
 
   const markAllRead = () => {
