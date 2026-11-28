@@ -20,6 +20,28 @@ async function runTrustScore2Tests() {
   console.log("==================================================");
 
   await mongoose.connect(testUri);
+  // TEST 0C: Malformed activity dates are ignored safely and don't affect score signals.
+  console.log("\\n[TEST 0C] Malformed activity dates are excluded from Trust Score");
+  {
+    const validExpenses = [
+      { personalShare: 100, isPaidByUser: true, splitType: "exact", createdAt: new Date("2026-11-01T12:00:00.000Z") },
+      { personalShare: 200, isPaidByUser: false, splitType: "exact", createdAt: new Date("2026-11-10T12:00:00.000Z") },
+      { personalShare: 300, isPaidByUser: false, splitType: "exact", createdAt: new Date("2026-11-20T12:00:00.000Z") },
+    ];
+    const baseline = computeMentorReport([], validExpenses, [], [], new Date("2026-11-28T12:00:00.000Z"));
+    const withMalformed = computeMentorReport([], [
+      ...validExpenses,
+      { personalShare: 999999, isPaidByUser: true, splitType: "exact", createdAt: "not-a-date" },
+    ], [{ createdAt: "invalid" }], [], new Date("2026-11-28T12:00:00.000Z"));
+    if (withMalformed.score !== baseline.score
+      || withMalformed.signals.contribution !== baseline.signals.contribution
+      || withMalformed.signals.consistency !== baseline.signals.consistency
+      || withMalformed.signals.rejectionsCount !== baseline.signals.rejectionsCount) {
+      throw new Error("Malformed timestamp records affected Trust Score calculation");
+    }
+    console.log("  PASS: Invalid timestamp activity is excluded without crashing or altering score");
+  }
+
   // TEST 0A: ISO week keys correctly handle year boundaries.
   console.log("\\n[TEST 0A] ISO week key year-boundary regression");
   {
