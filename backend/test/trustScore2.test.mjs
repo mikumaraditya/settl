@@ -11,6 +11,7 @@ import ScoreHistory from "../src/models/ScoreHistory.js";
 import SettlementSchedule from "../src/models/SettlementSchedule.js";
 import { computeMentorReport, getIsoWeekKey } from "../src/utils/financialMentor.js";
 import { getTrustScoreForUser, getOverdueRepaymentSchedules } from "../src/routes/insights.js";
+import { calculateOverduePenaltyPoints } from "../src/utils/financialMentor.js";
 
 async function runTrustScore2Tests() {
   const { testUri, testDbName } = getTestDbConfig();
@@ -20,6 +21,31 @@ async function runTrustScore2Tests() {
   console.log("==================================================");
 
   await mongoose.connect(testUri);
+  // TEST 0E: Grace-period penalties are lighter than post-grace overdue tiers.
+  console.log("\\n[TEST 0E] Grace-period penalty progression");
+  {
+    const cases = [
+      [{ overdueDays: 1 }, 1],
+      [{ overdueDays: 2 }, 2],
+      [{ overdueDays: 3 }, 2],
+      [{ overdueDays: 4 }, 3],
+      [{ overdueDays: 8 }, 7],
+      [{ overdueDays: 16 }, 12],
+      [{ overdueDays: 31 }, 20],
+      [{ overdueDays: 61 }, 30],
+      [{ overdueDays: 0 }, 0],
+      [{ overdueDays: -1 }, 0],
+    ];
+    for (const [schedule, expected] of cases) {
+      const actual = calculateOverduePenaltyPoints([schedule]);
+      if (actual !== expected) throw new Error(`Overdue penalty mismatch for ${schedule.overdueDays} days: expected ${expected}, got ${actual}`);
+    }
+    if (calculateOverduePenaltyPoints([{ overdueDays: 8 }, { overdueDays: 4 }]) !== 9) {
+      throw new Error("Diminishing multi-obligation penalty combination failed");
+    }
+    console.log("  PASS: Grace penalties progress 1/2/2 and full tiers start Day 4; multiple schedules combine with diminishing impact");
+  }
+
   // TEST 0D: Invalid due dates and reference dates are handled safely.
   console.log("\\n[TEST 0D] Overdue schedule date validation");
   {
@@ -346,10 +372,10 @@ async function runTrustScore2Tests() {
   if (
     baselineScore.status === "ready" &&
     overdueScore.overdueRepaymentCount === 1 &&
-    overdueScore.overduePenaltyPoints === 10 &&
-    overdueScore.score === Math.max(0, baselineScore.score - 10)
+    overdueScore.overduePenaltyPoints === 2 &&
+    overdueScore.score === Math.max(0, baselineScore.score - 2)
   ) {
-    console.log("  ✅ PASS: One overdue accepted schedule deducts 10 Trust Score points");
+    console.log("  ✅ PASS: A 2-day overdue schedule deducts the lighter grace-period penalty of 2 points");
   } else {
     throw new Error(`Unexpected overdue score values: ${JSON.stringify({ baselineScore, overdueScore })}`);
   }
