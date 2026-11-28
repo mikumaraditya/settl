@@ -75,14 +75,20 @@ const getDateInTimeZone = (timeZone, now = new Date()) => {
 export const getOverdueRepaymentSchedules = (schedules = [], now = new Date()) => {
   const referenceDate = now instanceof Date ? now : new Date(now);
   if (Number.isNaN(referenceDate.getTime())) return [];
-  return schedules.filter((schedule) => {
-    if (!schedule?.dueDate) return false;
+  return schedules.reduce((overdue, schedule) => {
+    if (!schedule?.dueDate) return overdue;
     const dueDate = new Date(schedule.dueDate);
     // Ignore invalid dates rather than throwing during Trust Score requests.
-    if (Number.isNaN(dueDate.getTime())) return false;
-    const dateOnly = dueDate.toISOString().slice(0, 10);
-    return dateOnly < getDateInTimeZone(schedule.timeZone, referenceDate);
-  });
+    if (Number.isNaN(dueDate.getTime())) return overdue;
+    const dueDateOnly = dueDate.toISOString().slice(0, 10);
+    const todayDateOnly = getDateInTimeZone(schedule.timeZone, referenceDate);
+    if (dueDateOnly >= todayDateOnly) return overdue;
+    const dueDay = Date.parse(`${dueDateOnly}T00:00:00.000Z`);
+    const todayDay = Date.parse(`${todayDateOnly}T00:00:00.000Z`);
+    const overdueDays = Math.floor((todayDay - dueDay) / 86400000);
+    overdue.push({ ...schedule, overdueDays });
+    return overdue;
+  }, []);
 };
 
 const fallbackMentorCopy = (score, scoreBand, signalBreakdown, scoreTrend = null, whatIf = null) => {
