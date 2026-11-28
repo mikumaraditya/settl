@@ -131,6 +131,28 @@ async function runTrustScore2Tests() {
     }
   }
 
+  // TEST 2D: Monthly consistency weighting uses UTC month boundaries consistently.
+  console.log("\\n[TEST 2D] Monthly consistency recency uses UTC calendar");
+  {
+    const referenceDate = new Date("2026-03-01T00:30:00.000Z");
+    const expenses = [
+      { personalShare: 100, isPaidByUser: false, splitType: "exact", createdAt: new Date("2025-12-15T12:00:00.000Z") },
+      { personalShare: 200, isPaidByUser: false, splitType: "exact", createdAt: new Date("2026-01-15T12:00:00.000Z") },
+      { personalShare: 300, isPaidByUser: false, splitType: "exact", createdAt: new Date("2026-02-15T12:00:00.000Z") },
+    ];
+    const report = computeMentorReport([], expenses, [], [], referenceDate);
+    const totals = [100, 200, 300];
+    const weights = [0.3, 0.6, 1.0]; // UTC month differences: 3, 2, and 1
+    const weightedMean = totals.reduce((sum, value, i) => sum + value * weights[i], 0) / weights.reduce((sum, w) => sum + w, 0);
+    const weightedVariance = totals.reduce((sum, value, i) => sum + weights[i] * ((value - weightedMean) ** 2), 0) / weights.reduce((sum, w) => sum + w, 0);
+    const expectedConsistency = Math.round(Math.max(0, Math.min(100, 100 * (1 - Math.sqrt(weightedVariance) / weightedMean))) * 100) / 100;
+    if (Math.abs(report.signals.consistency - expectedConsistency) < 0.01) {
+      console.log("  PASS: Month recency weights match UTC calendar month boundaries");
+    } else {
+      throw new Error(`UTC month consistency mismatch: expected ${expectedConsistency}, got ${report.signals.consistency}`);
+    }
+  }
+
   // TEST 3: Preservation of rejected settlements (auditability)
   console.log("\n[TEST 3] Preserved rejected settlement record & due date assignment");
   {
