@@ -9,7 +9,7 @@ import Expense from "../src/models/Expense.js";
 import Settlement from "../src/models/Settlement.js";
 import ScoreHistory from "../src/models/ScoreHistory.js";
 import SettlementSchedule from "../src/models/SettlementSchedule.js";
-import { computeMentorReport, getIsoWeekKey } from "../src/utils/financialMentor.js";
+import { computeMentorReport, getIsoWeekKey, calculateUpfrontContributionBonus } from "../src/utils/financialMentor.js";
 import { getTrustScoreForUser, getOverdueRepaymentSchedules } from "../src/routes/insights.js";
 import { calculateOverduePenaltyPoints } from "../src/utils/financialMentor.js";
 
@@ -85,6 +85,26 @@ async function runTrustScore2Tests() {
       throw new Error("Malformed timestamp records affected Trust Score calculation");
     }
     console.log("  PASS: Invalid timestamp activity is excluded without crashing or altering score");
+  }
+
+  // TEST 0F: Upfront recognition only after all non-payer shares acknowledge, capped at five points.
+  console.log("\\n[TEST 0F] Acknowledged upfront contribution bonus");
+  {
+    const payer = "payer-id";
+    const sampleExpenses = [
+      { paidBy: payer, splits: [{ user: payer, amount: 50, paid: true }, { user: "member-a", amount: 50, acknowledged: true }] },
+      { paidBy: payer, splits: [{ user: payer, amount: 50, paid: true }, { user: "member-b", amount: 50, acknowledged: false }] },
+      { paidBy: "other", splits: [{ user: payer, amount: 50 }, { user: "member-c", amount: 50, acknowledged: true }] },
+      { paidBy: payer, splits: [{ user: payer, amount: 100, paid: true }] },
+      ...Array.from({ length: 7 }, (_, index) => ({ paidBy: payer, splits: [{ user: payer, amount: 25, paid: true }, { user: "other-" + index, amount: 25, acknowledged: true }] })),
+    ];
+    if (calculateUpfrontContributionBonus(sampleExpenses, payer) !== 5) {
+      throw new Error("Upfront bonus must qualify only acknowledged non-payer splits and cap at 5");
+    }
+    if (calculateUpfrontContributionBonus(sampleExpenses.slice(0, 2), payer) !== 1) {
+      throw new Error("Unacknowledged expense must not qualify for upfront bonus");
+    }
+    console.log("  PASS: Acknowledgment gating and +1/expense, max +5 bonus");
   }
 
   // TEST 0A: ISO week keys correctly handle year boundaries.

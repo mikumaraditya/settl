@@ -39,6 +39,14 @@ const expenseSchema = new mongoose.Schema(
           type: Boolean,
           default: false,
         },
+        acknowledged: {
+          type: Boolean,
+          default: false,
+        },
+        acknowledgedAt: {
+          type: Date,
+          default: null,
+        },
       },
     ],
     splitType: {
@@ -51,7 +59,6 @@ const expenseSchema = new mongoose.Schema(
       enum: ["food", "travel", "shopping", "rent", "entertainment", "fuel", "groceries", "medical", "other"],
       default: "other",
     },
-    // Present only for requests that opt into server-side expense idempotency.
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -69,11 +76,7 @@ const expenseSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-// Supports querying a group's expenses in creation-date order.
 expenseSchema.index({ group: 1, createdAt: -1 });
-
-// A caller may safely retry one logical create request without creating a
-// second expense. Partial indexing leaves legacy expenses unaffected.
 expenseSchema.index(
   { createdBy: 1, idempotencyKey: 1 },
   {
