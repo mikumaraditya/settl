@@ -13,6 +13,12 @@ export function getIsoWeekKey(date = new Date()) {
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 export function computeMentorReport(settlements = [], personalExpenses = [], rejections = [], overdueCommitments = [], referenceDate = new Date()) {
+  // Ignore malformed timestamps so invalid records cannot crash monthly bucketing
+  // or silently receive full recency credit in Trust Score calculations.
+  const hasValidCreatedAt = (record) => record?.createdAt != null && !Number.isNaN(new Date(record.createdAt).getTime());
+  settlements = settlements.filter(hasValidCreatedAt);
+  personalExpenses = personalExpenses.filter(hasValidCreatedAt);
+  rejections = rejections.filter(hasValidCreatedAt);
   // Cancelled/rejected requests are audit records, not repayment activity.
   const eligibleSettlements = settlements.filter((s) => s.status !== "cancelled" && s.status !== "rejected");
   const hasSettlements = eligibleSettlements.length >= 1;
